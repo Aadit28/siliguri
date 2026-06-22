@@ -1,0 +1,103 @@
+{
+  "appName": "Saathi",
+  "tagline": "Care & community for your parents at home",
+  "tabs": {
+    "home": "Home",
+    "services": "Services",
+    "community": "Community",
+    "help": "Help"
+  },
+  "common": {
+    "search": "Search",
+    "call": "Call",
+    "directions": "Directions",
+    "verified": "Verified",
+    "cancel": "Cancel",
+    "post": "Post",
+    "send": "Send",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "save": "Save",
+    "saved": "Saved",
+    "back": "Back",
+    "all": "All",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "email": "Email",
+    "password": "Password",
+    "noResults": "Nothing found yet.",
+    "errorLoading": "Could not load. Check your connection.",
+    "you": "You"
+  },
+  "home": {
+    "greeting": "Namaste",
+    "subtitle": "What do you need today?",
+    "quickServices": "Find a service",
+    "quickCommunity": "Ask the community",
+    "quickHelp": "Get help now",
+    "browseCategories": "Browse categories",
+    "needHelpTitle": "Need help right away?",
+    "needHelpBody": "Our helpline is open 24/7 in Hindi and English."
+  },
+  "categories": {
+    "doctor": "Doctors",
+    "hospital": "Hospitals",
+    "medical_shop": "Medical shops",
+    "travel_agent": "Travel agents",
+    "daily_service": "Daily services"
+  },
+  "services": {
+    "title": "Trusted services",
+    "searchPlaceholder": "Search doctors, shops, agents...",
+    "favorites": "Favourites",
+    "addFavorite": "Save",
+    "removeFavorite": "Saved",
+    "hours": "Hours",
+    "about": "About",
+    "signInToSave": "Sign in to save favourites"
+  },
+  "community": {
+    "title": "Community",
+    "subtitle": "Ask questions. Share what works.",
+    "newPost": "New post",
+    "askQuestion": "Ask a question",
+    "replies": "{{count}} replies",
+    "likes": "{{count}} likes",
+    "writeReply": "Write a reply...",
+    "noReplies": "No replies yet. Be the first to help.",
+    "postTitle": "Title",
+    "postBody": "Write your question or tip...",
+    "postCategory": "Category",
+    "signInToPost": "Please sign in to post or reply.",
+    "posted": "Posted"
+  },
+  "postCategories": {
+    "general": "General",
+    "health": "Health",
+    "travel": "Travel",
+    "daily_life": "Daily life",
+    "best_practice": "Best practice"
+  },
+  "help": {
+    "title": "24/7 Helpline",
+    "subtitle": "We are here any time, in your language.",
+    "callNow": "Call helpline now",
+    "requestCallback": "Request a callback",
+    "yourName": "Your name",
+    "yourPhone": "Your phone number",
+    "describeIssue": "How can we help?",
+    "submit": "Request callback",
+    "submitted": "Thank you. We will call you back soon.",
+    "emergency": "Emergency",
+    "languages": "Available in Hindi & English"
+  },
+  "auth": {
+    "welcome": "Welcome to Saathi",
+    "signInOrUp": "Sign in or create an account",
+    "fullName": "Full name",
+    "createAccount": "Create account",
+    "haveAccount": "I already have an account",
+    "needAccount": "Create a new account",
+    "checkEmail": "Check your email to confirm your account."
+  }
+}

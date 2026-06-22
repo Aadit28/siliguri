@@ -1,0 +1,103 @@
+{
+  "appName": "साथी",
+  "tagline": "घर पर अपने माता-पिता के लिए देखभाल और समुदाय",
+  "tabs": {
+    "home": "होम",
+    "services": "सेवाएँ",
+    "community": "समुदाय",
+    "help": "मदद"
+  },
+  "common": {
+    "search": "खोजें",
+    "call": "कॉल करें",
+    "directions": "रास्ता",
+    "verified": "सत्यापित",
+    "cancel": "रद्द करें",
+    "post": "पोस्ट करें",
+    "send": "भेजें",
+    "loading": "लोड हो रहा है...",
+    "retry": "फिर से कोशिश करें",
+    "save": "सहेजें",
+    "saved": "सहेजा गया",
+    "back": "वापस",
+    "all": "सभी",
+    "signIn": "साइन इन करें",
+    "signOut": "साइन आउट करें",
+    "email": "ईमेल",
+    "password": "पासवर्ड",
+    "noResults": "अभी कुछ नहीं मिला।",
+    "errorLoading": "लोड नहीं हो सका। अपना कनेक्शन जांचें।",
+    "you": "आप"
+  },
+  "home": {
+    "greeting": "नमस्ते",
+    "subtitle": "आज आपको क्या चाहिए?",
+    "quickServices": "सेवा खोजें",
+    "quickCommunity": "समुदाय से पूछें",
+    "quickHelp": "अभी मदद लें",
+    "browseCategories": "श्रेणियाँ देखें",
+    "needHelpTitle": "क्या तुरंत मदद चाहिए?",
+    "needHelpBody": "हमारी हेल्पलाइन हिंदी और अंग्रेज़ी में 24/7 खुली है।"
+  },
+  "categories": {
+    "doctor": "डॉक्टर",
+    "hospital": "अस्पताल",
+    "medical_shop": "दवा की दुकान",
+    "travel_agent": "ट्रैवल एजेंट",
+    "daily_service": "रोज़मर्रा की सेवाएँ"
+  },
+  "services": {
+    "title": "भरोसेमंद सेवाएँ",
+    "searchPlaceholder": "डॉक्टर, दुकान, एजेंट खोजें...",
+    "favorites": "पसंदीदा",
+    "addFavorite": "सहेजें",
+    "removeFavorite": "सहेजा गया",
+    "hours": "समय",
+    "about": "जानकारी",
+    "signInToSave": "पसंदीदा सहेजने के लिए साइन इन करें"
+  },
+  "community": {
+    "title": "समुदाय",
+    "subtitle": "सवाल पूछें। जो काम आए वह साझा करें।",
+    "newPost": "नई पोस्ट",
+    "askQuestion": "सवाल पूछें",
+    "replies": "{{count}} जवाब",
+    "likes": "{{count}} पसंद",
+    "writeReply": "जवाब लिखें...",
+    "noReplies": "अभी कोई जवाब नहीं। पहले मदद करें।",
+    "postTitle": "शीर्षक",
+    "postBody": "अपना सवाल या सुझाव लिखें...",
+    "postCategory": "श्रेणी",
+    "signInToPost": "पोस्ट या जवाब देने के लिए साइन इन करें।",
+    "posted": "पोस्ट हो गया"
+  },
+  "postCategories": {
+    "general": "सामान्य",
+    "health": "स्वास्थ्य",
+    "travel": "यात्रा",
+    "daily_life": "रोज़मर्रा",
+    "best_practice": "बेहतरीन तरीका"
+  },
+  "help": {
+    "title": "24/7 हेल्पलाइन",
+    "subtitle": "हम हर समय आपकी भाषा में मौजूद हैं।",
+    "callNow": "अभी हेल्पलाइन कॉल करें",
+    "requestCallback": "कॉलबैक का अनुरोध करें",
+    "yourName": "आपका नाम",
+    "yourPhone": "आपका फ़ोन नंबर",
+    "describeIssue": "हम कैसे मदद करें?",
+    "submit": "कॉलबैक का अनुरोध करें",
+    "submitted": "धन्यवाद। हम जल्द ही आपको कॉल करेंगे।",
+    "emergency": "आपातकाल",
+    "languages": "हिंदी और अंग्रेज़ी में उपलब्ध"
+  },
+  "auth": {
+    "welcome": "साथी में आपका स्वागत है",
+    "signInOrUp": "साइन इन करें या खाता बनाएँ",
+    "fullName": "पूरा नाम",
+    "createAccount": "खाता बनाएँ",
+    "haveAccount": "मेरा पहले से खाता है",
+    "needAccount": "नया खाता बनाएँ",
+    "checkEmail": "अपना खाता पुष्टि करने के लिए अपना ईमेल देखें।"
+  }
+}
