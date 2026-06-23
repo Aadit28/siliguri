@@ -37,9 +37,16 @@
     "quickHelp": "Get help now",
     "browseCategories": "Browse categories",
     "needHelpTitle": "Need help right away?",
-    "needHelpBody": "Our helpline is open 24/7 in Hindi and English."
+    "needHelpBody": "Our helpline is open 24/7 in Hindi and English.",
+    "elderTitle": "Care homes for elders",
+    "elderBody": "Find or arrange a safe, caring home for your parents — with shelter, meals and attendants.",
+    "elderCta": "Find elder care homes",
+    "topRated": "Top rated near you",
+    "seeAll": "See all",
+    "trustBanner": "Every listing checked by our team"
   },
   "categories": {
+    "elder_home": "Elder care homes",
     "doctor": "Doctors",
     "hospital": "Hospitals",
     "medical_shop": "Medical shops",
@@ -54,7 +61,9 @@
     "removeFavorite": "Saved",
     "hours": "Hours",
     "about": "About",
-    "signInToSave": "Sign in to save favourites"
+    "signInToSave": "Sign in to save favourites",
+    "unverified": "Unverified — please confirm details before relying on them",
+    "viewSource": "View source"
   },
   "community": {
     "title": "Community",

@@ -1,4 +1,5 @@
 export type ServiceCategory =
+  | 'elder_home'
   | 'doctor'
   | 'hospital'
   | 'medical_shop'
@@ -18,6 +19,7 @@ export interface Service {
   rating: number | null;
   verified: boolean;
   town: string | null;
+  source_url: string | null;
   created_at?: string;
 }
 

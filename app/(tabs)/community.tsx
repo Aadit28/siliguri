@@ -7,12 +7,15 @@ import { Card, Muted, Button } from '../../src/components/ui';
 import { colors, font, radius, space } from '../../src/lib/theme';
 import { postEmoji } from '../../src/lib/categories';
 import { fetchPosts } from '../../src/lib/api';
+import { tContent } from '../../src/lib/contentI18n';
 import { CommunityPost } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
+import { useLocale } from '../../src/context/LocaleContext';
 
 export default function Community() {
   const { t } = useTranslation();
   const router = useRouter();
+  const { lang } = useLocale();
   const { user } = useAuth();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,9 +61,9 @@ export default function Community() {
                   </Text>
                   {item.author_name ? <Muted>· {item.author_name}</Muted> : null}
                 </View>
-                <Text style={styles.title}>{item.title}</Text>
+                <Text style={styles.title}>{tContent(item.title, lang)}</Text>
                 <Muted numberOfLines={2} style={{ marginTop: 4 }}>
-                  {item.body}
+                  {tContent(item.body, lang)}
                 </Muted>
                 <View style={styles.metaRow}>
                   <Muted>💬 {item.reply_count ?? 0}</Muted>

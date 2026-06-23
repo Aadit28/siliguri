@@ -4,16 +4,18 @@ import {
   Text,
   TextInput,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import { Card, Badge, Stars, Muted } from '../../src/components/ui';
-import { colors, font, radius, space } from '../../src/lib/theme';
-import { SERVICE_CATEGORIES, serviceEmoji } from '../../src/lib/categories';
+import { colors, font, radius, space, shadow } from '../../src/lib/theme';
+import { SERVICE_CATEGORIES, serviceEmoji, categoryColor } from '../../src/lib/categories';
 import { fetchServices } from '../../src/lib/api';
 import { Service, ServiceCategory } from '../../src/lib/types';
 
@@ -65,29 +67,30 @@ export default function Services() {
       </View>
 
       {/* Category chips */}
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={[{ key: 'all' as const, emoji: '📋' }, ...SERVICE_CATEGORIES]}
-        keyExtractor={(i) => i.key}
-        style={{ flexGrow: 0 }}
-        contentContainerStyle={{ paddingHorizontal: space.md, paddingVertical: space.sm }}
-        renderItem={({ item }) => {
-          const active = cat === item.key;
-          const label = item.key === 'all' ? t('common.all') : t(`categories.${item.key}`);
-          return (
-            <TouchableOpacity
-              onPress={() => setCat(item.key as any)}
-              activeOpacity={0.8}
-              style={[styles.chip, { backgroundColor: active ? colors.primary : colors.chipBg }]}
-            >
-              <Text style={[styles.chipText, { color: active ? '#fff' : colors.primaryDark }]}>
-                {item.emoji} {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        }}
-      />
+      <View style={{ flexGrow: 0 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: space.md, paddingVertical: space.sm }}
+        >
+          {[{ key: 'all' as const, emoji: '📋' }, ...SERVICE_CATEGORIES].map((item) => {
+            const active = cat === item.key;
+            const label = item.key === 'all' ? t('common.all') : t(`categories.${item.key}`);
+            return (
+              <TouchableOpacity
+                key={item.key}
+                onPress={() => setCat(item.key as any)}
+                activeOpacity={0.8}
+                style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}
+              >
+                <Text style={[styles.chipText, { color: active ? '#fff' : colors.primaryDark }]}>
+                  {item.emoji} {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: space.xl }} color={colors.primary} size="large" />
@@ -107,11 +110,13 @@ export default function Services() {
               onPress={() => router.push(`/service/${item.id}`)}
             >
               <Card style={styles.row}>
-                <View style={styles.avatar}>
+                <View style={[styles.avatar, { backgroundColor: categoryColor(item.category).bg }]}>
                   <Text style={{ fontSize: 28 }}>{serviceEmoji(item.category)}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{item.name}</Text>
+                  <Text style={styles.name} numberOfLines={2}>
+                    {item.name}
+                  </Text>
                   <Muted numberOfLines={1} style={{ marginTop: 2 }}>
                     📍 {item.address}
                   </Muted>
@@ -120,6 +125,20 @@ export default function Services() {
                     {item.verified && <Badge label={t('common.verified')} />}
                   </View>
                 </View>
+                {item.phone ? (
+                  <TouchableOpacity
+                    style={styles.callBtn}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('common.call')} ${item.name}`}
+                    onPress={() => Linking.openURL(`tel:${item.phone}`)}
+                  >
+                    <Text style={styles.callIcon}>☎</Text>
+                    <Text style={styles.callLabel}>{t('common.call')}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.chevron}>›</Text>
+                )}
               </Card>
             </TouchableOpacity>
           )}
@@ -137,10 +156,11 @@ const styles = StyleSheet.create({
     margin: space.md,
     marginBottom: 0,
     paddingHorizontal: space.md,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 54,
+    minHeight: 56,
+    ...shadow.sm,
   },
   search: { flex: 1, fontSize: font.md, color: colors.text, marginLeft: space.sm },
   chip: {
@@ -150,17 +170,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: space.sm,
+    flexShrink: 0,
   },
+  chipIdle: { backgroundColor: colors.chipBg },
+  chipActive: { backgroundColor: colors.primary, ...shadow.sm },
   chipText: { fontSize: font.sm, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   avatar: {
     width: 56,
     height: 56,
     borderRadius: radius.md,
-    backgroundColor: colors.chipBg,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  chevron: { fontSize: 30, color: colors.textMuted, fontWeight: '400' },
+  callBtn: {
+    width: 64,
+    minHeight: 60,
+    borderRadius: radius.md,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.sm,
+  },
+  callIcon: { color: '#fff', fontSize: 22 },
+  callLabel: { color: '#fff', fontSize: font.xs, fontWeight: '800', marginTop: 2 },
   name: { fontSize: font.md, fontWeight: '700', color: colors.text },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 6 },
 });

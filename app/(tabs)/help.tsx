@@ -35,34 +35,40 @@ export default function Help() {
 
         <H2 style={{ marginTop: space.lg, marginBottom: space.sm }}>{t('help.requestCallback')}</H2>
         {done ? (
-          <Card style={{ backgroundColor: '#EAF6EC', borderColor: '#BFE3C6' }}>
-            <Body style={{ color: colors.accent }}>✓ {t('help.submitted')}</Body>
+          <Card style={{ backgroundColor: colors.successSoft, borderColor: '#BFE3C6' }}>
+            <Body style={{ color: colors.success, fontWeight: '700' }}>✓ {t('help.submitted')}</Body>
           </Card>
         ) : (
-          <View style={{ gap: space.sm }}>
-            <TextInput
-              style={styles.input}
-              placeholder={t('help.yourName')}
-              placeholderTextColor={colors.textMuted}
-              value={name}
-              onChangeText={setName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t('help.yourPhone')}
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-            />
-            <TextInput
-              style={[styles.input, { minHeight: 110, textAlignVertical: 'top' }]}
-              placeholder={t('help.describeIssue')}
-              placeholderTextColor={colors.textMuted}
-              value={issue}
-              onChangeText={setIssue}
-              multiline
-            />
+          <View style={{ gap: space.md }}>
+            <View>
+              <Text style={styles.label}>{t('help.yourName')}</Text>
+              <TextInput
+                style={styles.input}
+                placeholderTextColor={colors.textMuted}
+                value={name}
+                onChangeText={setName}
+              />
+            </View>
+            <View>
+              <Text style={styles.label}>{t('help.yourPhone')}</Text>
+              <TextInput
+                style={styles.input}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+                value={phone}
+                onChangeText={setPhone}
+              />
+            </View>
+            <View>
+              <Text style={styles.label}>{t('help.describeIssue')}</Text>
+              <TextInput
+                style={[styles.input, { minHeight: 110, textAlignVertical: 'top' }]}
+                placeholderTextColor={colors.textMuted}
+                value={issue}
+                onChangeText={setIssue}
+                multiline
+              />
+            </View>
             <Button
               label={t('help.submit')}
               onPress={() => setDone(true)}
@@ -76,6 +82,12 @@ export default function Help() {
 }
 
 const styles = StyleSheet.create({
+  label: {
+    fontSize: font.sm,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+  },
   input: {
     backgroundColor: colors.card,
     borderWidth: 1,

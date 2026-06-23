@@ -16,13 +16,16 @@ import { Card, H2, Body, Muted, Button } from '../../src/components/ui';
 import { colors, font, radius, space } from '../../src/lib/theme';
 import { postEmoji } from '../../src/lib/categories';
 import { fetchPost, fetchReplies, createReply, toggleLike } from '../../src/lib/api';
+import { tContent } from '../../src/lib/contentI18n';
 import { CommunityPost, CommunityReply } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
+import { useLocale } from '../../src/context/LocaleContext';
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();
   const router = useRouter();
+  const { lang } = useLocale();
   const { user, displayName } = useAuth();
 
   const [post, setPost] = useState<CommunityPost | null>(null);
@@ -102,9 +105,9 @@ export default function PostDetail() {
         <Text style={styles.tag}>
           {postEmoji(post.category)} {t(`postCategories.${post.category}`)}
         </Text>
-        <H2 style={{ marginTop: 6 }}>{post.title}</H2>
+        <H2 style={{ marginTop: 6 }}>{tContent(post.title, lang)}</H2>
         {post.author_name ? <Muted style={{ marginTop: 4 }}>{post.author_name}</Muted> : null}
-        <Body style={{ marginTop: space.md }}>{post.body}</Body>
+        <Body style={{ marginTop: space.md }}>{tContent(post.body, lang)}</Body>
 
         <View style={styles.likeRow}>
           <TouchableOpacity onPress={onLike} style={styles.likeBtn} activeOpacity={0.8}>
@@ -127,7 +130,7 @@ export default function PostDetail() {
               {r.author_name ? (
                 <Text style={styles.replyAuthor}>{r.author_name}</Text>
               ) : null}
-              <Body>{r.body}</Body>
+              <Body>{tContent(r.body, lang)}</Body>
             </Card>
           ))
         )}
