@@ -21,11 +21,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
+      "name": "Saathi",
+      "shortName": "Saathi",
       "bundler": "metro"
     },
     "plugins": [
       "expo-router",
-      "expo-localization"
+      "expo-localization",
+      "expo-sqlite"
     ]
   }
 }

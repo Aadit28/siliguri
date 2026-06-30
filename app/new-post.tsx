@@ -3,16 +3,19 @@ import { ScrollView, View, Text, TextInput, StyleSheet, Alert } from 'react-nati
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { H2, Muted, Button } from '../src/components/ui';
-import { colors, font, radius, space } from '../src/lib/theme';
+import { AppColors, font, radius, space } from '../src/lib/theme';
 import { POST_CATEGORIES } from '../src/lib/categories';
 import { createPost } from '../src/lib/api';
 import { PostCategory } from '../src/lib/types';
 import { useAuth } from '../src/context/AuthContext';
+import { useTheme } from '../src/context/ThemeContext';
 
 export default function NewPost() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { user } = useAuth();
+  const { session, user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState<PostCategory>('general');
@@ -29,7 +32,7 @@ export default function NewPost() {
       title: title.trim(),
       body: body.trim(),
       category,
-      authorId: user.id,
+      token: session!.access_token,
     });
     setSaving(false);
     if (res.ok) {
@@ -56,7 +59,7 @@ export default function NewPost() {
                 styles.chip,
                 {
                   backgroundColor: active ? colors.primary : colors.chipBg,
-                  color: active ? '#fff' : colors.primaryDark,
+                  color: active ? (isDark ? colors.textOnDark : '#fff') : colors.primaryDark,
                 },
               ]}
             >
@@ -98,25 +101,29 @@ export default function NewPost() {
   );
 }
 
-const styles = StyleSheet.create({
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: {
-    overflow: 'hidden',
-    paddingHorizontal: space.md,
-    paddingVertical: 10,
-    borderRadius: radius.pill,
-    fontWeight: '700',
-    fontSize: font.sm,
-  },
-  input: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    fontSize: font.md,
-    color: colors.text,
-    minHeight: 54,
-  },
-});
+function makeStyles(colors: AppColors, isDark: boolean) {
+  return StyleSheet.create({
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    chip: {
+      overflow: 'hidden',
+      paddingHorizontal: space.md,
+      paddingVertical: 10,
+      borderRadius: radius.pill,
+      fontWeight: '800',
+      fontSize: font.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    input: {
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      fontSize: font.md,
+      color: colors.text,
+      minHeight: 54,
+    },
+  });
+}

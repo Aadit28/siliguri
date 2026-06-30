@@ -1,110 +1,195 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { colors, font, radius, space, shadow } from '../lib/theme';
+import { font, radius, space, shadow } from '../lib/theme';
 import { useLocale } from '../context/LocaleContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { useDisplayMode } from '../context/DisplayModeContext';
 import { HELPLINE_NUMBER } from '../lib/config';
 
 export default function AppHeader({ title }: { title?: string }) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { lang, toggle } = useLocale();
-  const { user, signOut } = useAuth();
+  const { displayName, user, signOut } = useAuth();
+  const { colors, mode, isDark, toggleTheme } = useTheme();
+  const { isComputerMode } = useDisplayMode();
   const router = useRouter();
+  const pathname = usePathname();
+  const showNav = isComputerMode;
+  const accountLabel = displayName?.split(' ')[0] || t('common.signOut');
+  const navItems = [
+    { label: t('tabs.home'), href: '/' },
+    { label: t('tabs.services'), href: '/services' },
+    { label: t('tabs.assistant'), href: '/assistant' },
+    { label: t('tabs.community'), href: '/community' },
+    { label: t('tabs.help'), href: '/help' },
+  ];
+  const isActiveNav = (href: string) =>
+    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + space.sm }]}>
+    <BlurView
+      intensity={isDark ? 64 : 48}
+      tint={mode === 'dark' ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+      style={[
+        styles.wrap,
+        {
+          paddingTop: insets.top + space.sm,
+          backgroundColor: colors.nav,
+          borderBottomColor: colors.border,
+        },
+      ]}
+    >
       <View style={styles.row}>
         <TouchableOpacity
           onPress={() => router.push('/')}
           accessibilityRole="header"
           style={styles.brandWrap}
         >
-          <Text style={styles.brand} numberOfLines={1}>
-            🪔 {title ?? t('appName')}
+          <Text style={[styles.brand, { color: colors.text }]} numberOfLines={1}>
+            {t('appName')}
+          </Text>
+          <Text style={[styles.brandSub, { color: colors.textMuted }]} numberOfLines={1}>
+            {title ?? t('tagline')}
           </Text>
         </TouchableOpacity>
 
+        {showNav ? (
+          <View style={styles.navLinks}>
+            {navItems.map((item) => (
+              <TouchableOpacity
+                key={item.href}
+                onPress={() => router.push(item.href as any)}
+                activeOpacity={0.75}
+                style={[
+                  styles.navLink,
+                  isActiveNav(item.href) && {
+                    backgroundColor: colors.chipBg,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.navLinkText,
+                    { color: isActiveNav(item.href) ? colors.primaryDark : colors.textMuted },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+
         <View style={styles.actions}>
-          {/* Language toggle */}
           <TouchableOpacity
             onPress={toggle}
-            style={styles.langBtn}
+            style={[styles.iconBtn, { backgroundColor: colors.chipBg, borderColor: colors.border }]}
             accessibilityRole="button"
             accessibilityLabel="Change language"
           >
-            <Text style={styles.langText}>{lang === 'hi' ? 'EN' : 'हिं'}</Text>
+            <Text style={[styles.iconText, { color: colors.text }]}>
+              {lang === 'hi' ? 'EN' : 'हिं'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Helpline quick-dial */}
+          <TouchableOpacity
+            onPress={toggleTheme}
+            style={[styles.iconBtn, { backgroundColor: colors.chipBg, borderColor: colors.border }]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: isDark }}
+            accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <Text style={[styles.iconText, { color: colors.text }]}>{isDark ? '☀' : '☾'}</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => Linking.openURL(`tel:${HELPLINE_NUMBER}`)}
-            style={styles.helpBtn}
+            style={[styles.helpBtn, { backgroundColor: colors.danger }]}
             accessibilityRole="button"
             accessibilityLabel={t('help.callNow')}
           >
-            <Text style={styles.helpText}>☎ 24/7</Text>
+            <Text style={[styles.helpText, { color: isDark ? colors.textOnDark : '#fff' }]}>
+              {showNav ? t('help.title') : 'Call'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Auth */}
           <TouchableOpacity
             onPress={() => (user ? signOut() : router.push('/login'))}
-            style={styles.authBtn}
+            style={[styles.authBtn, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
             accessibilityRole="button"
           >
-            <Text style={styles.authText}>{user ? t('common.signOut') : t('common.signIn')}</Text>
+            <Text style={[styles.authText, { color: colors.primaryDark }]} numberOfLines={1}>
+              {user ? accountLabel : t('common.signIn')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </BlurView>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: colors.primary,
     paddingHorizontal: space.md,
     paddingBottom: space.md,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
-    ...shadow.md,
+    borderBottomWidth: 1,
+    overflow: 'hidden',
+    ...shadow.sm,
   },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  brandWrap: { flexShrink: 1, marginRight: space.sm },
-  brand: { color: '#fff', fontSize: font.lg, fontWeight: '800', letterSpacing: -0.3 },
-  actions: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
-  langBtn: {
-    minWidth: 44,
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+  brandWrap: { flex: 1, minWidth: 0 },
+  brand: { fontSize: font.lg, fontWeight: '900' },
+  brandSub: { fontSize: font.xs, fontWeight: '700', marginTop: 2 },
+  actions: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, gap: 6 },
+  navLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    marginHorizontal: space.md,
+  },
+  navLink: {
+    minHeight: 40,
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingHorizontal: space.sm,
+  },
+  navLinkText: { fontSize: font.sm, fontWeight: '800' },
+  iconBtn: {
+    minWidth: 40,
     height: 40,
     borderRadius: radius.pill,
-    backgroundColor: colors.overlay,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
-    marginRight: space.sm,
+    paddingHorizontal: 8,
   },
-  langText: { color: '#fff', fontWeight: '800', fontSize: font.sm },
+  iconText: { fontWeight: '900', fontSize: font.sm },
   helpBtn: {
     height: 40,
     borderRadius: radius.pill,
-    backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.md,
-    marginRight: space.sm,
+    paddingHorizontal: space.sm,
     ...shadow.sm,
   },
-  helpText: { color: '#fff', fontWeight: '800', fontSize: font.sm },
+  helpText: { fontWeight: '900', fontSize: font.xs },
   authBtn: {
     height: 40,
+    maxWidth: 84,
     borderRadius: radius.pill,
-    backgroundColor: colors.overlayStrong,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.md,
+    paddingHorizontal: space.sm,
   },
-  authText: { color: '#fff', fontWeight: '800', fontSize: font.xs },
+  authText: { fontWeight: '900', fontSize: font.xs },
 });

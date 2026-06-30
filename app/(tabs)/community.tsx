@@ -4,19 +4,22 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import { Card, Muted, Button } from '../../src/components/ui';
-import { colors, font, radius, space } from '../../src/lib/theme';
+import { AppColors, font, space } from '../../src/lib/theme';
 import { postEmoji } from '../../src/lib/categories';
 import { fetchPosts } from '../../src/lib/api';
 import { tContent } from '../../src/lib/contentI18n';
 import { CommunityPost } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
+import { useTheme } from '../../src/context/ThemeContext';
 
 export default function Community() {
   const { t } = useTranslation();
   const router = useRouter();
   const { lang } = useLocale();
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -87,9 +90,11 @@ function useFocusEffectSafe(cb: () => void) {
   );
 }
 
-const styles = StyleSheet.create({
-  tagRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  tag: { fontSize: font.xs, fontWeight: '800', color: colors.primary },
-  title: { fontSize: font.md, fontWeight: '700', color: colors.text, marginTop: 6 },
-  metaRow: { flexDirection: 'row', gap: space.md, marginTop: space.sm },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    tagRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    tag: { fontSize: font.xs, fontWeight: '800', color: colors.primaryDark },
+    title: { fontSize: font.md, fontWeight: '800', color: colors.text, marginTop: 6 },
+    metaRow: { flexDirection: 'row', gap: space.md, marginTop: space.sm },
+  });
+}

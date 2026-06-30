@@ -14,9 +14,26 @@ if (-not (Test-Path $nodeDir)) {
 $env:Path = "$nodeDir;$env:Path"
 Set-Location $PSScriptRoot
 Write-Host "Using Node $(& "$nodeDir\node.exe" -v)" -ForegroundColor Green
+$env:EXPO_PUBLIC_API_BASE_URL = "http://localhost:8788"
+
+function Ensure-LocalApi {
+  $apiPort = 8788
+  $open = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
+  if ($open) {
+    Write-Host "Saathi local API already running on http://localhost:$apiPort" -ForegroundColor Green
+    return
+  }
+
+  Write-Host "Starting Saathi local API on http://localhost:$apiPort" -ForegroundColor Green
+  Start-Process `
+    -FilePath "$nodeDir\node.exe" `
+    -ArgumentList "scripts\dev-api.js" `
+    -WorkingDirectory $PSScriptRoot `
+    -WindowStyle Hidden
+}
 
 switch ($platform) {
-  "android" { & "$nodeDir\npx.cmd" expo start --android }
-  "ios"     { & "$nodeDir\npx.cmd" expo start --ios }
-  default   { & "$nodeDir\npx.cmd" expo start --web --port 8081 }
+  "android" { Ensure-LocalApi; & "$nodeDir\npx.cmd" expo start --android }
+  "ios"     { Ensure-LocalApi; & "$nodeDir\npx.cmd" expo start --ios }
+  default   { Ensure-LocalApi; & "$nodeDir\npx.cmd" expo start --web --port 8081 }
 }

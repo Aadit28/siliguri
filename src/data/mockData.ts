@@ -1,104 +1,12 @@
 import { Service, CommunityPost, CommunityReply } from '../lib/types';
+import services from './services.json';
 
-// Offline / pre-seed fallback. Mirrors the real, publicly-sourced listings in
-// scripts/seed.mjs. Phone numbers/addresses from the web are often outdated —
-// `verified` is true only for entries from the provider's own official site.
-export const MOCK_SERVICES: Service[] = [
-  {
-    id: 'm-elder-1',
-    name: 'Siliguri Bhawna Society',
-    category: 'elder_home',
-    description:
-      'Registered orphanage & old-age home society running since 2011. Shelter, homemade food and care for elders.',
-    phone: '+919832675576',
-    address: 'Rajiv Nagar, Near Darjeeling More, Ward 46, PO Pradhan Nagar, Siliguri 734003',
-    map_url: 'https://maps.google.com/?q=Siliguri+Bhawna+Society+Pradhan+Nagar',
-    image_url: null,
-    hours: null,
-    rating: 4.7,
-    verified: true,
-    town: 'Siliguri',
-    source_url: 'https://www.bhawanasociety.org/',
-  },
-  {
-    id: 'm-elder-2',
-    name: 'Naba Basanta Old Age Home',
-    category: 'elder_home',
-    description:
-      'Old age home run by Shree Shree Ramkrishna Samity, Siliguri. Exact address/phone unconfirmed — please call ahead.',
-    phone: null,
-    address: 'Siliguri (exact address unconfirmed — please confirm)',
-    map_url: 'https://maps.google.com/?q=Naba+Basanta+Old+Age+Home+Siliguri',
-    image_url: null,
-    hours: null,
-    rating: null,
-    verified: false,
-    town: 'Siliguri',
-    source_url: 'https://www.nababasanta.org/',
-  },
-  {
-    id: 'm-hos-1',
-    name: 'North Bengal Medical College & Hospital',
-    category: 'hospital',
-    description:
-      'Largest government medical college and tertiary referral hospital in North Bengal (est. 1968). 24/7 emergency services.',
-    phone: '+913532585478',
-    address: 'Sushrutanagar, Kawakhali, Siliguri 734012',
-    map_url: 'https://maps.google.com/?q=North+Bengal+Medical+College+and+Hospital',
-    image_url: null,
-    hours: 'Open 24 hours',
-    rating: null,
-    verified: true,
-    town: 'Siliguri',
-    source_url: 'https://wbuhs.ac.in/Affiliated%20Courses/north-bengal-medical-college-hospital/',
-  },
-  {
-    id: 'm-hos-2',
-    name: 'Manipal Hospitals Siliguri',
-    category: 'hospital',
-    description:
-      'Multispecialty hospital in Pradhan Nagar (formerly Medica). Appointments and 24/7 emergency; MARS ambulance.',
-    phone: '+913536650000',
-    address: 'Meghnad Saha Sarani, Pradhan Nagar, Siliguri 734003',
-    map_url: 'https://maps.google.com/?q=Manipal+Hospitals+Siliguri+Pradhan+Nagar',
-    image_url: null,
-    hours: 'Open 24 hours',
-    rating: null,
-    verified: true,
-    town: 'Siliguri',
-    source_url: 'https://www.manipalhospitals.com/siliguri/',
-  },
-  {
-    id: 'm-med-1',
-    name: 'DeSun 24x7 Pharmacy',
-    category: 'medical_shop',
-    description: '24-hour pharmacy at DeSun Hospital, beside North Bengal Medical College, Siliguri.',
-    phone: '+919051715171',
-    address: 'DeSun Hospital, Beside North Bengal Medical College, Sushrutanagar, Siliguri 734012',
-    map_url: 'https://maps.google.com/?q=Desun+24x7+Pharmacy+Siliguri',
-    image_url: null,
-    hours: 'Open 24 hours',
-    rating: null,
-    verified: true,
-    town: 'Siliguri',
-    source_url: 'https://www.desunsiliguri.com/24-hrs-pharmacy/',
-  },
-  {
-    id: 'm-tra-1',
-    name: 'Airtrips (IRCTC Authorised)',
-    category: 'travel_agent',
-    description: 'IRCTC-authorised train ticket booking plus flight bookings.',
-    phone: '+919609596096',
-    address: 'Unit 4, 5th Floor, Capital One Building, Burdwan Road, Siliguri 734005',
-    map_url: 'https://maps.google.com/?q=Airtrips+Burdwan+Road+Siliguri',
-    image_url: null,
-    hours: null,
-    rating: null,
-    verified: true,
-    town: 'Siliguri',
-    source_url: 'https://www.airtripsonline.com/contact.html',
-  },
-];
+// Offline fallback and database seed share this one audited source of truth.
+export const MOCK_SERVICES: Service[] = services.map((service, index) => ({
+  ...service,
+  id: `m-service-${index + 1}`,
+  image_url: null,
+})) as Service[];
 
 export const MOCK_POSTS: (CommunityPost & { replies: CommunityReply[] })[] = [
   {

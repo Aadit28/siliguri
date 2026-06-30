@@ -11,6 +11,10 @@ Universal app — runs on **iOS, Android, and the Web** from one codebase
 - **Services Directory** — doctors, hospitals, medical shops, travel agents and
   daily services. Search, filter by category, one-tap call & directions, verified
   badges, ratings, and save-to-favourites.
+- **Saathi Assistant** — a care-coordination tab that turns a request like
+  "book a doctor appointment tomorrow" into provider suggestions, a call
+  checklist, and family follow-up steps. It uses a local planner by default and
+  can use OpenAI from the server when `OPENAI_API_KEY` is configured.
 - **Community Connect** — ask questions, reply in threads, like posts, and share
   best practices, organised by category (health, travel, daily life…).
 - **24/7 Helpline** — quick-dial button in every screen header + a callback
@@ -48,9 +52,12 @@ The app works immediately on **mock data** even before the backend is set up.
 
 1. Open your Supabase project → **SQL Editor** → paste & run
    [`supabase-schema.sql`](./supabase-schema.sql). This creates the tables, row
-   level security policies, and the signup trigger.
+   level security policies, username accounts, and server auth token tables.
 2. Put your keys in `.env` (see `.env.example`). The **anon** key is safe in the
-   app; the **service_role** key is a secret used only by the seed script.
+   app. The **service_role** key is server-only and used by the seed script plus
+   `/api/*` auth/community write routes.
+   `OPENAI_API_KEY` is optional and server-only; without it, the Assistant tab
+   still works with the built-in local planner.
 3. Seed sample Siliguri data:
    ```bash
    node --env-file=.env scripts/seed.mjs
@@ -64,14 +71,15 @@ app/                 Expo Router routes (file-based)
   service/[id].tsx   Service detail
   post/[id].tsx      Community thread
   new-post.tsx       Compose a question
-  login.tsx          Email auth
+  login.tsx          Username/password auth
 src/
   components/        Shared UI (theme primitives, header)
   context/           Auth + Locale providers
-  lib/               supabase client, api, i18n, theme, types
+  lib/               supabase client, API bridge, i18n, theme, types
   locales/           en.json, hi.json
   data/              mock fallback data
 scripts/seed.mjs     Seed the database (service_role)
+api/                 Vercel serverless username auth + community writes
 supabase-schema.sql  Database schema + RLS
 ```
 

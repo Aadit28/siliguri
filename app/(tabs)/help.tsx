@@ -3,11 +3,14 @@ import { ScrollView, View, Text, TextInput, StyleSheet, Linking } from 'react-na
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import { Card, H1, H2, Body, Muted, Button } from '../../src/components/ui';
-import { colors, font, radius, space } from '../../src/lib/theme';
+import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
 import { HELPLINE_NUMBER, HELPLINE_DISPLAY } from '../../src/lib/config';
+import { useTheme } from '../../src/context/ThemeContext';
 
 export default function Help() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [issue, setIssue] = useState('');
@@ -16,27 +19,29 @@ export default function Help() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AppHeader title={t('help.title')} />
-      <ScrollView contentContainerStyle={{ padding: space.md, paddingBottom: space.xl }}>
-        <H1 style={{ color: colors.danger }}>🆘 {t('help.title')}</H1>
-        <Body style={{ marginTop: 4 }}>{t('help.subtitle')}</Body>
-        <Muted style={{ marginTop: 6 }}>🌐 {t('help.languages')}</Muted>
+      <ScrollView contentContainerStyle={{ padding: space.md, paddingBottom: space.xl, gap: space.md }}>
+        <View style={styles.hero}>
+          <Text style={styles.kicker}>{t('help.emergency')}</Text>
+          <H1 style={{ color: colors.dangerDark }}>{t('help.title')}</H1>
+          <Body style={{ marginTop: 4 }}>{t('help.subtitle')}</Body>
+          <Muted style={{ marginTop: 6 }}>{t('help.languages')}</Muted>
+        </View>
 
-        <Card style={{ marginTop: space.lg }}>
-          <H2>☎ {HELPLINE_DISPLAY}</H2>
+        <Card>
+          <H2>{HELPLINE_DISPLAY}</H2>
           <View style={{ marginTop: space.md }}>
             <Button
               label={t('help.callNow')}
-              icon="☎"
               variant="danger"
               onPress={() => Linking.openURL(`tel:${HELPLINE_NUMBER}`)}
             />
           </View>
         </Card>
 
-        <H2 style={{ marginTop: space.lg, marginBottom: space.sm }}>{t('help.requestCallback')}</H2>
+        <H2>{t('help.requestCallback')}</H2>
         {done ? (
-          <Card style={{ backgroundColor: colors.successSoft, borderColor: '#BFE3C6' }}>
-            <Body style={{ color: colors.success, fontWeight: '700' }}>✓ {t('help.submitted')}</Body>
+          <Card style={{ backgroundColor: colors.successSoft, borderColor: colors.border }}>
+            <Body style={{ color: colors.success, fontWeight: '800' }}>✓ {t('help.submitted')}</Body>
           </Card>
         ) : (
           <View style={{ gap: space.md }}>
@@ -81,22 +86,39 @@ export default function Help() {
   );
 }
 
-const styles = StyleSheet.create({
-  label: {
-    fontSize: font.sm,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    fontSize: font.md,
-    color: colors.text,
-    minHeight: 54,
-  },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    hero: {
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.glassBorder,
+      backgroundColor: colors.cardStrong,
+      padding: space.lg,
+      ...shadow.md,
+    },
+    kicker: {
+      color: colors.danger,
+      fontSize: font.xs,
+      fontWeight: '900',
+      textTransform: 'uppercase',
+      marginBottom: space.xs,
+    },
+    label: {
+      fontSize: font.sm,
+      fontWeight: '800',
+      color: colors.text,
+      marginBottom: 6,
+    },
+    input: {
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      fontSize: font.md,
+      color: colors.text,
+      minHeight: 54,
+    },
+  });
+}

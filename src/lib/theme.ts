@@ -1,47 +1,103 @@
-// Saathi design system.
-// Clinical + accessibility-first: crisp, modern surfaces (like Practo / 1mg)
-// with NHS/USWDS-grade legibility for older users — high contrast, large bold
-// type, big tap targets, one calm medical-blue accent and restrained color.
+export type ThemeMode = 'light' | 'dark';
 
-export const colors = {
-  // Surfaces
-  bg: '#F2F5F9', // clean cool off-white
+export const lightColors = {
+  bg: '#F4F4F1',
   bgAlt: '#FFFFFF',
-  card: '#FFFFFF',
+  card: 'rgba(255,255,255,0.64)',
+  cardSolid: '#FFFFFF',
+  cardStrong: 'rgba(255,255,255,0.86)',
+  nav: 'rgba(255,255,255,0.78)',
+  frame: '#E3E3DD',
 
-  // Brand — calm, accessible medical blue (NHS-style)
-  primary: '#005EB8',
-  primaryDark: '#003E7E',
-  primarySoft: '#E2EDFA', // tinted blue panel
+  primary: '#050505',
+  primaryDark: '#111111',
+  primarySoft: '#ECECEA',
+  primaryTint: 'rgba(0,0,0,0.08)',
 
-  // Secondary — teal, used sparingly and only where a second hue truly helps
-  accent: '#0F7A78',
-  accentDark: '#0A5E5C',
-  accentSoft: '#DCEFEE',
+  accent: '#2A2A2A',
+  accentDark: '#111111',
+  accentSoft: 'rgba(0,0,0,0.06)',
 
-  // Success / verified — green
-  success: '#0A7B3E',
-  successSoft: '#E1F1E7',
+  success: '#111111',
+  successSoft: 'rgba(0,0,0,0.06)',
 
-  // Emergency / helpline — high-contrast red
-  danger: '#D4351C',
-  dangerDark: '#A82414',
-  dangerSoft: '#FBE7E3',
+  danger: '#111111',
+  dangerDark: '#050505',
+  dangerSoft: 'rgba(0,0,0,0.08)',
 
-  // Text — high contrast on white (all pass WCAG AA on card/bg)
-  text: '#10243E', // near-black, slight blue
-  textMuted: '#48566B',
+  warningBg: '#F4F4EF',
+  warningText: '#1C1C1C',
+
+  text: '#050505',
+  textMuted: '#545454',
+  textSubtle: '#767676',
   textOnDark: '#FFFFFF',
 
-  // Lines & neutrals — visible, accessible borders
-  border: '#D3DBE6',
-  chipBg: '#E7ECF3',
-  star: '#C77700',
+  border: 'rgba(0,0,0,0.12)',
+  glassBorder: 'rgba(255,255,255,0.76)',
+  chipBg: 'rgba(255,255,255,0.66)',
+  star: '#0F0F0F',
+  surfaceTint: '#ECECE7',
 
-  // Translucent overlays for use on the blue header
-  overlay: 'rgba(255,255,255,0.20)',
+  overlay: 'rgba(255,255,255,0.18)',
   overlayStrong: 'rgba(255,255,255,0.30)',
+  scrim: 'rgba(0,0,0,0.06)',
+  whatsapp: '#111111',
 };
+
+export const darkColors: typeof lightColors = {
+  bg: '#050505',
+  bgAlt: '#0D0D0D',
+  card: 'rgba(255,255,255,0.08)',
+  cardSolid: '#111111',
+  cardStrong: 'rgba(255,255,255,0.12)',
+  nav: 'rgba(10,10,10,0.78)',
+  frame: '#000000',
+
+  primary: '#F7F7F4',
+  primaryDark: '#FFFFFF',
+  primarySoft: '#1A1A1A',
+  primaryTint: 'rgba(255,255,255,0.12)',
+
+  accent: '#EAEAE6',
+  accentDark: '#FFFFFF',
+  accentSoft: 'rgba(255,255,255,0.08)',
+
+  success: '#F7F7F4',
+  successSoft: 'rgba(255,255,255,0.10)',
+
+  danger: '#FFFFFF',
+  dangerDark: '#FFFFFF',
+  dangerSoft: 'rgba(255,255,255,0.10)',
+
+  warningBg: '#1C1C1C',
+  warningText: '#F4F4F0',
+
+  text: '#FAFAF7',
+  textMuted: '#B8B8B2',
+  textSubtle: '#8D8D88',
+  textOnDark: '#050505',
+
+  border: 'rgba(255,255,255,0.14)',
+  glassBorder: 'rgba(255,255,255,0.16)',
+  chipBg: 'rgba(255,255,255,0.08)',
+  star: '#FFFFFF',
+  surfaceTint: '#121212',
+
+  overlay: 'rgba(255,255,255,0.10)',
+  overlayStrong: 'rgba(255,255,255,0.18)',
+  scrim: 'rgba(0,0,0,0.24)',
+  whatsapp: '#FFFFFF',
+};
+
+export type AppColors = typeof lightColors;
+
+export function paletteForMode(mode: ThemeMode) {
+  return mode === 'dark' ? darkColors : lightColors;
+}
+
+// Legacy default for files that have not yet been made theme-aware.
+export const colors = lightColors;
 
 // Deliberately large for older users.
 export const font = {
@@ -66,21 +122,11 @@ export const radius = { sm: 10, md: 14, lg: 18, xl: 24, pill: 999 };
 // Minimum touch target for accessibility.
 export const TAP = 56;
 
-// Soft elevation tokens. Work on web (mapped to box-shadow by react-native-web)
-// and on native (shadow* on iOS, elevation on Android). Spread into a style.
 export const shadow = {
   sm: {
-    shadowColor: '#0B1F3A',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.08)',
   },
   md: {
-    shadowColor: '#0B1F3A',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    boxShadow: '0 22px 70px rgba(0, 0, 0, 0.14)',
   },
 } as const;

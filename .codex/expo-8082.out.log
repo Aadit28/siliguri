@@ -1,0 +1,36 @@
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_SUPABASE_URL GEMINI_API_KEY SUPABASE_SERVICE_ROLE_KEY
+Starting project at C:\Silliguri\suluguri
+Starting Metro Bundler
+
+Waiting on http://localhost:8082
+1 package may need updating. Run npx expo install --check for details.
+Logs for your project will appear below.
+Web Bundled 5373ms node_modules\expo-router\entry.js (1359 modules)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  [Saathi] services fell back to mock: Could not find the table 'public.services' in the schema cache
+Web Bundled 181ms node_modules\expo-router\entry.js (1 module)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  [Saathi] services fell back to mock: Could not find the table 'public.services' in the schema cache
+Web Bundled 168ms node_modules\expo-router\entry.js (1 module)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  [Saathi] services fell back to mock: Could not find the table 'public.services' in the schema cache
+Web Bundled 184ms node_modules\expo-router\entry.js (1 module)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  [Saathi] services fell back to mock: Could not find the table 'public.services' in the schema cache

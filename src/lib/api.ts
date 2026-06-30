@@ -1,6 +1,7 @@
 import { supabase, supabaseConfigured } from './supabase';
 import { Service, CommunityPost, CommunityReply, PostCategory } from './types';
 import { MOCK_SERVICES, MOCK_POSTS } from '../data/mockData';
+import { backendRequest } from './backend';
 
 // Each function tries Supabase first and falls back to mock data so the app
 // is always usable — even before the SQL schema is applied or while offline.
@@ -23,6 +24,24 @@ export async function fetchServices(): Promise<Service[]> {
     console.warn('[Saathi] services fell back to mock:', (e as Error).message);
     usingMockFlag.value = true;
     return MOCK_SERVICES;
+  }
+}
+
+export async function fetchService(id: string): Promise<Service | null> {
+  const mock = MOCK_SERVICES.find((service) => service.id === id) ?? null;
+  if (!supabaseConfigured || id.startsWith('m-')) return mock;
+
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as Service | null) ?? null;
+  } catch (e) {
+    console.warn('[Saathi] service detail failed:', (e as Error).message);
+    return mock;
   }
 }
 
@@ -98,39 +117,38 @@ export async function createPost(input: {
   title: string;
   body: string;
   category: PostCategory;
-  authorId: string;
+  token: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!supabaseConfigured) return { ok: false, error: 'Backend not configured' };
-  const { error } = await supabase.from('community_posts').insert({
-    title: input.title,
-    body: input.body,
-    category: input.category,
-    author_id: input.authorId,
-  });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  try {
+    await backendRequest('/api/community/post', { method: 'POST', token: input.token, body: input });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: (error as Error).message };
+  }
 }
 
 export async function createReply(input: {
   postId: string;
   body: string;
-  authorId: string;
+  token: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!supabaseConfigured) return { ok: false, error: 'Backend not configured' };
-  const { error } = await supabase.from('community_replies').insert({
-    post_id: input.postId,
-    body: input.body,
-    author_id: input.authorId,
-  });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  try {
+    await backendRequest('/api/community/reply', { method: 'POST', token: input.token, body: input });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: (error as Error).message };
+  }
 }
 
-export async function toggleLike(postId: string, userId: string, liked: boolean) {
+export async function toggleLike(postId: string, token: string, liked: boolean) {
   if (!supabaseConfigured) return;
-  if (liked) {
-    await supabase.from('post_likes').delete().match({ post_id: postId, user_id: userId });
-  } else {
-    await supabase.from('post_likes').insert({ post_id: postId, user_id: userId });
-  }
+  await backendRequest('/api/community/like', {
+    method: 'POST',
+    token,
+    body: { postId, liked },
+  }).catch((error) => console.warn('[Saathi] like failed:', (error as Error).message));
 }
 
 // ----- Favorites -----

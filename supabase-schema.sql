@@ -1,15 +1,36 @@
 -- Saathi MVP schema for Supabase
 -- Run in Supabase dashboard -> SQL Editor
 
--- 1. PROFILES (extends auth.users)
+-- 1. USER ACCOUNTS (username/password auth, no email confirmation flow)
+create table if not exists public.user_accounts (
+  id uuid primary key default gen_random_uuid(),
+  username text not null unique,
+  full_name text,
+  password_hash text not null,
+  password_salt text not null,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.auth_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.user_accounts(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_at timestamptz default now()
+);
+
+-- 2. PROFILES
 create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key,
   full_name text,
   locale text default 'hi',
   created_at timestamptz default now()
 );
 
--- 2. SERVICES directory
+alter table public.profiles drop constraint if exists profiles_id_fkey;
+
+-- 3. SERVICES directory
 create table if not exists public.services (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -26,44 +47,54 @@ create table if not exists public.services (
   created_at timestamptz default now()
 );
 
--- 3. FAVORITES
+-- 4. FAVORITES
 create table if not exists public.favorites (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null,
   service_id uuid not null references public.services(id) on delete cascade,
   created_at timestamptz default now(),
   unique (user_id, service_id)
 );
+alter table public.favorites drop constraint if exists favorites_user_id_fkey;
 
--- 4. COMMUNITY POSTS
+-- 5. COMMUNITY POSTS
 create table if not exists public.community_posts (
   id uuid primary key default gen_random_uuid(),
-  author_id uuid references auth.users(id) on delete set null,
+  author_id uuid,
+  author_name text,
   category text not null default 'general' check (category in ('general','health','travel','daily_life','best_practice')),
   title text not null,
   body text not null,
   created_at timestamptz default now()
 );
+alter table public.community_posts drop constraint if exists community_posts_author_id_fkey;
+alter table public.community_posts add column if not exists author_name text;
 
--- 5. COMMUNITY REPLIES
+-- 6. COMMUNITY REPLIES
 create table if not exists public.community_replies (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.community_posts(id) on delete cascade,
-  author_id uuid references auth.users(id) on delete set null,
+  author_id uuid,
+  author_name text,
   body text not null,
   created_at timestamptz default now()
 );
+alter table public.community_replies drop constraint if exists community_replies_author_id_fkey;
+alter table public.community_replies add column if not exists author_name text;
 
--- 6. POST LIKES
+-- 7. POST LIKES
 create table if not exists public.post_likes (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.community_posts(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null,
   created_at timestamptz default now(),
   unique (post_id, user_id)
 );
+alter table public.post_likes drop constraint if exists post_likes_user_id_fkey;
 
 -- ROW LEVEL SECURITY ---------------------------------------------------------
+alter table public.user_accounts enable row level security;
+alter table public.auth_tokens enable row level security;
 alter table public.profiles enable row level security;
 alter table public.services enable row level security;
 alter table public.favorites enable row level security;
@@ -117,18 +148,4 @@ create policy "likes_insert" on public.post_likes for insert with check (auth.ui
 drop policy if exists "likes_delete" on public.post_likes;
 create policy "likes_delete" on public.post_likes for delete using (auth.uid() = user_id);
 
--- Auto-create profile on signup
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.profiles (id, full_name)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', ''))
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+-- Auth writes happen only through Vercel API routes using SUPABASE_SERVICE_ROLE_KEY.

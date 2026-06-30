@@ -1,21 +1,48 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Session, User } from '@supabase/supabase-js';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { backendRequest } from '../lib/backend';
+import { supabaseConfigured } from '../lib/supabase';
+
+type SaathiUser = {
+  id: string;
+  user_metadata?: {
+    username?: string;
+    full_name?: string;
+  };
+};
+
+type SaathiSession = {
+  access_token: string;
+  expires_at?: string;
+  user: SaathiUser;
+};
 
 interface AuthState {
-  session: Session | null;
-  user: User | null;
+  session: SaathiSession | null;
+  user: SaathiUser | null;
   loading: boolean;
   displayName: string;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error?: string; needsConfirm?: boolean }>;
+  signIn: (username: string, password: string) => Promise<{ error?: string }>;
+  signUp: (username: string, password: string, fullName: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
+const SESSION_KEY = 'saathi.usernameSession';
+
+function normalizeUsername(username: string) {
+  return username.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function validateUsername(username: string) {
+  if (!username) return 'Enter your username.';
+  if (username.length < 3) return 'Username must be at least 3 characters.';
+  if (username.length > 80) return 'Username is too long.';
+  return undefined;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<SaathiSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,38 +50,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-    });
-    return () => sub.subscription.unsubscribe();
+    AsyncStorage.getItem(SESSION_KEY)
+      .then(async (stored) => {
+        if (!stored) return;
+        const saved = JSON.parse(stored) as SaathiSession;
+        setSession(saved);
+        const { user: freshUser } = await backendRequest<{ user: SaathiUser }>(
+          '/api/auth/me',
+          { token: saved.access_token },
+        );
+        setSession((current) =>
+          current?.access_token === saved.access_token ? { ...saved, user: freshUser } : current,
+        );
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
 
   const user = session?.user ?? null;
   const displayName =
-    (user?.user_metadata?.full_name as string) || user?.email?.split('@')[0] || '';
+    (user?.user_metadata?.full_name as string) ||
+    (user?.user_metadata?.username as string) ||
+    '';
 
-  async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message };
+  async function signIn(username: string, password: string) {
+    const normalizedUsername = normalizeUsername(username);
+    const validationError = validateUsername(normalizedUsername);
+    if (validationError) return { error: validationError };
+
+    try {
+      const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
+        '/api/auth/signin',
+        { method: 'POST', body: { username: normalizedUsername, password } },
+      );
+      if (!nextSession?.access_token || !nextSession.user) {
+        throw new Error('Sign in did not return an account session.');
+      }
+      setSession(nextSession);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+      return {};
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
   }
 
-  async function signUp(email: string, password: string, fullName: string) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-    if (error) return { error: error.message };
-    // If email confirmation is on, there is no active session yet.
-    return { needsConfirm: !data.session };
+  async function signUp(username: string, password: string, fullName: string) {
+    const normalizedUsername = normalizeUsername(username);
+    const validationError = validateUsername(normalizedUsername);
+    if (validationError) return { error: validationError };
+
+    try {
+      const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
+        '/api/auth/signup',
+        { method: 'POST', body: { username: normalizedUsername, password, fullName } },
+      );
+      if (!nextSession?.access_token || !nextSession.user) {
+        throw new Error('Account was not created. Check the backend setup.');
+      }
+      setSession(nextSession);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+      return {};
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    const token = session?.access_token;
+    setSession(null);
+    await AsyncStorage.removeItem(SESSION_KEY);
+    if (token) {
+      await backendRequest('/api/auth/signout', { method: 'POST', token }).catch(() => undefined);
+    }
   }
 
   return (
