@@ -19,10 +19,11 @@ import AppHeader from '../../src/components/AppHeader';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
-import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan } from '../../src/lib/assistant';
+import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan, AssistantPlanContext } from '../../src/lib/assistant';
 import { fetchServices } from '../../src/lib/api';
-import { addEvent, parseWhenToDate } from '../../src/lib/calendar';
+import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
 import { serviceEmoji } from '../../src/lib/categories';
+import { appendTurn, buildAssistantContext, loadMemory } from '../../src/lib/memory';
 import { openUpiPayment } from '../../src/lib/payments';
 import { font, radius, space, shadow, TAP } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
@@ -33,6 +34,9 @@ const MAX_IMAGE_ATTACHMENTS = 3;
 const MAX_CHAT_SESSIONS = 12;
 const CHAT_STORAGE_KEY = 'saathi-assistant-chats-v1';
 const MAX_STORED_MESSAGES_PER_CHAT = 40;
+const MAX_CONTEXT_CALENDAR_EVENTS = 10;
+const PROFILE_CITY = 'Siliguri';
+const AUTO_MESSAGE_IDS = new Set(['welcome', 'welcome-back']);
 
 type ComposerKeyPressEvent = TextInputKeyPressEvent & {
   key?: string;
@@ -61,7 +65,7 @@ let cachedInitialChatState: ChatState | null = null;
 export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
-  const { session } = useAuth();
+  const { session, displayName } = useAuth();
   const { colors, isDark } = useTheme();
   const { width } = useWindowDimensions();
   const router = useRouter();
@@ -99,21 +103,55 @@ export default function AssistantScreen() {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+    loadMemory()
+      .then((memory) => {
+        if (!mounted || !memory.turns.length) return;
+        setSessions((current) =>
+          current.map((sessionItem) =>
+            sessionItem.id === activeSessionId &&
+            sessionItem.messages.length === 1 &&
+            sessionItem.messages[0].id === 'welcome'
+              ? {
+                  ...sessionItem,
+                  messages: [
+                    ...sessionItem.messages,
+                    { id: 'welcome-back', role: 'assistant' as const, text: t('assistant.welcomeBack') },
+                  ],
+                }
+              : sessionItem,
+          ),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }, [messages, loading]);
 
   useEffect(() => {
     setSessions((current) =>
-      current.map((sessionItem) =>
-        sessionItem.messages.length === 1 && sessionItem.messages[0].id === 'welcome'
-          ? {
-              ...sessionItem,
-              title: t('assistant.newChat'),
-              preview: t('assistant.simpleWelcome'),
-              messages: [welcomeMessage(t('assistant.simpleWelcome'))],
-            }
-          : sessionItem,
-      ),
+      current.map((sessionItem) => {
+        const pristine =
+          sessionItem.messages.length > 0 &&
+          sessionItem.messages.every((message) => AUTO_MESSAGE_IDS.has(message.id));
+        if (!pristine) return sessionItem;
+        const nextMessages = sessionItem.messages.map((message) =>
+          message.id === 'welcome-back'
+            ? { ...message, text: t('assistant.welcomeBack') }
+            : welcomeMessage(t('assistant.simpleWelcome')),
+        );
+        return {
+          ...sessionItem,
+          title: t('assistant.newChat'),
+          preview: nextMessages[nextMessages.length - 1]?.text ?? t('assistant.simpleWelcome'),
+          messages: nextMessages,
+        };
+      }),
     );
   }, [t]);
 
@@ -233,12 +271,18 @@ export default function AssistantScreen() {
     setLoading(true);
 
     try {
+      const context = await buildPlanContext(
+        session && displayName ? { name: displayName, city: PROFILE_CITY } : null,
+      );
+      await appendTurn({ role: 'user', text: userText }).catch(() => undefined);
+
       const plan = await requestAssistantPlan({
         message: body,
         services,
         lang,
         imageAttachments: currentAttachments,
         token: session?.access_token,
+        context,
       });
 
       const reply = [plan.summary, plan.followUpQuestion].filter(Boolean).join('\n\n');
@@ -251,6 +295,7 @@ export default function AssistantScreen() {
           plan,
         },
       ]);
+      await appendTurn({ role: 'assistant', text: reply }).catch(() => undefined);
       if (speakReplies) speak(reply, lang);
     } finally {
       submitInFlightRef.current = false;
@@ -328,6 +373,16 @@ export default function AssistantScreen() {
         Linking.openURL(
           `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff%5Bformatted_address%5D=${encodeURIComponent(destination)}`,
         );
+      } catch {
+        // Malformed action payload; ignore silently.
+      }
+      return;
+    }
+    if (action.kind === 'open_screen') {
+      try {
+        const payload = JSON.parse(action.value || '{}');
+        const path = screenToPath(String(payload.screen || ''));
+        if (path) router.push(path as any);
       } catch {
         // Malformed action payload; ignore silently.
       }
@@ -759,6 +814,51 @@ function welcomeMessage(text: string): AssistantMessage {
     role: 'assistant',
     text,
   };
+}
+
+function screenToPath(screen: string): string | null {
+  if (screen === 'home') return '/';
+  if (screen === 'calendar') return '/calendar';
+  if (screen === 'services') return '/services';
+  if (screen === 'community') return '/community';
+  if (screen === 'help') return '/help';
+  if (screen === 'connectors') return '/connectors';
+  if (screen.startsWith('service:')) {
+    const id = screen.slice('service:'.length).trim();
+    if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) return null;
+    return `/service/${id}`;
+  }
+  return null;
+}
+
+async function buildPlanContext(
+  profile: { name: string; city: string } | null,
+): Promise<AssistantPlanContext | null> {
+  try {
+    const memoryContext = await buildAssistantContext();
+    const events = await listEvents();
+    const todayISO = toLocalISODate(new Date());
+    const calendar = events
+      .filter((event) => event.dateISO >= todayISO)
+      .slice(0, MAX_CONTEXT_CALENDAR_EVENTS)
+      .map((event) => ({
+        title: event.title,
+        dateISO: event.dateISO,
+        time: event.time,
+      }));
+
+    const context: AssistantPlanContext = {};
+    if (profile) context.profile = profile;
+    if (calendar.length) {
+      context.calendar = calendar;
+      context.todayISO = todayISO;
+    }
+    if (memoryContext.facts.length) context.facts = memoryContext.facts;
+    if (memoryContext.recentTurns.length) context.recentTurns = memoryContext.recentTurns;
+    return Object.keys(context).length ? context : null;
+  } catch {
+    return null;
+  }
 }
 
 function getInitialChatState(t: (key: string) => string): ChatState {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { backendRequest } from '../lib/backend';
+import { clearMemory } from '../lib/memory';
 import { supabaseConfigured } from '../lib/supabase';
 
 type SaathiUser = {
@@ -125,6 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = session?.access_token;
     setSession(null);
     await AsyncStorage.removeItem(SESSION_KEY);
+    // Assistant memory is stored device-wide; clear it so the next account
+    // on a shared family device does not inherit this user's chats/facts.
+    await clearMemory().catch(() => undefined);
     if (token) {
       await backendRequest('/api/auth/signout', { method: 'POST', token }).catch(() => undefined);
     }

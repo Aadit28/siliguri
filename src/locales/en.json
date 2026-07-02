@@ -88,6 +88,8 @@
     "scaleTitle": "Siliguri is the first proof, not the boundary",
     "scaleBody": "The interface is city-aware so the same trust system can expand into nearby and underserved Indian cities without losing local context.",
     "myCalendar": "My Calendar",
+    "connectors": "Connections",
+    "connectorsCaption": "See what Saathi can connect",
     "adminArea": "City Admin"
   },
   "categories": {
@@ -207,7 +209,8 @@
     },
     "approve": "Tap a button below to approve",
     "voiceHint": "Tap Speak and say what you need",
-    "addedToCalendar": "Added to your calendar. See the My Calendar page."
+    "addedToCalendar": "Added to your calendar. See the My Calendar page.",
+    "welcomeBack": "Welcome back. I remember our earlier chats — tell me what you need today."
   },
   "community": {
     "title": "Community",

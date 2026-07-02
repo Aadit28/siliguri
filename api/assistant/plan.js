@@ -35,6 +35,25 @@ const ROUTE_TIME_WORDS = [
   'time',
 ];
 
+const CALENDAR_SCREEN_WORDS = ['calendar', 'appointment', 'schedule', 'reminder', 'कैलेंडर', 'अपॉइंटमेंट', 'रिमाइंडर'];
+
+const CONNECTOR_SCREEN_WORDS = [
+  'what can you connect',
+  'which apps work with',
+  'what connects',
+  'connector',
+  'connections',
+  'integration',
+  'jud sakta',
+  'jud sakti',
+  'jod sakta',
+  'जुड़ सकता',
+  'जुड़ सकते',
+  'जोड़ सकते',
+];
+
+const OPEN_SCREEN_VALUES = ['calendar', 'services', 'community', 'help', 'connectors', 'home'];
+
 const COPY = {
   en: {
     urgentSummary: 'This may be urgent. Please call emergency help or the nearest hospital now.',
@@ -54,6 +73,17 @@ const COPY = {
     addCalendar: 'Add to calendar',
     pay: (name) => `Pay ${name} via UPI`,
     bookRide: 'Book a ride',
+    openScreen: (screen) =>
+      ({
+        calendar: 'Open my calendar',
+        services: 'Open services',
+        community: 'Open community',
+        help: 'Open help',
+        connectors: 'See what Saathi can connect',
+      })[screen] || 'Open in Saathi',
+    greeting: (name) => `Namaste ${name} ji.`,
+    calendarReminder: (title, day, time) =>
+      `Reminder: ${title} is ${day === 'today' ? 'today' : 'tomorrow'}${time ? ` at ${time}` : ''}.`,
     routeSummary: (origin, destination, estimate) =>
       `By car, ${origin} to ${destination} is roughly ${estimate} in average Siliguri traffic. Traffic can change, so open live directions before leaving.`,
     routeSafety: 'Traffic estimates can change with peak hours, road work and rain. Use live directions before leaving.',
@@ -81,6 +111,17 @@ const COPY = {
     addCalendar: 'कैलेंडर में जोड़ें',
     pay: (name) => `${name} को UPI से भुगतान करें`,
     bookRide: 'सवारी बुक करें',
+    openScreen: (screen) =>
+      ({
+        calendar: 'मेरा कैलेंडर खोलें',
+        services: 'सेवाएं खोलें',
+        community: 'कम्युनिटी खोलें',
+        help: 'मदद खोलें',
+        connectors: 'देखें साथी किनसे जुड़ सकता है',
+      })[screen] || 'साथी में खोलें',
+    greeting: (name) => `नमस्ते ${name} जी।`,
+    calendarReminder: (title, day, time) =>
+      `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
     safety:
       'साथी अगला कदम तैयार कर सकता है, लेकिन मेडिकल बुकिंग तभी पक्की है जब प्रदाता या आपातकालीन सेवा पुष्टि करे।',
   },
@@ -97,6 +138,7 @@ module.exports = async function handler(req, res) {
     const lang = body.lang === 'hi' ? 'hi' : 'en';
     const services = sanitizeServices(Array.isArray(body.services) ? body.services : []);
     const imageAttachments = sanitizeImageAttachments(body.imageAttachments);
+    const context = sanitizeContext(body.context);
 
     if (!message && !imageAttachments.length) {
       return send(res, 400, { error: 'Tell Saathi what you need.' });
@@ -112,18 +154,27 @@ module.exports = async function handler(req, res) {
         lang,
         services,
         imageAttachments,
+        context,
       }).catch(() => null);
       if (aiPlan) return send(res, 200, aiPlan);
     }
 
-    return send(res, 200, buildLocalAssistantPlan(effectiveMessage, services, lang));
+    return send(res, 200, buildLocalAssistantPlan(effectiveMessage, services, lang, context));
   } catch (error) {
     return send(res, 500, { error: error.message || 'Could not plan this request.' });
   }
 };
 
-async function planWithOpenAI({ message, lang, services, imageAttachments }) {
+async function planWithOpenAI({ message, lang, services, imageAttachments, context }) {
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+  const developerParts = [
+    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. Never claim a medical appointment is booked until a provider confirms it. For urgent symptoms, route to emergency/hospital calling. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. You may also propose add_calendar (value: JSON {"title","when"}), pay (only when the service has a UPI id), book_ride (value: JSON {"destination"}), and open_screen (value: JSON {"screen"}) actions; open_screen opens an app screen for the user, and "screen" must be one of "calendar", "services", "community", "help", "connectors", "home", or "service:<id>" for one listed service. The user must tap to approve every action. Return compact JSON only.',
+  ];
+  if (context) {
+    developerParts.push(
+      `Live user context from the app (profile, upcoming calendar, known facts, recent chat turns). Use it to personalize the reply and actions; never invent details beyond it: ${JSON.stringify(context)}`,
+    );
+  }
   const userContent = [
     {
       type: 'input_text',
@@ -162,8 +213,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
       input: [
         {
           role: 'developer',
-          content:
-            'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. Never claim a medical appointment is booked until a provider confirms it. For urgent symptoms, route to emergency/hospital calling. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. You may also propose add_calendar (value: JSON {"title","when"}), pay (only when the service has a UPI id), and book_ride (value: JSON {"destination"}) actions; the user must tap to approve every action. Return compact JSON only.',
+          content: developerParts.join('\n'),
         },
         {
           role: 'user',
@@ -211,7 +261,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
                   properties: {
                     kind: {
                       type: 'string',
-                      enum: ['call', 'directions', 'source', 'family_update', 'details', 'add_calendar', 'pay', 'book_ride'],
+                      enum: ['call', 'directions', 'source', 'family_update', 'details', 'add_calendar', 'pay', 'book_ride', 'open_screen'],
                     },
                     label: { type: 'string' },
                     value: { type: ['string', 'null'] },
@@ -233,7 +283,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
   if (!text) return null;
 
   const parsed = JSON.parse(text);
-  return normalizeOpenAIPlan(parsed, services, lang);
+  return normalizeOpenAIPlan(parsed, services, lang, context);
 }
 
 function extractOutputText(data) {
@@ -247,8 +297,8 @@ function extractOutputText(data) {
   return chunks.join('\n').trim();
 }
 
-function normalizeOpenAIPlan(plan, services, lang) {
-  const local = buildLocalAssistantPlan(plan.summary || '', services, lang);
+function normalizeOpenAIPlan(plan, services, lang, context = null) {
+  const local = buildLocalAssistantPlan(plan.summary || '', services, lang, context);
   const byId = new Map(services.map((service) => [service.id, service]));
   const suggestedServices = (Array.isArray(plan.suggestedServiceIds) ? plan.suggestedServiceIds : [])
     .map((id) => byId.get(String(id)))
@@ -266,11 +316,11 @@ function normalizeOpenAIPlan(plan, services, lang) {
     suggestedServices: fallbackServices,
     checklist: safeStringList(plan.checklist, local.checklist, 5),
     nextSteps: safeStringList(plan.nextSteps, local.nextSteps, 4),
-    actions: normalizeActions(plan.actions, fallbackServices, lang),
+    actions: normalizeActions(plan.actions, fallbackServices, lang, context, services),
   };
 }
 
-function normalizeActions(actions, services, lang) {
+function normalizeActions(actions, services, lang, context = null, allServices = services) {
   const copy = COPY[lang] || COPY.en;
   const byId = new Map(services.map((service) => [service.id, service]));
   const normalized = Array.isArray(actions)
@@ -278,7 +328,7 @@ function normalizeActions(actions, services, lang) {
         .map((action) => {
           const kind = safeEnum(
             action.kind,
-            ['call', 'directions', 'source', 'family_update', 'details', 'add_calendar', 'pay', 'book_ride'],
+            ['call', 'directions', 'source', 'family_update', 'details', 'add_calendar', 'pay', 'book_ride', 'open_screen'],
             'details',
           );
           const service = action.serviceId ? byId.get(String(action.serviceId)) : services[0];
@@ -293,22 +343,25 @@ function normalizeActions(actions, services, lang) {
                     ? service?.upi_id
                       ? String(service.upi_id)
                       : null
-                    : action.value;
+                    : kind === 'open_screen'
+                      ? sanitizeOpenScreenValue(action.value, allServices)
+                      : action.value;
           return {
             kind,
-            label: String(action.label || defaultActionLabel(kind, service, copy)),
+            label: String(action.label || defaultActionLabel(kind, service, copy, value)),
             value: value || null,
             serviceId: service?.id || null,
           };
         })
+        .filter((action) => action.kind !== 'open_screen' || action.value)
         .slice(0, 4)
     : [];
 
   if (normalized.length) return normalized;
-  return buildLocalAssistantPlan('', services, lang).actions;
+  return buildLocalAssistantPlan('', services, lang, context).actions;
 }
 
-function defaultActionLabel(kind, service, copy) {
+function defaultActionLabel(kind, service, copy, value) {
   if (kind === 'call' && service) return copy.call(service.name);
   if (kind === 'directions') return copy.directions;
   if (kind === 'source') return copy.source;
@@ -316,10 +369,33 @@ function defaultActionLabel(kind, service, copy) {
   if (kind === 'add_calendar') return copy.addCalendar;
   if (kind === 'pay') return copy.pay(service?.name || '');
   if (kind === 'book_ride') return copy.bookRide;
+  if (kind === 'open_screen') return copy.openScreen(parseOpenScreen(value));
   return copy.details;
 }
 
-function buildLocalAssistantPlan(message, services, lang = 'en') {
+function parseOpenScreen(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? String(parsed.screen || '').trim() : '';
+  } catch (error) {
+    return value.trim();
+  }
+}
+
+function sanitizeOpenScreenValue(value, services = []) {
+  const screen = parseOpenScreen(value).slice(0, 200);
+  if (!screen) return null;
+  if (OPEN_SCREEN_VALUES.includes(screen)) return JSON.stringify({ screen });
+  const serviceMatch = screen.match(/^service:(.+)$/);
+  if (!serviceMatch) return null;
+  const id = serviceMatch[1].trim();
+  if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) return null;
+  if (!services.some((service) => service.id === id)) return null;
+  return JSON.stringify({ screen: `service:${id}` });
+}
+
+function buildLocalAssistantPlan(message, services, lang = 'en', context = null) {
   const copy = COPY[lang] || COPY.en;
   const normalized = String(message || '').toLowerCase();
   const urgent = URGENT_WORDS.some((word) => normalized.includes(word));
@@ -331,6 +407,8 @@ function buildLocalAssistantPlan(message, services, lang = 'en') {
   const suggestedServices = rankServices(services, category, normalized).slice(0, 3);
   const primary = suggestedServices[0] || null;
   const needsDetails = intent === 'medical_appointment' && !when && !urgent;
+  const wantsCalendarScreen = matchesAny(normalized, CALENDAR_SCREEN_WORDS);
+  const wantsConnectorScreen = matchesAny(normalized, CONNECTOR_SCREEN_WORDS);
 
   const actions = [];
   if (primary?.phone) actions.push({ kind: 'call', label: copy.call(primary.name), value: primary.phone, serviceId: primary.id });
@@ -355,19 +433,32 @@ function buildLocalAssistantPlan(message, services, lang = 'en') {
       serviceId: primary.id,
     });
   }
+  if (wantsCalendarScreen) {
+    actions.push({ kind: 'open_screen', label: copy.openScreen('calendar'), value: JSON.stringify({ screen: 'calendar' }), serviceId: null });
+  }
+  if (wantsConnectorScreen) {
+    actions.push({ kind: 'open_screen', label: copy.openScreen('connectors'), value: JSON.stringify({ screen: 'connectors' }), serviceId: null });
+  }
   actions.push({ kind: needsDetails ? 'details' : 'family_update', label: needsDetails ? copy.details : copy.family, value: null, serviceId: null });
+
+  const baseSummary = urgent
+    ? copy.urgentSummary
+    : primary
+      ? when && intent === 'medical_appointment'
+        ? copy.readyMedical(primary.name, when)
+        : copy.foundService(primary.name)
+      : copy.noService;
+  const upcoming = !urgent && wantsCalendarScreen ? upcomingCalendarEntry(context) : null;
+  const summaryParts = [];
+  if (!urgent && context?.profile?.name) summaryParts.push(copy.greeting(context.profile.name));
+  summaryParts.push(baseSummary);
+  if (upcoming) summaryParts.push(copy.calendarReminder(upcoming.title, upcoming.day, upcoming.time));
 
   return {
     source: 'local',
     intent,
     status: urgent ? 'urgent' : needsDetails ? 'needs_details' : primary ? 'ready_to_call' : 'handoff',
-    summary: urgent
-      ? copy.urgentSummary
-      : primary
-        ? when && intent === 'medical_appointment'
-          ? copy.readyMedical(primary.name, when)
-          : copy.foundService(primary.name)
-        : copy.noService,
+    summary: summaryParts.join(' '),
     followUpQuestion: needsDetails ? copy.needsTime : null,
     safetyNote: copy.safety,
     suggestedServices,
@@ -660,6 +751,96 @@ function sanitizeImageAttachments(value) {
       );
     })
     .slice(0, 3);
+}
+
+function sanitizeContext(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const clip = (input) => String(input).trim().slice(0, 200);
+  const context = {};
+
+  if (value.profile && typeof value.profile === 'object' && !Array.isArray(value.profile)) {
+    const profile = {};
+    if (typeof value.profile.name === 'string' && value.profile.name.trim()) profile.name = clip(value.profile.name);
+    if (typeof value.profile.city === 'string' && value.profile.city.trim()) profile.city = clip(value.profile.city);
+    if (Object.keys(profile).length) context.profile = profile;
+  }
+
+  if (Array.isArray(value.calendar)) {
+    const calendar = value.calendar
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry === 'object' &&
+          typeof entry.title === 'string' &&
+          entry.title.trim() &&
+          typeof entry.dateISO === 'string' &&
+          entry.dateISO.trim(),
+      )
+      .slice(0, 10)
+      .map((entry) => ({
+        title: clip(entry.title),
+        dateISO: clip(entry.dateISO),
+        time: typeof entry.time === 'string' && entry.time.trim() ? clip(entry.time) : null,
+      }));
+    if (calendar.length) context.calendar = calendar;
+  }
+
+  if (typeof value.todayISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.todayISO.trim())) {
+    context.todayISO = value.todayISO.trim();
+  }
+
+  if (Array.isArray(value.facts)) {
+    const facts = value.facts
+      .filter((fact) => typeof fact === 'string' && fact.trim())
+      .slice(0, 12)
+      .map((fact) => clip(fact));
+    if (facts.length) context.facts = facts;
+  }
+
+  if (Array.isArray(value.recentTurns)) {
+    const recentTurns = value.recentTurns
+      .filter(
+        (turn) =>
+          turn &&
+          typeof turn === 'object' &&
+          (turn.role === 'user' || turn.role === 'assistant') &&
+          typeof turn.text === 'string' &&
+          turn.text.trim(),
+      )
+      .slice(0, 8)
+      .map((turn) => ({ role: turn.role, text: clip(turn.text) }));
+    if (recentTurns.length) context.recentTurns = recentTurns;
+  }
+
+  return Object.keys(context).length ? context : null;
+}
+
+function upcomingCalendarEntry(context) {
+  const entries = context && Array.isArray(context.calendar) ? context.calendar : [];
+  if (!entries.length) return null;
+  // Calendar dateISO values are LOCAL dates from the device. Prefer the
+  // client-supplied local date; the server clock is UTC on Vercel, so a bare
+  // toISOString() would be one day behind between 00:00 and 05:30 IST.
+  const todayKey = contextTodayKey(context);
+  const tomorrowKey = nextDateKey(todayKey);
+  for (const entry of entries) {
+    const dateKey = String(entry.dateISO || '').slice(0, 10);
+    if (dateKey === todayKey) return { title: entry.title, time: entry.time, day: 'today' };
+    if (dateKey === tomorrowKey) return { title: entry.title, time: entry.time, day: 'tomorrow' };
+  }
+  return null;
+}
+
+function contextTodayKey(context) {
+  const supplied = context && typeof context.todayISO === 'string' ? context.todayISO.trim() : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(supplied)) return supplied;
+  // Fallback: Saathi users are in India (UTC+5:30).
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function nextDateKey(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
 }
 
 function imageOnlyFallbackText(lang) {

@@ -1,4 +1,5 @@
 import { backendRequest } from './backend';
+import { toLocalISODate } from './calendar';
 import { Service, ServiceCategory } from './types';
 
 export type AssistantIntent =
@@ -19,7 +20,8 @@ export type AssistantActionKind =
   | 'details'
   | 'add_calendar'
   | 'pay'
-  | 'book_ride';
+  | 'book_ride'
+  | 'open_screen';
 
 export interface AssistantAction {
   kind: AssistantActionKind;
@@ -56,6 +58,14 @@ export interface AssistantMessage {
   text: string;
   attachments?: AssistantAttachment[];
   plan?: AssistantPlan;
+}
+
+export interface AssistantPlanContext {
+  profile?: { name?: string; city?: string };
+  calendar?: { title: string; dateISO: string; time?: string | null }[];
+  todayISO?: string;
+  facts?: string[];
+  recentTurns?: { role: string; text: string }[];
 }
 
 type AssistantLang = 'en' | 'hi';
@@ -95,6 +105,23 @@ const ROUTE_TIME_WORDS = [
   'time',
 ];
 
+const CALENDAR_SCREEN_WORDS = ['calendar', 'appointment', 'schedule', 'reminder', 'कैलेंडर', 'अपॉइंटमेंट', 'रिमाइंडर'];
+
+const CONNECTOR_SCREEN_WORDS = [
+  'what can you connect',
+  'which apps work with',
+  'what connects',
+  'connector',
+  'connections',
+  'integration',
+  'jud sakta',
+  'jud sakti',
+  'jod sakta',
+  'जुड़ सकता',
+  'जुड़ सकते',
+  'जोड़ सकते',
+];
+
 const COPY = {
   en: {
     urgentSummary: 'This may be urgent. Please call emergency help or the nearest hospital now.',
@@ -115,6 +142,19 @@ const COPY = {
     addCalendar: 'Add to calendar',
     pay: (name: string) => `Pay ${name} via UPI`,
     bookRide: 'Book a ride',
+    openScreen: (screen: string) =>
+      (
+        {
+          calendar: 'Open my calendar',
+          services: 'Open services',
+          community: 'Open community',
+          help: 'Open help',
+          connectors: 'See what Saathi can connect',
+        } as Record<string, string>
+      )[screen] || 'Open in Saathi',
+    greeting: (name: string) => `Namaste ${name} ji.`,
+    calendarReminder: (title: string, day: string, time: string | null) =>
+      `Reminder: ${title} is ${day === 'today' ? 'today' : 'tomorrow'}${time ? ` at ${time}` : ''}.`,
     routeSummary: (origin: string, destination: string, estimate: string) =>
       `By car, ${origin} to ${destination} is roughly ${estimate} in average Siliguri traffic. Traffic can change, so open live directions before leaving.`,
     routeSafety: 'Traffic estimates can change with peak hours, road work and rain. Use live directions before leaving.',
@@ -142,6 +182,19 @@ const COPY = {
     addCalendar: 'कैलेंडर में जोड़ें',
     pay: (name: string) => `${name} को UPI से भुगतान करें`,
     bookRide: 'सवारी बुक करें',
+    openScreen: (screen: string) =>
+      (
+        {
+          calendar: 'मेरा कैलेंडर खोलें',
+          services: 'सेवाएं खोलें',
+          community: 'कम्युनिटी खोलें',
+          help: 'मदद खोलें',
+          connectors: 'देखें साथी किनसे जुड़ सकता है',
+        } as Record<string, string>
+      )[screen] || 'साथी में खोलें',
+    greeting: (name: string) => `नमस्ते ${name} जी।`,
+    calendarReminder: (title: string, day: string, time: string | null) =>
+      `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
     safety:
       'साथी अगला कदम तैयार कर सकता है, लेकिन मेडिकल बुकिंग तभी पक्की है जब प्रदाता या आपातकालीन सेवा पुष्टि करे।',
   },
@@ -153,6 +206,7 @@ export async function requestAssistantPlan(input: {
   lang: AssistantLang;
   imageAttachments?: AssistantAttachment[];
   token?: string | null;
+  context?: AssistantPlanContext | null;
 }): Promise<AssistantPlan> {
   const message = input.message.trim();
   const compactServices = input.services.map(compactService).slice(0, 60);
@@ -174,10 +228,11 @@ export async function requestAssistantPlan(input: {
         lang: input.lang,
         services: compactServices,
         imageAttachments,
+        context: input.context ?? null,
       },
     });
   } catch {
-    return buildLocalAssistantPlan(message, input.services, input.lang);
+    return buildLocalAssistantPlan(message, input.services, input.lang, input.context ?? null);
   }
 }
 
@@ -185,6 +240,7 @@ export function buildLocalAssistantPlan(
   message: string,
   services: Service[],
   lang: AssistantLang = 'en',
+  context: AssistantPlanContext | null = null,
 ): AssistantPlan {
   const copy = COPY[lang] ?? COPY.en;
   const normalized = message.toLowerCase();
@@ -199,6 +255,8 @@ export function buildLocalAssistantPlan(
   const suggestedServices = rankServices(services, category, normalized).slice(0, 3);
   const primary = suggestedServices[0] ?? null;
   const needsDetails = intent === 'medical_appointment' && !when && !urgent;
+  const wantsCalendarScreen = matchesAny(normalized, CALENDAR_SCREEN_WORDS);
+  const wantsConnectorScreen = matchesAny(normalized, CONNECTOR_SCREEN_WORDS);
 
   const actions: AssistantAction[] = [];
   if (primary?.phone) {
@@ -229,19 +287,32 @@ export function buildLocalAssistantPlan(
       serviceId: primary.id,
     });
   }
+  if (wantsCalendarScreen) {
+    actions.push({ kind: 'open_screen', label: copy.openScreen('calendar'), value: JSON.stringify({ screen: 'calendar' }), serviceId: null });
+  }
+  if (wantsConnectorScreen) {
+    actions.push({ kind: 'open_screen', label: copy.openScreen('connectors'), value: JSON.stringify({ screen: 'connectors' }), serviceId: null });
+  }
   actions.push({ kind: needsDetails ? 'details' : 'family_update', label: needsDetails ? copy.details : copy.family });
+
+  const baseSummary = urgent
+    ? copy.urgentSummary
+    : primary
+      ? when && intent === 'medical_appointment'
+        ? copy.readyMedical(primary.name, when)
+        : copy.foundService(primary.name)
+      : copy.noService;
+  const upcoming = !urgent && wantsCalendarScreen ? upcomingCalendarEntry(context) : null;
+  const summaryParts: string[] = [];
+  if (!urgent && context?.profile?.name) summaryParts.push(copy.greeting(context.profile.name));
+  summaryParts.push(baseSummary);
+  if (upcoming) summaryParts.push(copy.calendarReminder(upcoming.title, upcoming.day, upcoming.time));
 
   return {
     source: 'local',
     intent,
     status: urgent ? 'urgent' : needsDetails ? 'needs_details' : primary ? 'ready_to_call' : 'handoff',
-    summary: urgent
-      ? copy.urgentSummary
-      : primary
-        ? when && intent === 'medical_appointment'
-          ? copy.readyMedical(primary.name, when)
-          : copy.foundService(primary.name)
-        : copy.noService,
+    summary: summaryParts.join(' '),
     followUpQuestion: needsDetails ? copy.needsTime : null,
     safetyNote: copy.safety,
     suggestedServices,
@@ -297,6 +368,31 @@ function wordOverlap(a: string, b: string) {
   return a
     .split(/\W+/)
     .filter((word) => word.length > 3 && b.includes(word)).length;
+}
+
+function upcomingCalendarEntry(
+  context: AssistantPlanContext | null,
+): { title: string; time: string | null; day: 'today' | 'tomorrow' } | null {
+  const entries = context?.calendar ?? [];
+  if (!entries.length) return null;
+  // Calendar dateISO values are LOCAL dates, so the keys must be local too
+  // (toISOString would give the UTC date, one day behind before 05:30 IST).
+  const todayKey =
+    context?.todayISO && /^\d{4}-\d{2}-\d{2}$/.test(context.todayISO)
+      ? context.todayISO
+      : toLocalISODate(new Date());
+  const tomorrowKey = nextDateKey(todayKey);
+  for (const entry of entries) {
+    const dateKey = String(entry.dateISO || '').slice(0, 10);
+    if (dateKey === todayKey) return { title: entry.title, time: entry.time ?? null, day: 'today' };
+    if (dateKey === tomorrowKey) return { title: entry.title, time: entry.time ?? null, day: 'tomorrow' };
+  }
+  return null;
+}
+
+function nextDateKey(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return toLocalISODate(new Date(year, month - 1, day + 1));
 }
 
 function extractWhen(message: string) {

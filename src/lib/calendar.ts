@@ -9,7 +9,7 @@ function pad(value: number) {
   return String(value).padStart(2, '0');
 }
 
-function toLocalISODate(date: Date) {
+export function toLocalISODate(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 

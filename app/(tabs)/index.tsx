@@ -92,6 +92,14 @@ export default function Home() {
       color: colors.accent,
       soft: colors.accentSoft,
     },
+    {
+      label: t('home.connectors'),
+      caption: t('home.connectorsCaption'),
+      go: '/connectors',
+      mark: 'Link',
+      color: colors.success,
+      soft: colors.successSoft,
+    },
   ];
   const mobileQuick = [
     {
@@ -125,6 +133,14 @@ export default function Home() {
       mark: 'Cal',
       color: colors.accent,
       soft: colors.accentSoft,
+    },
+    {
+      label: t('home.connectors'),
+      caption: t('home.connectorsCaption'),
+      go: '/connectors',
+      mark: 'Link',
+      color: colors.success,
+      soft: colors.successSoft,
     },
   ];
 

@@ -66,6 +66,7 @@ function RootStack() {
             <Stack.Screen name="post/[id]" options={{ title: '' }} />
             <Stack.Screen name="calendar" options={{ title: '' }} />
             <Stack.Screen name="admin" options={{ title: '' }} />
+            <Stack.Screen name="connectors" options={{ title: '' }} />
           </Stack>
         </View>
       </View>
