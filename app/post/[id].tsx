@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Card, H2, Body, Muted, Button } from '../../src/components/ui';
 import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
@@ -119,9 +120,10 @@ export default function PostDetail() {
 
           <View style={styles.likeRow}>
             <TouchableOpacity onPress={onLike} style={styles.likeBtn} activeOpacity={0.8}>
-              <Text style={styles.likeText}>
-                {liked ? '♥' : '♡'} {post.like_count ?? 0}
-              </Text>
+              <View style={styles.likeInner}>
+                <Feather name="heart" size={18} color={liked ? colors.danger : colors.textMuted} />
+                <Text style={styles.likeText}>{post.like_count ?? 0}</Text>
+              </View>
             </TouchableOpacity>
             <Muted>{t('community.replies', { count: replies.length })}</Muted>
           </View>
@@ -173,6 +175,7 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.border,
       justifyContent: 'center',
     },
+    likeInner: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
     likeText: { color: colors.text, fontSize: font.md, fontWeight: '900' },
     replyTitle: { marginTop: space.lg, marginBottom: space.sm, fontSize: font.md },
     replyAuthor: { fontWeight: '900', color: colors.primaryDark, marginBottom: 4, fontSize: font.sm },

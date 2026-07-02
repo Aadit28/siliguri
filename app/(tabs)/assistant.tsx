@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,15 +14,19 @@ import {
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
 import AppHeader from '../../src/components/AppHeader';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan } from '../../src/lib/assistant';
 import { fetchServices } from '../../src/lib/api';
+import { addEvent, parseWhenToDate } from '../../src/lib/calendar';
 import { serviceEmoji } from '../../src/lib/categories';
+import { openUpiPayment } from '../../src/lib/payments';
 import { font, radius, space, shadow, TAP } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
+import { speak, speechRecognitionSupported, startListening, stopSpeaking } from '../../src/lib/voice';
 
 const EXAMPLE_KEYS = ['doctor', 'medicine', 'travel'] as const;
 const MAX_IMAGE_ATTACHMENTS = 3;
@@ -59,6 +64,7 @@ export default function AssistantScreen() {
   const { session } = useAuth();
   const { colors, isDark } = useTheme();
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const initialChatState = getInitialChatState(t);
   const [services, setServices] = useState<Service[]>([]);
   const [input, setInput] = useState('');
@@ -67,6 +73,9 @@ export default function AssistantScreen() {
   const [activeSessionId, setActiveSessionId] = useState(() => initialChatState.activeSessionId);
   const [loading, setLoading] = useState(false);
   const [servicesLoading, setServicesLoading] = useState(true);
+  const [listening, setListening] = useState(false);
+  const [speakReplies, setSpeakReplies] = useState(true);
+  const listenerRef = useRef<{ stop: () => void } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const submitInFlightRef = useRef(false);
   const canAttachImages = getWebDocument() !== null;
@@ -206,6 +215,7 @@ export default function AssistantScreen() {
     const hasContent = Boolean(body || currentAttachments.length);
     if (!hasContent || loading || servicesLoading || submitInFlightRef.current) return;
 
+    stopSpeaking();
     submitInFlightRef.current = true;
     const targetSessionId = activeSessionId;
     const userText = body || t('assistant.imageOnlyMessage');
@@ -241,6 +251,7 @@ export default function AssistantScreen() {
           plan,
         },
       ]);
+      if (speakReplies) speak(reply, lang);
     } finally {
       submitInFlightRef.current = false;
       setLoading(false);
@@ -269,7 +280,81 @@ export default function AssistantScreen() {
       setInput(`${t('assistant.familyMessagePrefix')}\n${plan.summary}`);
       return;
     }
+    if (action.kind === 'add_calendar') {
+      try {
+        const payload = JSON.parse(action.value || '{}');
+        const { dateISO, time } = parseWhenToDate(payload.when || '');
+        const service = plan?.suggestedServices.find((item) => item.id === action.serviceId);
+        addEvent({
+          title: payload.title || plan?.summary || 'Saathi',
+          dateISO,
+          time,
+          serviceId: action.serviceId ?? null,
+          serviceName: service?.name ?? null,
+          servicePhone: service?.phone ?? null,
+        }).then(() => {
+          const confirmationText = t('assistant.addedToCalendar');
+          updateActiveMessages((current) => [
+            ...current,
+            { id: `cal-${Date.now()}`, role: 'assistant', text: confirmationText },
+          ]);
+          if (speakReplies) speak(confirmationText, lang);
+        });
+      } catch {
+        // Malformed action payload; ignore silently.
+      }
+      return;
+    }
+    if (action.kind === 'pay') {
+      const service = plan?.suggestedServices.find((item) => item.id === action.serviceId);
+      openUpiPayment({ upiId: String(action.value), name: service?.name }).then((opened) => {
+        if (!opened) {
+          updateActiveMessages((current) => [
+            ...current,
+            {
+              id: `pay-${Date.now()}`,
+              role: 'assistant',
+              text: `${t('pay.webFallback')}\n${action.value}`,
+            },
+          ]);
+        }
+      });
+      return;
+    }
+    if (action.kind === 'book_ride') {
+      try {
+        const payload = JSON.parse(action.value || '{}');
+        const destination = payload.destination || '';
+        Linking.openURL(
+          `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff%5Bformatted_address%5D=${encodeURIComponent(destination)}`,
+        );
+      } catch {
+        // Malformed action payload; ignore silently.
+      }
+      return;
+    }
     setInput((current) => current || t('assistant.detailPrompt'));
+  }
+
+  function toggleListening() {
+    if (listening) {
+      listenerRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    stopSpeaking();
+    const handle = startListening({
+      lang,
+      onResult: (text) => {
+        setListening(false);
+        submit(text);
+      },
+      onEnd: () => setListening(false),
+      onError: () => setListening(false),
+    });
+    if (!handle) return;
+    listenerRef.current = handle;
+    setListening(true);
   }
 
   const canSend = Boolean(input.trim() || attachments.length) && !loading && !servicesLoading;
@@ -296,7 +381,7 @@ export default function AssistantScreen() {
               activeOpacity={0.82}
               style={[styles.newChatButton, { backgroundColor: colors.primary, opacity: loading ? 0.72 : 1 }]}
             >
-              <Text style={[styles.newChatButtonText, { color: isDark ? colors.textOnDark : '#fff' }]}>
+              <Text style={[styles.newChatButtonText, { color: colors.textOnDark }]}>
                 {t('assistant.newChat')}
               </Text>
             </TouchableOpacity>
@@ -347,7 +432,7 @@ export default function AssistantScreen() {
         <View style={styles.chatShell}>
           <View style={[styles.botHeader, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
             <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.botAvatarText, { color: isDark ? colors.textOnDark : '#fff' }]}>AI</Text>
+              <Text style={[styles.botAvatarText, { color: colors.textOnDark }]}>AI</Text>
             </View>
             <View style={styles.botHeaderCopy}>
               <Text style={[styles.botTitle, { color: colors.text }]}>{t('assistant.botTitle')}</Text>
@@ -355,6 +440,17 @@ export default function AssistantScreen() {
                 {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
               </Text>
             </View>
+            <TouchableOpacity
+              onPress={() => router.push('/calendar')}
+              accessibilityRole="button"
+              accessibilityLabel={t('calendar.title')}
+              activeOpacity={0.82}
+              style={[styles.calendarChip, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
+            >
+              <Text style={[styles.calendarChipText, { color: colors.primaryDark }]} numberOfLines={1}>
+                {t('calendar.title')}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <ScrollView
@@ -386,9 +482,28 @@ export default function AssistantScreen() {
           </ScrollView>
 
           <View style={[styles.composer, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
-            <Text style={[styles.examplesHint, { color: colors.textMuted }]}>
-              {t('assistant.examplesHint')}
-            </Text>
+            <View style={styles.examplesHintRow}>
+              <Text style={[styles.examplesHint, { color: colors.textMuted }]}>
+                {t('assistant.examplesHint')}
+              </Text>
+              <Pressable
+                onPress={() => setSpeakReplies((current) => !current)}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: speakReplies }}
+                accessibilityLabel={t('voice.speakReplies')}
+                style={[
+                  styles.speakToggle,
+                  {
+                    backgroundColor: speakReplies ? colors.primaryTint : 'transparent',
+                    borderColor: speakReplies ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.speakToggleText, { color: speakReplies ? colors.primaryDark : colors.textMuted }]}>
+                  {t('voice.speakReplies')}
+                </Text>
+              </Pressable>
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -419,7 +534,31 @@ export default function AssistantScreen() {
               ))}
             </ScrollView>
 
+            {listening ? (
+              <Text style={[styles.listeningHint, { color: colors.primary }]}>{t('voice.listening')}</Text>
+            ) : null}
             <View style={styles.inputRow}>
+              {speechRecognitionSupported() ? (
+                <TouchableOpacity
+                  onPress={toggleListening}
+                  disabled={loading || servicesLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={listening ? t('voice.stop') : t('voice.start')}
+                  activeOpacity={0.82}
+                  style={[
+                    styles.photoButton,
+                    {
+                      backgroundColor: listening ? colors.danger : colors.primaryTint,
+                      borderColor: colors.border,
+                      opacity: loading || servicesLoading ? 0.55 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.photoButtonText, { color: listening ? '#fff' : colors.primaryDark }]}>
+                    {listening ? t('voice.stop') : t('voice.start')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               {canAttachImages ? (
                 <TouchableOpacity
                   onPress={pickImages}
@@ -475,7 +614,7 @@ export default function AssistantScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.sendButtonText, { color: isDark ? colors.textOnDark : '#fff' }]}>
+                <Text style={[styles.sendButtonText, { color: colors.textOnDark }]}>
                   {t('assistant.chatSend')}
                 </Text>
               </TouchableOpacity>
@@ -543,7 +682,7 @@ function MessageBubble({
                 source={{ uri: attachment.uri }}
                 style={[
                   styles.messageImage,
-                  { borderColor: isUser ? 'rgba(255,255,255,0.45)' : colors.border },
+                  { borderColor: colors.border },
                 ]}
               />
             ))}
@@ -554,7 +693,7 @@ function MessageBubble({
           selectable
           style={[
             styles.messageText,
-            { color: isUser ? (isDark ? colors.textOnDark : '#fff') : colors.text },
+            { color: isUser ? colors.textOnDark : colors.text },
           ]}
         >
           {message.text}
@@ -580,8 +719,12 @@ function MessageBubble({
               {message.plan.safetyNote}
             </Text>
 
+            {message.plan.actions.length > 0 ? (
+              <Text style={[styles.approveHint, { color: colors.textMuted }]}>{t('assistant.approve')}</Text>
+            ) : null}
+
             <View style={styles.actionRow}>
-              {message.plan.actions.slice(0, 3).map((action, index) => (
+              {message.plan.actions.slice(0, 4).map((action, index) => (
                 <TouchableOpacity
                   key={`${action.kind}-${index}`}
                   onPress={() => onAction(action, message.plan)}
@@ -605,7 +748,7 @@ function SmallAvatar() {
   const { colors, isDark } = useTheme();
   return (
     <View style={[styles.smallAvatar, { backgroundColor: colors.primary }]}>
-      <Text style={[styles.smallAvatarText, { color: isDark ? colors.textOnDark : '#fff' }]}>AI</Text>
+      <Text style={[styles.smallAvatarText, { color: colors.textOnDark }]}>AI</Text>
     </View>
   );
 }
@@ -931,6 +1074,16 @@ const styles = StyleSheet.create({
   botHeaderCopy: { flex: 1, minWidth: 0 },
   botTitle: { fontSize: font.lg, fontWeight: '900' },
   botStatus: { fontSize: font.sm, fontWeight: '800', marginTop: 2 },
+  calendarChip: {
+    minHeight: 40,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.md,
+    maxWidth: 140,
+  },
+  calendarChipText: { fontSize: font.xs, fontWeight: '900' },
   thread: { flex: 1 },
   threadContent: {
     paddingVertical: space.md,
@@ -1005,6 +1158,10 @@ const styles = StyleSheet.create({
     fontSize: font.xs,
     lineHeight: font.xs * 1.3,
   },
+  approveHint: {
+    fontSize: font.xs,
+    fontWeight: '700',
+  },
   actionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1030,8 +1187,31 @@ const styles = StyleSheet.create({
     gap: space.sm,
     paddingRight: space.md,
   },
+  examplesHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
   examplesHint: {
     fontSize: font.xs,
+    fontWeight: '800',
+    paddingHorizontal: 2,
+  },
+  speakToggle: {
+    minHeight: 32,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+  },
+  speakToggleText: {
+    fontSize: font.xs,
+    fontWeight: '800',
+  },
+  listeningHint: {
+    fontSize: font.sm,
     fontWeight: '800',
     paddingHorizontal: 2,
   },

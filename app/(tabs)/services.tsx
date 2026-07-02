@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
 import { Card, Badge, Stars, Muted, H1, Body } from '../../src/components/ui';
 import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
@@ -103,7 +104,7 @@ export default function Services() {
     [all],
   );
 
-  const onPrimary = isDark ? colors.textOnDark : '#fff';
+  const onPrimary = colors.textOnDark;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
@@ -145,13 +146,11 @@ export default function Services() {
         {[
           {
             key: 'favorites' as const,
-            mark: '★',
             label: t('services.favorites'),
             count: favoriteIds.length,
           },
           {
             key: 'recent' as const,
-            mark: '↶',
             label: t('services.recentlyViewed'),
             count: recentIds.length,
           },
@@ -168,7 +167,11 @@ export default function Services() {
               }}
               activeOpacity={0.85}
             >
-              <Text style={[styles.libraryIcon, active && { color: onPrimary }]}>{item.mark}</Text>
+              {item.key === 'favorites' ? (
+                <Feather name="star" size={16} color={active ? colors.accent : colors.textMuted} />
+              ) : (
+                <Feather name="clock" size={16} color={colors.textMuted} />
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={[styles.libraryLabel, active && { color: onPrimary }]}>{item.label}</Text>
                 <Muted style={active ? { color: onPrimary, opacity: 0.76 } : undefined}>
@@ -263,9 +266,11 @@ export default function Services() {
                       toggleFavorite(item.id);
                     }}
                   >
-                    <Text style={[styles.starIcon, favoriteSet.has(item.id) && styles.starIconActive]}>
-                      {favoriteSet.has(item.id) ? '★' : '☆'}
-                    </Text>
+                    <Feather
+                      name="star"
+                      size={20}
+                      color={favoriteSet.has(item.id) ? colors.accent : colors.textMuted}
+                    />
                   </TouchableOpacity>
                   {item.phone ? (
                     <TouchableOpacity
@@ -296,7 +301,7 @@ export default function Services() {
 }
 
 function makeStyles(colors: AppColors, isDark: boolean, resultsMaxHeight: number) {
-  const onPrimary = isDark ? colors.textOnDark : '#fff';
+  const onPrimary = colors.textOnDark;
 
   return StyleSheet.create({
     screen: { flex: 1 },
@@ -335,7 +340,7 @@ function makeStyles(colors: AppColors, isDark: boolean, resultsMaxHeight: number
       borderWidth: 1,
       borderColor: colors.border,
       paddingHorizontal: space.sm,
-      paddingVertical: 7,
+      paddingVertical: space.xs,
     },
     trustPillText: { color: colors.primaryDark, fontWeight: '900', fontSize: font.xs },
     searchWrap: {
@@ -423,7 +428,7 @@ function makeStyles(colors: AppColors, isDark: boolean, resultsMaxHeight: number
       alignItems: 'center',
       justifyContent: 'center',
     },
-    starIcon: { color: colors.textMuted, fontSize: 30, fontWeight: '700' },
+    starIcon: { color: colors.textMuted, fontWeight: '700' },
     starIconActive: { color: colors.star },
     callLabel: { fontSize: font.xs, fontWeight: '900' },
     name: { fontSize: font.md, fontWeight: '800', color: colors.text },

@@ -21,7 +21,44 @@ export interface Service {
   town: string | null;
   source_url: string | null;
   created_at?: string;
+  upi_id?: string | null;
+  city_id?: string | null;
 }
+
+export interface City {
+  id: string;
+  name: string;
+  slug: string;
+  state: string | null;
+  active: boolean;
+}
+
+export interface Announcement {
+  id: string;
+  city_id: string | null;
+  author_id: string | null;
+  author_name: string | null;
+  title: string;
+  body: string;
+  title_hi: string | null;
+  body_hi: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  dateISO: string;
+  time: string | null;
+  note: string | null;
+  serviceId: string | null;
+  serviceName: string | null;
+  servicePhone: string | null;
+  createdAt: number;
+}
+
+export type UserRole = 'user' | 'admin' | 'super_admin';
 
 export type PostCategory =
   | 'general'

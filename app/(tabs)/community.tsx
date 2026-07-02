@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
@@ -43,7 +44,7 @@ export default function Community() {
         </Muted>
         <Button
           label={t('community.askQuestion')}
-          icon="✏️"
+          icon={<Feather name="edit-3" size={16} color={colors.textOnDark} />}
           onPress={() => (user ? router.push('/new-post') : router.push('/login'))}
         />
       </View>
@@ -69,8 +70,8 @@ export default function Community() {
                   {tContent(item.body, lang)}
                 </Muted>
                 <View style={styles.metaRow}>
-                  <Muted>💬 {item.reply_count ?? 0}</Muted>
-                  <Muted>❤️ {item.like_count ?? 0}</Muted>
+                  <Muted><Feather name="message-circle" size={14} color={colors.textMuted} /> {item.reply_count ?? 0}</Muted>
+                  <Muted><Feather name="heart" size={14} color={colors.textMuted} /> {item.like_count ?? 0}</Muted>
                 </View>
               </Card>
             </TouchableOpacity>

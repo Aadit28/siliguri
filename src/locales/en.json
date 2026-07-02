@@ -28,7 +28,9 @@
     "password": "Password",
     "noResults": "Nothing found yet.",
     "errorLoading": "Could not load. Check your connection.",
-    "you": "You"
+    "you": "You",
+    "copy": "Copy",
+    "close": "Close"
   },
   "home": {
     "greeting": "Namaste",
@@ -84,7 +86,9 @@
     "journeyFollow": "Follow up",
     "journeyFollowBody": "Share status with family and reuse what worked.",
     "scaleTitle": "Siliguri is the first proof, not the boundary",
-    "scaleBody": "The interface is city-aware so the same trust system can expand into nearby and underserved Indian cities without losing local context."
+    "scaleBody": "The interface is city-aware so the same trust system can expand into nearby and underserved Indian cities without losing local context.",
+    "myCalendar": "My Calendar",
+    "adminArea": "City Admin"
   },
   "categories": {
     "elder_home": "Elder care & homes",
@@ -200,7 +204,10 @@
       "ready_to_call": "Ready to call",
       "urgent": "Urgent",
       "handoff": "Human follow-up"
-    }
+    },
+    "approve": "Tap a button below to approve",
+    "voiceHint": "Tap Speak and say what you need",
+    "addedToCalendar": "Added to your calendar. See the My Calendar page."
   },
   "community": {
     "title": "Community",
@@ -236,6 +243,69 @@
     "submitted": "Thank you. We will call you back soon.",
     "emergency": "Emergency",
     "languages": "Available in Hindi & English"
+  },
+  "admin": {
+    "title": "City Admin",
+    "subtitle": "Manage announcements and services for your city",
+    "announcements": "Announcements",
+    "newAnnouncement": "New announcement",
+    "titleLabel": "Title (English)",
+    "bodyLabel": "Announcement (English)",
+    "titleHiLabel": "Title (Hindi)",
+    "bodyHiLabel": "Announcement (Hindi)",
+    "publish": "Publish announcement",
+    "published": "Announcement published.",
+    "deactivate": "Remove",
+    "services": "Services",
+    "addService": "Add a service",
+    "editService": "Edit service",
+    "serviceName": "Service name",
+    "phone": "Phone number",
+    "address": "Address",
+    "hours": "Opening hours",
+    "description": "Description",
+    "category": "Category",
+    "upiId": "UPI ID (for payments)",
+    "verified": "Verified",
+    "save": "Save service",
+    "saved": "Service saved.",
+    "notAdmin": "This area is for city admins only.",
+    "signInFirst": "Sign in with an admin account to continue.",
+    "error": "Could not save. Try again."
+  },
+  "calendar": {
+    "title": "My Calendar",
+    "upcoming": "Upcoming",
+    "empty": "No events yet. Ask Saathi to plan something, or add one below.",
+    "add": "Add event",
+    "eventTitle": "What is it?",
+    "date": "Date (YYYY-MM-DD)",
+    "time": "Time (optional)",
+    "note": "Note (optional)",
+    "save": "Save",
+    "delete": "Delete",
+    "added": "Added to your calendar.",
+    "openGoogle": "Add to Google Calendar",
+    "call": "Call"
+  },
+  "voice": {
+    "start": "Speak",
+    "stop": "Stop",
+    "listening": "Listening… speak now",
+    "speakReplies": "Read replies aloud",
+    "notSupported": "Voice input is not supported on this device. Please type instead.",
+    "error": "Could not hear you. Try again."
+  },
+  "pay": {
+    "payUpi": "Pay via UPI",
+    "payTo": "Pay {{name}}",
+    "upiHint": "Opens Google Pay, PhonePe or any UPI app.",
+    "webFallback": "On this device, open your UPI app and pay to:",
+    "copied": "UPI ID copied."
+  },
+  "announcements": {
+    "title": "City announcements",
+    "empty": "No announcements right now."
   },
   "auth": {
     "welcome": "Welcome to Saathi",

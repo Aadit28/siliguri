@@ -8,6 +8,8 @@ type SaathiUser = {
   user_metadata?: {
     username?: string;
     full_name?: string;
+    role?: string;
+    city_id?: string | null;
   };
 };
 
@@ -22,6 +24,8 @@ interface AuthState {
   user: SaathiUser | null;
   loading: boolean;
   displayName: string;
+  isAdmin: boolean;
+  role: string;
   signIn: (username: string, password: string) => Promise<{ error?: string }>;
   signUp: (username: string, password: string, fullName: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
@@ -72,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (user?.user_metadata?.full_name as string) ||
     (user?.user_metadata?.username as string) ||
     '';
+  const role = (user?.user_metadata?.role as string) || 'user';
+  const isAdmin = role === 'admin' || role === 'super_admin';
 
   async function signIn(username: string, password: string) {
     const normalizedUsername = normalizeUsername(username);
@@ -126,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, loading, displayName, signIn, signUp, signOut }}
+      value={{ session, user, loading, displayName, isAdmin, role, signIn, signUp, signOut }}
     >
       {children}
     </AuthContext.Provider>

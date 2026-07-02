@@ -14,16 +14,16 @@ export const lightColors = {
   primarySoft: '#ECECEA',
   primaryTint: 'rgba(0,0,0,0.08)',
 
-  accent: '#2A2A2A',
-  accentDark: '#111111',
-  accentSoft: 'rgba(0,0,0,0.06)',
+  accent: '#2563EB',
+  accentDark: '#1D4ED8',
+  accentSoft: 'rgba(37,99,235,0.10)',
 
-  success: '#111111',
-  successSoft: 'rgba(0,0,0,0.06)',
+  success: '#166534',
+  successSoft: 'rgba(22,101,52,0.10)',
 
-  danger: '#111111',
-  dangerDark: '#050505',
-  dangerSoft: 'rgba(0,0,0,0.08)',
+  danger: '#B91C1C',
+  dangerDark: '#991B1B',
+  dangerSoft: 'rgba(185,28,28,0.10)',
 
   warningBg: '#F4F4EF',
   warningText: '#1C1C1C',
@@ -59,16 +59,16 @@ export const darkColors: typeof lightColors = {
   primarySoft: '#1A1A1A',
   primaryTint: 'rgba(255,255,255,0.12)',
 
-  accent: '#EAEAE6',
-  accentDark: '#FFFFFF',
-  accentSoft: 'rgba(255,255,255,0.08)',
+  accent: '#3B82F6',
+  accentDark: '#60A5FA',
+  accentSoft: 'rgba(59,130,246,0.14)',
 
-  success: '#F7F7F4',
-  successSoft: 'rgba(255,255,255,0.10)',
+  success: '#22C55E',
+  successSoft: 'rgba(34,197,94,0.14)',
 
-  danger: '#FFFFFF',
-  dangerDark: '#FFFFFF',
-  dangerSoft: 'rgba(255,255,255,0.10)',
+  danger: '#F87171',
+  dangerDark: '#FCA5A5',
+  dangerSoft: 'rgba(248,113,113,0.14)',
 
   warningBg: '#1C1C1C',
   warningText: '#F4F4F0',

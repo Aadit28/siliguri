@@ -69,6 +69,8 @@ function publicUser(row) {
     user_metadata: {
       username: row.username,
       full_name: row.full_name || row.username,
+      role: row.role || 'user',
+      city_id: row.city_id || null,
     },
   };
 }
@@ -93,7 +95,7 @@ async function authenticate(req) {
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('auth_tokens')
-    .select('id,user_id,expires_at,revoked_at,user_accounts(id,username,full_name,created_at)')
+    .select('id,user_id,expires_at,revoked_at,user_accounts(id,username,full_name,created_at,role,city_id)')
     .eq('token_hash', tokenHash(token))
     .maybeSingle();
 
@@ -104,6 +106,13 @@ async function authenticate(req) {
   return { supabase, token, tokenRow: data, user: data.user_accounts };
 }
 
+function requireAdmin(auth) {
+  if (!auth.user || (auth.user.role !== 'admin' && auth.user.role !== 'super_admin')) {
+    return { error: 'Admin access required.' };
+  }
+  return undefined;
+}
+
 module.exports = {
   adminClient,
   authenticate,
@@ -112,6 +121,7 @@ module.exports = {
   passwordHash,
   publicUser,
   readBody,
+  requireAdmin,
   send,
   tokenHash,
   validatePassword,

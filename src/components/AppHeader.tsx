@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -106,7 +107,11 @@ export default function AppHeader({ title }: { title?: string }) {
             accessibilityState={{ checked: isDark }}
             accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
-            <Text style={[styles.iconText, { color: colors.text }]}>{isDark ? '☀' : '☾'}</Text>
+            {isDark ? (
+              <Feather name="sun" size={20} color={colors.text} />
+            ) : (
+              <Feather name="moon" size={20} color={colors.text} />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -115,7 +120,7 @@ export default function AppHeader({ title }: { title?: string }) {
             accessibilityRole="button"
             accessibilityLabel={t('help.callNow')}
           >
-            <Text style={[styles.helpText, { color: isDark ? colors.textOnDark : '#fff' }]}>
+            <Text style={[styles.helpText, { color: colors.textOnDark }]}>
               {showNav ? t('help.title') : 'Call'}
             </Text>
           </TouchableOpacity>

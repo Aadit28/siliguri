@@ -59,7 +59,7 @@ export default function NewPost() {
                 styles.chip,
                 {
                   backgroundColor: active ? colors.primary : colors.chipBg,
-                  color: active ? (isDark ? colors.textOnDark : '#fff') : colors.primaryDark,
+                  color: active ? colors.textOnDark : colors.primaryDark,
                 },
               ]}
             >

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Card, H1, H2, Body, Muted, Button, Badge, Stars } from '../../src/components/ui';
@@ -18,6 +19,7 @@ import { fetchService } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useTheme } from '../../src/context/ThemeContext';
+import { openUpiPayment } from '../../src/lib/payments';
 
 function waLink(phone: string) {
   const digits = phone.replace(/\D/g, '');
@@ -43,8 +45,28 @@ export default function ServiceDetail() {
 
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showUpiFallback, setShowUpiFallback] = useState(false);
+  const [upiCopied, setUpiCopied] = useState(false);
   const isFav = id ? favoriteSet.has(id) : false;
-  const onPrimary = isDark ? colors.textOnDark : '#fff';
+  const onPrimary = colors.textOnDark;
+
+  async function handlePayUpi() {
+    if (!service?.upi_id) return;
+    const ok = await openUpiPayment({ upiId: service.upi_id, name: service.name });
+    if (!ok) setShowUpiFallback(true);
+  }
+
+  async function copyUpiId() {
+    if (!service?.upi_id) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(service.upi_id);
+        setUpiCopied(true);
+      }
+    } catch {
+      // ignore — native clipboard not wired here
+    }
+  }
 
   function leaveDetail() {
     if (router.canGoBack()) {
@@ -159,10 +181,12 @@ export default function ServiceDetail() {
           <H2>{t('services.trustChecklist')}</H2>
           {checklist.map((item) => (
             <View key={item.label} style={styles.checkRow}>
-              <View style={[styles.checkDot, { backgroundColor: item.ok ? colors.success : colors.warningText }]}>
-                <Text style={[styles.checkDotText, { color: item.ok ? onPrimary : colors.warningBg }]}>
-                  {item.ok ? '✓' : '!'}
-                </Text>
+              <View style={[styles.checkDot, { backgroundColor: item.ok ? colors.success : colors.danger }]}>
+                {item.ok ? (
+                  <Feather name="check" size={16} color={colors.textOnDark} />
+                ) : (
+                  <Feather name="alert-circle" size={16} color={colors.textOnDark} />
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.checkLabel}>{item.label}</Text>
@@ -184,7 +208,7 @@ export default function ServiceDetail() {
         <View style={{ gap: space.md }}>
           <Button
             label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
-            icon={isFav ? '★' : '☆'}
+            icon={<Feather name="star" size={16} color={isFav ? colors.accent : colors.primaryDark} />}
             variant="secondary"
             onPress={() => id && toggleFavorite(id)}
           />
@@ -198,7 +222,7 @@ export default function ServiceDetail() {
         </View>
       </ScrollView>
 
-      {service.phone || service.map_url ? (
+      {service.phone || service.map_url || service.upi_id ? (
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
           <Text style={styles.footerTitle}>{t('services.contactActions')}</Text>
           <View style={styles.footerActions}>
@@ -237,7 +261,36 @@ export default function ServiceDetail() {
                 <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('common.directions')}</Text>
               </TouchableOpacity>
             ) : null}
+            {service.upi_id ? (
+              <TouchableOpacity
+                style={[styles.fBtn, { backgroundColor: colors.accent, flex: 1 }]}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('pay.payUpi')}
+                onPress={handlePayUpi}
+              >
+                <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('pay.payUpi')}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
+          {showUpiFallback && service.upi_id ? (
+            <Card style={styles.upiFallbackCard}>
+              <Muted>{t('pay.webFallback')}</Muted>
+              <Text selectable style={styles.upiId}>
+                {service.upi_id}
+              </Text>
+              <TouchableOpacity
+                style={styles.copyBtn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.copy')}
+                onPress={copyUpiId}
+              >
+                <Text style={styles.copyBtnText}>{upiCopied ? t('pay.copied') : t('common.copy')}</Text>
+              </TouchableOpacity>
+              <Muted style={styles.upiHint}>{t('pay.upiHint')}</Muted>
+            </Card>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -350,5 +403,20 @@ function makeStyles(colors: AppColors, isDark: boolean) {
       borderColor: colors.whatsapp,
     },
     waText: { color: colors.whatsapp, fontSize: font.md, fontWeight: '900' },
+    upiFallbackCard: { marginTop: space.sm, gap: space.xs },
+    upiId: { color: colors.text, fontSize: font.md, fontWeight: '900', marginTop: 4 },
+    copyBtn: {
+      alignSelf: 'flex-start',
+      marginTop: space.xs,
+      minHeight: 40,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: space.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    copyBtnText: { color: colors.primaryDark, fontSize: font.sm, fontWeight: '900' },
+    upiHint: { marginTop: space.xs },
   });
 }

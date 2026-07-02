@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Linking } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import { Card, H1, H2, Body, Muted, Button } from '../../src/components/ui';
@@ -41,7 +42,7 @@ export default function Help() {
         <H2>{t('help.requestCallback')}</H2>
         {done ? (
           <Card style={{ backgroundColor: colors.successSoft, borderColor: colors.border }}>
-            <Body style={{ color: colors.success, fontWeight: '800' }}>✓ {t('help.submitted')}</Body>
+            <Body style={{ color: colors.success, fontWeight: '800' }}><Feather name="check-circle" size={18} color={colors.success} /> {t('help.submitted')}</Body>
           </Card>
         ) : (
           <View style={{ gap: space.md }}>

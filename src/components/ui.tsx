@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { Feather } from '@expo/vector-icons';
 import { font, radius, space, shadow, TAP } from '../lib/theme';
 import { useTheme } from '../context/ThemeContext';
 
@@ -64,9 +65,9 @@ export function Button({
   variant?: 'primary' | 'secondary' | 'accent' | 'danger';
   loading?: boolean;
   disabled?: boolean;
-  icon?: string;
+  icon?: React.ReactNode;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const isSecondary = variant === 'secondary';
   const filled =
     variant === 'primary'
@@ -76,7 +77,7 @@ export function Button({
         : variant === 'accent'
           ? colors.accent
           : colors.card;
-  const fg = isSecondary ? colors.primaryDark : isDark ? colors.textOnDark : '#fff';
+  const fg = isSecondary ? colors.primaryDark : colors.textOnDark;
 
   return (
     <TouchableOpacity
@@ -98,10 +99,10 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={[styles.btnText, { color: fg }]}>
-          {icon ? `${icon}  ` : ''}
-          {label}
-        </Text>
+        <View style={styles.btnContent}>
+          {icon}
+          <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -118,7 +119,7 @@ export function Chip({
   active?: boolean;
   onPress: () => void;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <TouchableOpacity
       accessibilityRole="button"
@@ -127,12 +128,12 @@ export function Chip({
       style={[
         styles.chip,
         {
-          backgroundColor: active ? colors.primary : colors.chipBg,
-          borderColor: active ? colors.primary : colors.border,
+          backgroundColor: active ? colors.accent : colors.chipBg,
+          borderColor: active ? colors.accent : colors.border,
         },
       ]}
     >
-      <Text style={[styles.chipText, { color: active ? (isDark ? colors.textOnDark : '#fff') : colors.primaryDark }]}>
+      <Text style={[styles.chipText, { color: active ? colors.textOnDark : colors.primaryDark }]}>
         {emoji ? `${emoji} ` : ''}
         {label}
       </Text>
@@ -141,12 +142,11 @@ export function Chip({
 }
 
 export function Badge({ label, color }: { label: string; color?: string }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
-    <View style={[styles.badge, { backgroundColor: color ?? colors.success }]}>
-      <Text style={[styles.badgeText, { color: isDark ? colors.textOnDark : '#fff' }]}>
-        ✓ {label}
-      </Text>
+    <View style={[styles.badge, styles.badgeRow, { backgroundColor: color ?? colors.success }]}>
+      <Feather name="check" size={12} color={colors.textOnDark} />
+      <Text style={[styles.badgeText, { color: colors.textOnDark }]}>{label}</Text>
     </View>
   );
 }
@@ -155,9 +155,12 @@ export function Stars({ rating }: { rating: number | null }) {
   const { colors } = useTheme();
   if (!rating) return null;
   return (
-    <Text style={{ color: colors.star, fontSize: font.sm, fontWeight: '800' }}>
-      ★ {rating.toFixed(1)}
-    </Text>
+    <View style={styles.starsRow}>
+      <Feather name="star" size={font.sm} color={colors.star} />
+      <Text style={{ color: colors.star, fontSize: font.sm, fontWeight: '800' }}>
+        {rating.toFixed(1)}
+      </Text>
+    </View>
   );
 }
 
@@ -184,6 +187,7 @@ const styles = StyleSheet.create({
   btnSecondary: {
     borderWidth: 1,
   },
+  btnContent: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   btnText: { fontSize: font.md, fontWeight: '800' },
   chip: {
     minHeight: 44,
@@ -202,5 +206,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignSelf: 'flex-start',
   },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   badgeText: { fontSize: font.xs, fontWeight: '800' },
+  starsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 });

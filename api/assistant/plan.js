@@ -51,6 +51,9 @@ const COPY = {
     source: 'View source',
     family: 'Prepare family update',
     details: 'Add missing details',
+    addCalendar: 'Add to calendar',
+    pay: (name) => `Pay ${name} via UPI`,
+    bookRide: 'Book a ride',
     routeSummary: (origin, destination, estimate) =>
       `By car, ${origin} to ${destination} is roughly ${estimate} in average Siliguri traffic. Traffic can change, so open live directions before leaving.`,
     routeSafety: 'Traffic estimates can change with peak hours, road work and rain. Use live directions before leaving.',
@@ -75,6 +78,9 @@ const COPY = {
     source: 'स्रोत देखें',
     family: 'परिवार अपडेट तैयार करें',
     details: 'बाकी जानकारी जोड़ें',
+    addCalendar: 'कैलेंडर में जोड़ें',
+    pay: (name) => `${name} को UPI से भुगतान करें`,
+    bookRide: 'सवारी बुक करें',
     safety:
       'साथी अगला कदम तैयार कर सकता है, लेकिन मेडिकल बुकिंग तभी पक्की है जब प्रदाता या आपातकालीन सेवा पुष्टि करे।',
   },
@@ -157,7 +163,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
         {
           role: 'developer',
           content:
-            'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. Never claim a medical appointment is booked until a provider confirms it. For urgent symptoms, route to emergency/hospital calling. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. Return compact JSON only.',
+            'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. Never claim a medical appointment is booked until a provider confirms it. For urgent symptoms, route to emergency/hospital calling. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. You may also propose add_calendar (value: JSON {"title","when"}), pay (only when the service has a UPI id), and book_ride (value: JSON {"destination"}) actions; the user must tap to approve every action. Return compact JSON only.',
         },
         {
           role: 'user',
@@ -203,7 +209,10 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
                   additionalProperties: false,
                   required: ['kind', 'label', 'value', 'serviceId'],
                   properties: {
-                    kind: { type: 'string', enum: ['call', 'directions', 'source', 'family_update', 'details'] },
+                    kind: {
+                      type: 'string',
+                      enum: ['call', 'directions', 'source', 'family_update', 'details', 'add_calendar', 'pay', 'book_ride'],
+                    },
                     label: { type: 'string' },
                     value: { type: ['string', 'null'] },
                     serviceId: { type: ['string', 'null'] },
@@ -267,7 +276,11 @@ function normalizeActions(actions, services, lang) {
   const normalized = Array.isArray(actions)
     ? actions
         .map((action) => {
-          const kind = safeEnum(action.kind, ['call', 'directions', 'source', 'family_update', 'details'], 'details');
+          const kind = safeEnum(
+            action.kind,
+            ['call', 'directions', 'source', 'family_update', 'details', 'add_calendar', 'pay', 'book_ride'],
+            'details',
+          );
           const service = action.serviceId ? byId.get(String(action.serviceId)) : services[0];
           const value =
             kind === 'call'
@@ -276,7 +289,11 @@ function normalizeActions(actions, services, lang) {
                 ? service?.map_url
                 : kind === 'source'
                   ? service?.source_url
-                  : action.value;
+                  : kind === 'pay'
+                    ? service?.upi_id
+                      ? String(service.upi_id)
+                      : null
+                    : action.value;
           return {
             kind,
             label: String(action.label || defaultActionLabel(kind, service, copy)),
@@ -296,6 +313,9 @@ function defaultActionLabel(kind, service, copy) {
   if (kind === 'directions') return copy.directions;
   if (kind === 'source') return copy.source;
   if (kind === 'family_update') return copy.family;
+  if (kind === 'add_calendar') return copy.addCalendar;
+  if (kind === 'pay') return copy.pay(service?.name || '');
+  if (kind === 'book_ride') return copy.bookRide;
   return copy.details;
 }
 
@@ -316,6 +336,25 @@ function buildLocalAssistantPlan(message, services, lang = 'en') {
   if (primary?.phone) actions.push({ kind: 'call', label: copy.call(primary.name), value: primary.phone, serviceId: primary.id });
   if (primary?.map_url) actions.push({ kind: 'directions', label: copy.directions, value: primary.map_url, serviceId: primary.id });
   if (primary?.source_url) actions.push({ kind: 'source', label: copy.source, value: primary.source_url, serviceId: primary.id });
+  if (when && intent === 'medical_appointment' && primary) {
+    actions.push({
+      kind: 'add_calendar',
+      label: copy.addCalendar,
+      value: JSON.stringify({ title: primary.name, when }),
+      serviceId: primary.id,
+    });
+  }
+  if (primary?.upi_id) {
+    actions.push({ kind: 'pay', label: copy.pay(primary.name), value: primary.upi_id, serviceId: primary.id });
+  }
+  if (intent === 'transport' && primary) {
+    actions.push({
+      kind: 'book_ride',
+      label: copy.bookRide,
+      value: JSON.stringify({ destination: [primary.name, primary.address].filter(Boolean).join(', ') }),
+      serviceId: primary.id,
+    });
+  }
   actions.push({ kind: needsDetails ? 'details' : 'family_update', label: needsDetails ? copy.details : copy.family, value: null, serviceId: null });
 
   return {
@@ -591,6 +630,7 @@ function sanitizeServices(services) {
       map_url: service.map_url ? String(service.map_url) : null,
       image_url: service.image_url ? String(service.image_url) : null,
       hours: service.hours ? String(service.hours) : null,
+      upi_id: service.upi_id ? String(service.upi_id) : null,
       rating: typeof service.rating === 'number' ? service.rating : null,
       verified: Boolean(service.verified),
       town: service.town ? String(service.town) : null,

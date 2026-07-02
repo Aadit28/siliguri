@@ -23,6 +23,8 @@ const routes = {
   '/api/community/post': '../api/community/post.js',
   '/api/community/reply': '../api/community/reply.js',
   '/api/community/like': '../api/community/like.js',
+  '/api/admin/announcement': '../api/admin/announcement.js',
+  '/api/admin/service': '../api/admin/service.js',
 };
 
 function createResponse(res) {

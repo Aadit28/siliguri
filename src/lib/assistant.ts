@@ -11,7 +11,15 @@ export type AssistantIntent =
 
 export type AssistantStatus = 'needs_details' | 'ready_to_call' | 'urgent' | 'handoff';
 
-export type AssistantActionKind = 'call' | 'directions' | 'source' | 'family_update' | 'details';
+export type AssistantActionKind =
+  | 'call'
+  | 'directions'
+  | 'source'
+  | 'family_update'
+  | 'details'
+  | 'add_calendar'
+  | 'pay'
+  | 'book_ride';
 
 export interface AssistantAction {
   kind: AssistantActionKind;
@@ -104,6 +112,9 @@ const COPY = {
     source: 'View source',
     family: 'Prepare family update',
     details: 'Add missing details',
+    addCalendar: 'Add to calendar',
+    pay: (name: string) => `Pay ${name} via UPI`,
+    bookRide: 'Book a ride',
     routeSummary: (origin: string, destination: string, estimate: string) =>
       `By car, ${origin} to ${destination} is roughly ${estimate} in average Siliguri traffic. Traffic can change, so open live directions before leaving.`,
     routeSafety: 'Traffic estimates can change with peak hours, road work and rain. Use live directions before leaving.',
@@ -128,6 +139,9 @@ const COPY = {
     source: 'स्रोत देखें',
     family: 'परिवार अपडेट तैयार करें',
     details: 'बाकी जानकारी जोड़ें',
+    addCalendar: 'कैलेंडर में जोड़ें',
+    pay: (name: string) => `${name} को UPI से भुगतान करें`,
+    bookRide: 'सवारी बुक करें',
     safety:
       'साथी अगला कदम तैयार कर सकता है, लेकिन मेडिकल बुकिंग तभी पक्की है जब प्रदाता या आपातकालीन सेवा पुष्टि करे।',
   },
@@ -195,6 +209,25 @@ export function buildLocalAssistantPlan(
   }
   if (primary?.source_url) {
     actions.push({ kind: 'source', label: copy.source, value: primary.source_url, serviceId: primary.id });
+  }
+  if (when && intent === 'medical_appointment' && primary) {
+    actions.push({
+      kind: 'add_calendar',
+      label: copy.addCalendar,
+      value: JSON.stringify({ title: primary.name, when }),
+      serviceId: primary.id,
+    });
+  }
+  if (primary?.upi_id) {
+    actions.push({ kind: 'pay', label: copy.pay(primary.name), value: primary.upi_id, serviceId: primary.id });
+  }
+  if (intent === 'transport' && primary) {
+    actions.push({
+      kind: 'book_ride',
+      label: copy.bookRide,
+      value: JSON.stringify({ destination: [primary.name, primary.address].filter(Boolean).join(', ') }),
+      serviceId: primary.id,
+    });
   }
   actions.push({ kind: needsDetails ? 'details' : 'family_update', label: needsDetails ? copy.details : copy.family });
 
@@ -490,5 +523,7 @@ function compactService(service: Service): Service {
     town: service.town,
     source_url: service.source_url,
     created_at: service.created_at,
+    upi_id: service.upi_id ?? null,
+    city_id: service.city_id ?? null,
   };
 }

@@ -1,5 +1,5 @@
 import { supabase, supabaseConfigured } from './supabase';
-import { Service, CommunityPost, CommunityReply, PostCategory } from './types';
+import { Service, CommunityPost, CommunityReply, PostCategory, Announcement } from './types';
 import { MOCK_SERVICES, MOCK_POSTS } from '../data/mockData';
 import { backendRequest } from './backend';
 
@@ -24,6 +24,23 @@ export async function fetchServices(): Promise<Service[]> {
     console.warn('[Saathi] services fell back to mock:', (e as Error).message);
     usingMockFlag.value = true;
     return MOCK_SERVICES;
+  }
+}
+
+export async function fetchAnnouncements(): Promise<Announcement[]> {
+  if (!supabaseConfigured) return [];
+  try {
+    const { data, error } = await supabase
+      .from('announcements')
+      .select('*')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (error) throw error;
+    return (data as Announcement[]) ?? [];
+  } catch (e) {
+    console.warn('[Saathi] announcements failed:', (e as Error).message);
+    return [];
   }
 }
 

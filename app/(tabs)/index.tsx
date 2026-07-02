@@ -15,13 +15,14 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
-import { H1, H2, Body, Muted, Stars } from '../../src/components/ui';
+import { Card, H1, H2, Body, Muted, Stars } from '../../src/components/ui';
 import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
 import { SERVICE_CATEGORIES, categoryColor, serviceEmoji } from '../../src/lib/categories';
-import { fetchServices } from '../../src/lib/api';
-import { Service } from '../../src/lib/types';
+import { fetchServices, fetchAnnouncements } from '../../src/lib/api';
+import { Service, Announcement } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useLocale } from '../../src/context/LocaleContext';
 
 const heroImage = require('../../assets/saathi-hero-care.png');
 
@@ -37,13 +38,15 @@ const TRUST_RAILS = [
 export default function Home() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { displayName } = useAuth();
+  const { displayName, isAdmin } = useAuth();
   const { colors, isDark } = useTheme();
+  const { lang } = useLocale();
   const { width } = useWindowDimensions();
   const isWide = width >= 820;
   const showHeroProof = width >= 1160;
   const styles = makeStyles(colors, isDark, isWide);
   const [featured, setFeatured] = useState<Service[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   useEffect(() => {
     fetchServices().then((all) => {
@@ -53,6 +56,7 @@ export default function Home() {
         .slice(0, 8);
       setFeatured(top.length ? top : all.slice(0, 8));
     });
+    fetchAnnouncements().then(setAnnouncements);
   }, []);
 
   const quick = [
@@ -80,6 +84,14 @@ export default function Home() {
       color: colors.danger,
       soft: colors.dangerSoft,
     },
+    {
+      label: t('home.myCalendar'),
+      caption: t('calendar.upcoming'),
+      go: '/calendar',
+      mark: 'Cal',
+      color: colors.accent,
+      soft: colors.accentSoft,
+    },
   ];
   const mobileQuick = [
     {
@@ -105,6 +117,14 @@ export default function Home() {
       mark: 'SOS',
       color: colors.danger,
       soft: colors.dangerSoft,
+    },
+    {
+      label: t('home.myCalendar'),
+      caption: t('calendar.upcoming'),
+      go: '/calendar',
+      mark: 'Cal',
+      color: colors.accent,
+      soft: colors.accentSoft,
     },
   ];
 
@@ -132,7 +152,7 @@ export default function Home() {
     },
   ];
 
-  const onPrimary = isDark ? colors.textOnDark : '#fff';
+  const onPrimary = colors.textOnDark;
   const heroImageLayerStyle: ImageStyle = isWide ? { transform: [{ translateX: -18 }, { scale: 1.03 }] } : {};
 
   if (!isWide) {
@@ -173,6 +193,29 @@ export default function Home() {
               </TouchableOpacity>
             </View>
           </AnimatedSection>
+
+          {announcements.length > 0 ? (
+            <AnimatedSection delay={60} style={styles.announceSection}>
+              <Card style={styles.announceCard}>
+                <H2>{t('announcements.title')}</H2>
+                {announcements.map((a) => {
+                  const annTitle = lang === 'hi' && a.title_hi ? a.title_hi : a.title;
+                  const annBody = lang === 'hi' && a.body_hi ? a.body_hi : a.body;
+                  return (
+                    <View key={a.id} style={styles.announceItem}>
+                      <Text style={styles.announceItemTitle}>{annTitle}</Text>
+                      <Muted numberOfLines={3} style={styles.announceItemBody}>
+                        {annBody}
+                      </Muted>
+                      <Muted style={styles.announceItemDate}>
+                        {new Date(a.created_at).toLocaleDateString()}
+                      </Muted>
+                    </View>
+                  );
+                })}
+              </Card>
+            </AnimatedSection>
+          ) : null}
 
           <AnimatedSection delay={80} style={styles.mobileStart}>
             <Text style={styles.mobileSectionLabel}>{t('home.mobileNeedTitle')}</Text>
@@ -260,6 +303,16 @@ export default function Home() {
               ))}
             </AnimatedSection>
           ) : null}
+
+          {isAdmin ? (
+            <TouchableOpacity
+              style={styles.adminRow}
+              activeOpacity={0.85}
+              onPress={() => router.push('/admin')}
+            >
+              <Text style={styles.adminRowText}>{t('home.adminArea')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </ScrollView>
       </View>
     );
@@ -326,6 +379,29 @@ export default function Home() {
             </View>
           </ImageBackground>
         </AnimatedSection>
+
+        {announcements.length > 0 ? (
+          <AnimatedSection delay={60} style={styles.announceSection}>
+            <Card style={styles.announceCard}>
+              <H2>{t('announcements.title')}</H2>
+              {announcements.map((a) => {
+                const annTitle = lang === 'hi' && a.title_hi ? a.title_hi : a.title;
+                const annBody = lang === 'hi' && a.body_hi ? a.body_hi : a.body;
+                return (
+                  <View key={a.id} style={styles.announceItem}>
+                    <Text style={styles.announceItemTitle}>{annTitle}</Text>
+                    <Muted numberOfLines={3} style={styles.announceItemBody}>
+                      {annBody}
+                    </Muted>
+                    <Muted style={styles.announceItemDate}>
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </Muted>
+                  </View>
+                );
+              })}
+            </Card>
+          </AnimatedSection>
+        ) : null}
 
         <AnimatedSection delay={80} style={styles.metricGrid}>
           {metrics.map((metric, index) => (
@@ -464,6 +540,16 @@ export default function Home() {
           </View>
         </AnimatedSection>
 
+        {isAdmin ? (
+          <TouchableOpacity
+            style={styles.adminRow}
+            activeOpacity={0.85}
+            onPress={() => router.push('/admin')}
+          >
+            <Text style={styles.adminRowText}>{t('home.adminArea')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <AnimatedSection delay={440} style={styles.railsSection}>
           <View style={styles.railsCopy}>
             <Text style={styles.kickerDark}>{t('home.railsTitle')}</Text>
@@ -489,7 +575,7 @@ export default function Home() {
 }
 
 function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
-  const onImage = '#FFFFFF';
+  const onImage = colors.textOnDark;
   const contentMax = 1120;
 
   return StyleSheet.create({
@@ -553,7 +639,7 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
       lineHeight: 24,
     },
     mobilePhotoWrap: {
-      backgroundColor: isDark ? '#101010' : '#ECECEA',
+      backgroundColor: colors.surfaceTint,
       borderBottomWidth: 1,
       borderColor: colors.glassBorder,
       paddingHorizontal: space.sm,
@@ -728,7 +814,7 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
     heroShell: {
       borderRadius: isWide ? 28 : radius.xl,
       overflow: 'hidden',
-      backgroundColor: '#050505',
+      backgroundColor: colors.bg,
       ...shadow.md,
     },
     heroImage: {
@@ -1044,5 +1130,28 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
       paddingHorizontal: space.md,
     },
     railChipText: { color: colors.primaryDark, fontSize: font.xs, fontWeight: '900' },
+    announceSection: { gap: space.sm },
+    announceCard: { gap: space.sm },
+    announceItem: {
+      gap: 4,
+      paddingTop: space.sm,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    announceItemTitle: { color: colors.text, fontSize: font.sm, fontWeight: '900' },
+    announceItemBody: { fontSize: font.sm },
+    announceItemDate: { fontSize: font.xs },
+    adminRow: {
+      alignSelf: isWide ? 'flex-start' : 'stretch',
+      minHeight: 48,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.primaryTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: space.lg,
+    },
+    adminRowText: { color: colors.primaryDark, fontSize: font.sm, fontWeight: '900' },
   });
 }

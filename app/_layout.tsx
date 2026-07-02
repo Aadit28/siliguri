@@ -64,6 +64,8 @@ function RootStack() {
             <Stack.Screen name="new-post" options={{ presentation: 'modal', title: '' }} />
             <Stack.Screen name="service/[id]" options={{ title: '' }} />
             <Stack.Screen name="post/[id]" options={{ title: '' }} />
+            <Stack.Screen name="calendar" options={{ title: '' }} />
+            <Stack.Screen name="admin" options={{ title: '' }} />
           </Stack>
         </View>
       </View>
