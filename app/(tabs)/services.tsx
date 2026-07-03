@@ -1,22 +1,32 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
   useWindowDimensions,
+  View,
 } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
+import Animated, { Easing, FadeInDown, ReduceMotion } from 'react-native-reanimated';
 import AppHeader from '../../src/components/AppHeader';
-import { Card, Badge, Stars, Muted, H1, Body } from '../../src/components/ui';
-import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
-import { SERVICE_CATEGORIES, serviceEmoji, categoryColor } from '../../src/lib/categories';
+import { Badge, Body, Card, Chip, H1, Muted, Stars } from '../../src/components/ui';
+import {
+  AppColors,
+  family,
+  font,
+  motion,
+  radius,
+  ROW_MIN_HEIGHT,
+  space,
+  TAP,
+} from '../../src/lib/theme';
+import { SERVICE_CATEGORIES, serviceEmoji } from '../../src/lib/categories';
 import { fetchServices } from '../../src/lib/api';
 import { Service, ServiceCategory } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -24,15 +34,30 @@ import { useTheme } from '../../src/context/ThemeContext';
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
 
+const EASE_OUT_QUART = Easing.bezier(...motion.easeOutQuart);
+const STAGGER_MS = 40;
+const STAGGER_CAP = 6;
+
+function cardEntering(index: number) {
+  return FadeInDown.duration(motion.dur.base)
+    .easing(EASE_OUT_QUART.factory())
+    .delay(Math.min(index, STAGGER_CAP - 1) * STAGGER_MS)
+    .withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] })
+    .reduceMotion(ReduceMotion.System);
+}
+
 export default function Services() {
   const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; view?: string }>();
   const { favoriteIds, favoriteSet, recentIds, toggleFavorite } = useServicePreferences();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { height, width } = useWindowDimensions();
-  const resultsMaxHeight = Math.max(width >= 820 ? 420 : 360, Math.round(height * (width >= 820 ? 0.72 : 0.58)));
-  const styles = makeStyles(colors, isDark, resultsMaxHeight);
+  const resultsMaxHeight = Math.max(
+    width >= 820 ? 420 : 360,
+    Math.round(height * (width >= 820 ? 0.72 : 0.58)),
+  );
+  const styles = makeStyles(colors, resultsMaxHeight);
 
   const [all, setAll] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,11 +129,23 @@ export default function Services() {
     [all],
   );
 
-  const onPrimary = colors.textOnDark;
+  const libraryRows = [
+    {
+      key: 'favorites' as const,
+      icon: 'star' as const,
+      label: t('services.favorites'),
+      count: favoriteIds.length,
+    },
+    {
+      key: 'recent' as const,
+      icon: 'clock' as const,
+      label: t('services.recentlyViewed'),
+      count: recentIds.length,
+    },
+  ];
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.bg }]}>
-      <View style={styles.backdropTop} />
+    <View style={styles.screen}>
       <AppHeader title={t('services.title')} />
 
       <ScrollView
@@ -117,322 +154,405 @@ export default function Services() {
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
-      <View style={styles.directoryHero}>
-        <Text style={styles.kicker}>{t('services.directoryKicker')}</Text>
-        <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
-        <Body style={styles.heroBody}>{t('services.directoryBody')}</Body>
-        <View style={styles.trustRow}>
-          {[t('services.trustPhone'), t('services.trustSource'), t('services.trustFamily')].map((item) => (
-            <View key={item} style={styles.trustPill}>
-              <Text style={styles.trustPillText}>{item}</Text>
-            </View>
-          ))}
+        {/* Hero */}
+        <View style={styles.hero}>
+          <Text style={styles.kicker}>{t('services.directoryKicker')}</Text>
+          <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
+          <Body style={styles.heroBody}>{t('services.directoryBody')}</Body>
+          <View style={styles.trustRow}>
+            {[t('services.trustPhone'), t('services.trustSource'), t('services.trustFamily')].map(
+              (item) => (
+                <View key={item} style={styles.trustPill}>
+                  <Feather name="check" size={14} color={colors.textMuted} />
+                  <Text style={styles.trustPillText}>{item}</Text>
+                </View>
+              ),
+            )}
+          </View>
         </View>
-      </View>
 
-      <View style={styles.searchWrap}>
-        <Text style={styles.searchIcon}>⌕</Text>
-        <TextInput
-          style={styles.search}
-          placeholder={t('services.searchPlaceholder')}
-          placeholderTextColor={colors.textMuted}
-          value={query}
-          onChangeText={setQuery}
-        />
-      </View>
-      <Muted style={styles.searchHint}>{t('services.searchScope')}</Muted>
-
-      <View style={styles.libraryRow}>
-        {[
-          {
-            key: 'favorites' as const,
-            label: t('services.favorites'),
-            count: favoriteIds.length,
-          },
-          {
-            key: 'recent' as const,
-            label: t('services.recentlyViewed'),
-            count: recentIds.length,
-          },
-        ].map((item) => {
-          const active = cat === item.key;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              style={[styles.libraryCard, active && styles.libraryCardActive]}
-              onPress={() => {
-                setCat(item.key);
-                setQuery('');
-                router.setParams({ category: undefined, view: item.key });
-              }}
-              activeOpacity={0.85}
+        {/* Search pill (Uber sunk surface) */}
+        <View style={styles.searchPill}>
+          <Feather name="search" size={22} color={colors.text} />
+          <TextInput
+            style={[styles.searchInput, { fontFamily: query ? family.regular : family.semibold }]}
+            placeholder={t('services.searchPlaceholder')}
+            placeholderTextColor={colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+          />
+          {query.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+              onPress={() => setQuery('')}
+              hitSlop={space.sm}
+              style={({ pressed }) => [styles.searchClear, pressed && styles.searchClearPressed]}
             >
-              {item.key === 'favorites' ? (
-                <Feather name="star" size={16} color={active ? colors.accent : colors.textMuted} />
-              ) : (
-                <Feather name="clock" size={16} color={colors.textMuted} />
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.libraryLabel, active && { color: onPrimary }]}>{item.label}</Text>
-                <Muted style={active ? { color: onPrimary, opacity: 0.76 } : undefined}>
-                  {t('services.savedCount', { count: item.count })}
-                </Muted>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+              <Feather name="x" size={20} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Muted style={styles.searchHint}>{t('services.searchScope')}</Muted>
 
-      <View style={{ flexGrow: 0 }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipScroller}
-        >
-          {[{ key: 'all' as const, emoji: 'All' }, ...SERVICE_CATEGORIES].map((item) => {
+        {/* Library rows (Uber list anatomy) */}
+        <View style={styles.libraryList}>
+          {libraryRows.map((item, index) => {
             const active = cat === item.key;
-            const count =
-              item.key === 'all' ? all.length : (categoryCounts[item.key as ServiceCategory] ?? 0);
-            const label = `${item.key === 'all' ? t('common.all') : t(`categories.${item.key}`)} (${count})`;
             return (
-              <TouchableOpacity
-                key={item.key}
-                onPress={() => {
-                  const nextCategory = item.key as ServiceCategory | 'all';
-                  setCat(nextCategory);
-                  setQuery('');
-                  router.setParams({
-                    category: nextCategory === 'all' ? undefined : nextCategory,
-                    view: undefined,
-                  });
-                }}
-                activeOpacity={0.8}
-                style={[styles.chip, active && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, active && { color: onPrimary }]}>
-                  {item.key === 'all' ? '' : `${item.emoji} `}
-                  {label}
-                </Text>
-              </TouchableOpacity>
+              <React.Fragment key={item.key}>
+                {index > 0 ? <View style={styles.libraryDivider} /> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => {
+                    setCat(item.key);
+                    setQuery('');
+                    router.setParams({ category: undefined, view: item.key });
+                  }}
+                  style={({ pressed }) => [
+                    styles.libraryRow,
+                    active && styles.libraryRowActive,
+                    pressed && !active && { backgroundColor: colors.overlay },
+                  ]}
+                >
+                  <View style={styles.libraryDisc}>
+                    <Feather name={item.icon} size={20} color={colors.text} />
+                  </View>
+                  <View style={styles.libraryTextBlock}>
+                    <Text style={styles.libraryTitle}>{item.label}</Text>
+                    <Text style={styles.librarySubtitle}>
+                      {t('services.savedCount', { count: item.count })}
+                    </Text>
+                  </View>
+                  <Feather name="chevron-right" size={22} color={colors.textSubtle} />
+                </Pressable>
+              </React.Fragment>
             );
           })}
-        </ScrollView>
-      </View>
+        </View>
 
-      {loading ? (
-        <ActivityIndicator style={styles.loadingIndicator} color={colors.primary} size="large" />
-      ) : filtered.length === 0 ? (
-        <Muted style={styles.emptyState}>{t('common.noResults')}</Muted>
-      ) : (
-        <ScrollView
-          ref={resultsScrollRef}
-          style={styles.resultsScroller}
-          contentContainerStyle={styles.list}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
-          keyboardShouldPersistTaps="handled"
-        >
-          {filtered.map((item) => (
-            <Link key={item.id} href={{ pathname: '/service/[id]', params: { id: item.id } }} asChild>
-              <TouchableOpacity activeOpacity={0.85}>
-                <Card style={styles.row}>
-                  <View style={[styles.avatar, { backgroundColor: categoryColor(item.category).bg }]}>
-                    <Text style={{ fontSize: 28 }}>{serviceEmoji(item.category)}</Text>
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.name} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-                    <Muted numberOfLines={1} style={styles.address}>
-                      {item.address}
-                    </Muted>
-                    <View style={styles.metaRow}>
-                      <Stars rating={item.rating} />
-                      {item.verified && <Badge label={t('common.verified')} />}
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.starBtn}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      favoriteSet.has(item.id)
-                        ? t('services.unstarService', { name: item.name })
-                        : t('services.starService', { name: item.name })
-                    }
-                    onPress={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      toggleFavorite(item.id);
-                    }}
+        {/* Category chips */}
+        <View style={styles.chipSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScroller}
+          >
+            {[{ key: 'all' as const, emoji: undefined }, ...SERVICE_CATEGORIES].map((item) => {
+              const count =
+                item.key === 'all' ? all.length : (categoryCounts[item.key as ServiceCategory] ?? 0);
+              const label = `${item.key === 'all' ? t('common.all') : t(`categories.${item.key}`)} (${count})`;
+              return (
+                <Chip
+                  key={item.key}
+                  label={label}
+                  emoji={item.emoji}
+                  active={cat === item.key}
+                  onPress={() => {
+                    const nextCategory = item.key as ServiceCategory | 'all';
+                    setCat(nextCategory);
+                    setQuery('');
+                    router.setParams({
+                      category: nextCategory === 'all' ? undefined : nextCategory,
+                      view: undefined,
+                    });
+                  }}
+                />
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Results */}
+        {loading ? (
+          <ActivityIndicator style={styles.loadingIndicator} color={colors.primary} size="large" />
+        ) : filtered.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyDisc}>
+              <Feather name="search" size={28} color={colors.textMuted} />
+            </View>
+            <Muted style={styles.emptyText}>{t('common.noResults')}</Muted>
+          </View>
+        ) : (
+          <ScrollView
+            ref={resultsScrollRef}
+            style={styles.resultsScroller}
+            contentContainerStyle={styles.list}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+          >
+            {filtered.map((item, index) => {
+              const isFavorite = favoriteSet.has(item.id);
+              const meta = [t(`categories.${item.category}`), item.address]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <Animated.View key={`${cat}-${item.id}`} entering={cardEntering(index)}>
+                  <Link
+                    href={{ pathname: '/service/[id]', params: { id: item.id } }}
+                    asChild
                   >
-                    <Feather
-                      name="star"
-                      size={20}
-                      color={favoriteSet.has(item.id) ? colors.accent : colors.textMuted}
-                    />
-                  </TouchableOpacity>
-                  {item.phone ? (
-                    <TouchableOpacity
-                      style={styles.callBtn}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${t('common.call')} ${item.name}`}
-                      onPress={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        Linking.openURL(`tel:${item.phone}`);
-                      }}
-                    >
-                      <Text style={[styles.callLabel, { color: onPrimary }]}>{t('common.call')}</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <Text style={styles.chevron}>›</Text>
-                  )}
-                </Card>
-              </TouchableOpacity>
-            </Link>
-          ))}
-        </ScrollView>
-      )}
+                    <Pressable style={({ pressed }) => (pressed ? styles.cardPressed : null)}>
+                      <Card>
+                        <View style={styles.cardTopRow}>
+                          <View style={styles.leadingBlock}>
+                            <Text style={styles.leadingEmoji}>{serviceEmoji(item.category)}</Text>
+                          </View>
+                          <View style={styles.cardTextBlock}>
+                            <Text style={styles.serviceName} numberOfLines={2}>
+                              {item.name}
+                            </Text>
+                            <Text style={styles.serviceMeta} numberOfLines={1}>
+                              {meta}
+                            </Text>
+                            <View style={styles.ratingRow}>
+                              <Stars rating={item.rating} />
+                              {item.verified && <Badge label={t('common.verified')} />}
+                            </View>
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isFavorite }}
+                            accessibilityLabel={
+                              isFavorite
+                                ? t('services.unstarService', { name: item.name })
+                                : t('services.starService', { name: item.name })
+                            }
+                            onPress={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              toggleFavorite(item.id);
+                            }}
+                            style={({ pressed }) => [
+                              styles.favoriteBtn,
+                              pressed && { backgroundColor: colors.overlay },
+                            ]}
+                          >
+                            <Feather
+                              name="star"
+                              size={20}
+                              color={isFavorite ? colors.accent : colors.textSubtle}
+                            />
+                          </Pressable>
+                        </View>
+                        {item.phone ? (
+                          <View style={styles.ctaRow}>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={`${t('common.call')} ${item.name}`}
+                              onPress={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                Linking.openURL(`tel:${item.phone}`);
+                              }}
+                              style={({ pressed }) => [
+                                styles.callPill,
+                                { backgroundColor: pressed ? colors.accentDark : colors.accent },
+                              ]}
+                            >
+                              <Feather name="phone" size={20} color={colors.accentFg} />
+                              <Text style={styles.callLabel}>{t('common.call')}</Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
+                      </Card>
+                    </Pressable>
+                  </Link>
+                </Animated.View>
+              );
+            })}
+          </ScrollView>
+        )}
       </ScrollView>
     </View>
   );
 }
 
-function makeStyles(colors: AppColors, isDark: boolean, resultsMaxHeight: number) {
-  const onPrimary = colors.textOnDark;
-
+function makeStyles(colors: AppColors, resultsMaxHeight: number) {
   return StyleSheet.create({
-    screen: { flex: 1 },
+    screen: { flex: 1, backgroundColor: colors.bg },
     pageScroll: { paddingBottom: space.xl },
-    backdropTop: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 220,
-      backgroundColor: colors.surfaceTint,
-      opacity: isDark ? 0.32 : 0.9,
-    },
-    directoryHero: {
-      margin: space.md,
-      marginBottom: 0,
-      padding: space.lg,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      backgroundColor: colors.cardStrong,
-      ...shadow.md,
+
+    hero: {
+      paddingHorizontal: space.md,
+      paddingTop: space.sm,
     },
     kicker: {
-      color: colors.accentDark,
+      color: colors.textMuted,
       fontSize: font.xs,
-      fontWeight: '900',
+      fontFamily: family.semibold,
+      letterSpacing: 0.5,
       textTransform: 'uppercase',
+      lineHeight: Math.round(font.xs * 1.4),
     },
-    heroTitle: { marginTop: space.sm, fontSize: font.xl, lineHeight: 34 },
-    heroBody: { color: colors.textMuted, marginTop: space.sm, fontSize: font.sm },
-    trustRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: space.md },
+    heroTitle: { marginTop: space.xs },
+    heroBody: { marginTop: space.sm, color: colors.textMuted },
+    trustRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
     trustPill: {
-      borderRadius: radius.pill,
-      backgroundColor: colors.primaryTint,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.xs,
-    },
-    trustPillText: { color: colors.primaryDark, fontWeight: '900', fontSize: font.xs },
-    searchWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.cardStrong,
-      margin: space.md,
-      marginBottom: 0,
-      paddingHorizontal: space.md,
+      gap: space.xs,
       borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      minHeight: 58,
-      ...shadow.sm,
+      backgroundColor: colors.surfaceTint,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
     },
-    searchIcon: { color: colors.primaryDark, fontSize: 25, fontWeight: '900' },
-    search: { flex: 1, fontSize: font.md, color: colors.text, marginLeft: space.sm },
-    searchHint: {
-      paddingHorizontal: space.lg,
-      paddingTop: 6,
+    trustPillText: {
+      color: colors.textMuted,
       fontSize: font.xs,
+      fontFamily: family.medium,
+      lineHeight: Math.round(font.xs * 1.4),
     },
-    libraryRow: {
-      flexDirection: 'row',
-      gap: space.sm,
-      paddingHorizontal: space.md,
-      paddingTop: space.md,
-    },
-    libraryCard: {
-      flex: 1,
-      minHeight: 76,
+
+    searchPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
-      padding: space.md,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      backgroundColor: colors.card,
-      ...shadow.sm,
+      gap: 12,
+      height: TAP,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      paddingHorizontal: 20,
+      marginHorizontal: space.md,
+      marginTop: space.lg,
     },
-    libraryCardActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    libraryIcon: { color: colors.star, fontSize: 28, fontWeight: '900' },
-    libraryLabel: { color: colors.text, fontSize: font.sm, fontWeight: '900' },
-    chipScroller: { paddingHorizontal: space.md, paddingVertical: space.sm },
-    chip: {
-      minHeight: 44,
-      paddingHorizontal: space.md,
+    searchInput: {
+      flex: 1,
+      fontSize: font.md,
+      color: colors.text,
+      paddingVertical: 0,
+    },
+    searchClear: {
+      width: 44,
+      height: 44,
+      marginRight: -space.md,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: space.sm,
-      flexShrink: 0,
-      backgroundColor: colors.chipBg,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
-    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary, ...shadow.sm },
-    chipText: { fontSize: font.sm, fontWeight: '800', color: colors.primaryDark },
-    resultsScroller: { maxHeight: resultsMaxHeight },
-    list: { padding: space.md, paddingTop: 0, paddingBottom: space.xl, gap: space.sm },
+    searchClearPressed: { backgroundColor: colors.overlay },
+    searchHint: {
+      marginTop: 6,
+      paddingHorizontal: space.md + 20,
+      fontSize: font.xs,
+      lineHeight: Math.round(font.xs * 1.4),
+    },
+
+    libraryList: { marginTop: space.lg },
+    libraryRow: {
+      minHeight: ROW_MIN_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+      paddingHorizontal: space.md,
+    },
+    libraryRowActive: { backgroundColor: colors.cardStrong },
+    libraryDisc: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    libraryTextBlock: { flex: 1, minWidth: 0 },
+    libraryTitle: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.5),
+    },
+    librarySubtitle: {
+      marginTop: 2,
+      color: colors.textMuted,
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+    },
+    libraryDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginLeft: space.md + 44 + 12,
+    },
+
+    chipSection: { flexGrow: 0, marginTop: space.md },
+    chipScroller: { paddingHorizontal: space.md, paddingVertical: space.sm },
+
     loadingIndicator: { marginTop: space.xl, marginBottom: space.xl },
-    emptyState: { textAlign: 'center', marginTop: space.xl, marginHorizontal: space.md },
-    row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-    avatar: {
-      width: 56,
-      height: 56,
+
+    emptyState: {
+      alignItems: 'center',
+      gap: space.md,
+      marginTop: space.xl,
+      marginBottom: space.xl,
+      paddingHorizontal: space.md,
+    },
+    emptyDisc: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyText: { textAlign: 'center' },
+
+    resultsScroller: { maxHeight: resultsMaxHeight },
+    list: { paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.xl, gap: 12 },
+    cardPressed: { transform: [{ scale: 0.97 }] },
+
+    cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    leadingBlock: {
+      width: 64,
+      height: 64,
       borderRadius: radius.md,
+      backgroundColor: colors.surfaceTint,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    chevron: { fontSize: 30, color: colors.textMuted, fontWeight: '400' },
-    callBtn: {
-      minWidth: 62,
-      minHeight: 58,
-      borderRadius: radius.md,
-      backgroundColor: colors.success,
+    leadingEmoji: { fontSize: 32 },
+    cardTextBlock: { flex: 1, minWidth: 0 },
+    serviceName: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.5),
+    },
+    serviceMeta: {
+      marginTop: space.xs,
+      color: colors.textMuted,
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+    },
+    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 6 },
+    favoriteBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      ...shadow.sm,
+      alignSelf: 'flex-start',
+      marginTop: -space.xs,
+      marginRight: -space.xs,
     },
-    starBtn: {
-      width: 42,
-      minHeight: 56,
+
+    ctaRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+    callPill: {
+      flex: 1,
+      height: 48,
+      borderRadius: radius.pill,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: space.sm,
     },
-    starIcon: { color: colors.textMuted, fontWeight: '700' },
-    starIconActive: { color: colors.star },
-    callLabel: { fontSize: font.xs, fontWeight: '900' },
-    name: { fontSize: font.md, fontWeight: '800', color: colors.text },
-    address: { marginTop: 2, fontSize: font.xs },
-    metaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 6 },
+    callLabel: {
+      color: colors.accentFg,
+      fontSize: font.sm,
+      fontFamily: family.bold,
+    },
   });
 }

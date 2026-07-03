@@ -9,13 +9,14 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import AppHeader from '../../src/components/AppHeader';
+import { Button, Chip, Sheet } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
@@ -25,7 +26,7 @@ import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src
 import { serviceEmoji } from '../../src/lib/categories';
 import { appendTurn, buildAssistantContext, loadMemory } from '../../src/lib/memory';
 import { openUpiPayment } from '../../src/lib/payments';
-import { font, radius, space, shadow, TAP } from '../../src/lib/theme';
+import { family, font, radius, shadow, space, TAP, tracking } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
 import { speak, speechRecognitionSupported, startListening, stopSpeaking } from '../../src/lib/voice';
 
@@ -66,8 +67,8 @@ export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
   const { session, displayName } = useAuth();
-  const { colors, isDark } = useTheme();
-  const { width } = useWindowDimensions();
+  const { colors } = useTheme();
+  const { width, height } = useWindowDimensions();
   const router = useRouter();
   const initialChatState = getInitialChatState(t);
   const [services, setServices] = useState<Service[]>([]);
@@ -79,6 +80,7 @@ export default function AssistantScreen() {
   const [servicesLoading, setServicesLoading] = useState(true);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const submitInFlightRef = useRef(false);
@@ -413,99 +415,99 @@ export default function AssistantScreen() {
   }
 
   const canSend = Boolean(input.trim() || attachments.length) && !loading && !servicesLoading;
+  const promptsDisabled = loading || servicesLoading;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       <AppHeader title={t('assistant.title')} />
 
-      <View style={[styles.assistantLayout, !showSideHistory ? styles.assistantLayoutStacked : null]}>
+      <View style={[styles.layout, showSideHistory ? styles.layoutWide : null]}>
+        {showSideHistory ? (
+          <View
+            style={[
+              styles.historyPanel,
+              { backgroundColor: colors.cardSolid, borderColor: colors.border },
+            ]}
+          >
+            <View style={[styles.historyPanelHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.historyPanelTitle, { color: colors.text }]}>
+                {t('assistant.chatHistory')}
+              </Text>
+              <Button
+                label={t('assistant.newChat')}
+                onPress={startNewChat}
+                disabled={loading}
+                icon={<Feather name="plus" size={20} color={colors.primaryFg} />}
+              />
+            </View>
+            <ScrollView style={styles.historyRows} showsVerticalScrollIndicator={false}>
+              {sessions.map((sessionItem, index) => (
+                <React.Fragment key={sessionItem.id}>
+                  {index > 0 ? (
+                    <View style={[styles.historyDivider, { backgroundColor: colors.border }]} />
+                  ) : null}
+                  <ChatHistoryRow
+                    item={sessionItem}
+                    active={sessionItem.id === activeSessionId}
+                    disabled={loading && sessionItem.id !== activeSessionId}
+                    onPress={() => selectChat(sessionItem.id)}
+                  />
+                </React.Fragment>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
         <View
           style={[
-            styles.historyPanel,
-            !showSideHistory ? styles.historyPanelStacked : null,
-            { backgroundColor: colors.cardSolid, borderColor: colors.border },
+            styles.chatColumn,
+            showSideHistory
+              ? [styles.chatColumnWide, { backgroundColor: colors.bg, borderColor: colors.border }]
+              : null,
           ]}
         >
-          <View style={styles.historyHeader}>
-            <Text style={[styles.historyTitle, { color: colors.text }]}>{t('assistant.chatHistory')}</Text>
-            <TouchableOpacity
-              onPress={startNewChat}
-              disabled={loading}
-              accessibilityRole="button"
-              accessibilityLabel={t('assistant.newChat')}
-              activeOpacity={0.82}
-              style={[styles.newChatButton, { backgroundColor: colors.primary, opacity: loading ? 0.72 : 1 }]}
-            >
-              <Text style={[styles.newChatButtonText, { color: colors.textOnDark }]}>
-                {t('assistant.newChat')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            style={styles.historyList}
-            horizontal={!showSideHistory}
-            contentContainerStyle={[
-              styles.historyListContent,
-              !showSideHistory ? styles.historyListContentStacked : null,
-            ]}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-          >
-            {sessions.map((sessionItem) => {
-              const active = sessionItem.id === activeSessionId;
-              return (
-                <TouchableOpacity
-                  key={sessionItem.id}
-                  onPress={() => selectChat(sessionItem.id)}
-                  disabled={loading && !active}
-                  accessibilityRole="button"
-                  accessibilityLabel={sessionItem.title}
-                  activeOpacity={0.82}
-                  style={[
-                    styles.historyItem,
-                    !showSideHistory ? styles.historyItemStacked : null,
-                    {
-                      backgroundColor: active ? colors.primaryTint : colors.bgAlt,
-                      borderColor: active ? colors.primary : colors.border,
-                      opacity: loading && !active ? 0.55 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.historyItemTitle, { color: active ? colors.primaryDark : colors.text }]} numberOfLines={1}>
-                    {sessionItem.title}
-                  </Text>
-                  <Text style={[styles.historyPreview, { color: colors.textMuted }]} numberOfLines={2}>
-                    {sessionItem.preview}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View style={styles.chatShell}>
-          <View style={[styles.botHeader, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
+          <View style={[styles.botHeader, { borderBottomColor: colors.border }]}>
             <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.botAvatarText, { color: colors.textOnDark }]}>AI</Text>
+              <Feather name="message-circle" size={20} color={colors.primaryFg} />
             </View>
             <View style={styles.botHeaderCopy}>
-              <Text style={[styles.botTitle, { color: colors.text }]}>{t('assistant.botTitle')}</Text>
-              <Text style={[styles.botStatus, { color: colors.success }]}>
+              <Text style={[styles.botTitle, { color: colors.text }]} numberOfLines={1}>
+                {t('assistant.botTitle')}
+              </Text>
+              <Text
+                style={[
+                  styles.botStatus,
+                  { color: servicesLoading ? colors.textMuted : colors.success },
+                ]}
+                numberOfLines={1}
+              >
                 {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
               </Text>
             </View>
-            <TouchableOpacity
+            {!showSideHistory ? (
+              <Pressable
+                onPress={() => setHistoryOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('assistant.chatHistory')}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
+                ]}
+              >
+                <Feather name="clock" size={20} color={colors.text} />
+              </Pressable>
+            ) : null}
+            <Pressable
               onPress={() => router.push('/calendar')}
               accessibilityRole="button"
               accessibilityLabel={t('calendar.title')}
-              activeOpacity={0.82}
-              style={[styles.calendarChip, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
+              ]}
             >
-              <Text style={[styles.calendarChipText, { color: colors.primaryDark }]} numberOfLines={1}>
-                {t('calendar.title')}
-              </Text>
-            </TouchableOpacity>
+              <Feather name="calendar" size={20} color={colors.text} />
+            </Pressable>
           </View>
 
           <ScrollView
@@ -526,8 +528,15 @@ export default function AssistantScreen() {
             {loading ? (
               <View style={styles.botRow}>
                 <SmallAvatar />
-                <View style={[styles.typingBubble, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
-                  <ActivityIndicator color={colors.primary} />
+                <View
+                  style={[
+                    styles.bubble,
+                    styles.botBubble,
+                    styles.typingBubble,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <ActivityIndicator color={colors.textMuted} />
                   <Text style={[styles.typingText, { color: colors.textMuted }]}>
                     {t('assistant.typing')}
                   </Text>
@@ -536,9 +545,14 @@ export default function AssistantScreen() {
             ) : null}
           </ScrollView>
 
-          <View style={[styles.composer, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
-            <View style={styles.examplesHintRow}>
-              <Text style={[styles.examplesHint, { color: colors.textMuted }]}>
+          <View
+            style={[
+              styles.composer,
+              { backgroundColor: colors.bgAlt, borderTopColor: colors.border },
+            ]}
+          >
+            <View style={styles.composerHintRow}>
+              <Text style={[styles.examplesHint, { color: colors.textSubtle }]} numberOfLines={1}>
                 {t('assistant.examplesHint')}
               </Text>
               <Pressable
@@ -548,92 +562,126 @@ export default function AssistantScreen() {
                 accessibilityLabel={t('voice.speakReplies')}
                 style={[
                   styles.speakToggle,
-                  {
-                    backgroundColor: speakReplies ? colors.primaryTint : 'transparent',
-                    borderColor: speakReplies ? colors.primary : colors.border,
-                  },
+                  speakReplies
+                    ? { backgroundColor: colors.accent, borderColor: colors.accent }
+                    : { backgroundColor: colors.chipBg, borderColor: colors.border },
                 ]}
               >
-                <Text style={[styles.speakToggleText, { color: speakReplies ? colors.primaryDark : colors.textMuted }]}>
+                <Feather
+                  name={speakReplies ? 'volume-2' : 'volume-x'}
+                  size={16}
+                  color={speakReplies ? colors.accentFg : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.speakToggleText,
+                    { color: speakReplies ? colors.accentFg : colors.textMuted },
+                  ]}
+                >
                   {t('voice.speakReplies')}
                 </Text>
               </Pressable>
             </View>
+
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickPrompts}
+              style={promptsDisabled ? styles.dimmed : null}
+              contentContainerStyle={styles.chipsRow}
               keyboardShouldPersistTaps="handled"
             >
               {EXAMPLE_KEYS.map((key) => (
-                <TouchableOpacity
+                <Chip
                   key={key}
-                  onPress={() => submit(t(`assistant.examples.${key}`))}
-                  accessibilityRole="button"
-                  accessibilityLabel={t(`assistant.exampleLabels.${key}`)}
-                  disabled={loading || servicesLoading}
-                  activeOpacity={0.82}
-                  style={[
-                    styles.quickChip,
-                    {
-                      backgroundColor: colors.primaryTint,
-                      borderColor: colors.border,
-                      opacity: loading || servicesLoading ? 0.55 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.quickChipText, { color: colors.primaryDark }]}>
-                    {t(`assistant.exampleLabels.${key}`)}
-                  </Text>
-                </TouchableOpacity>
+                  label={t(`assistant.exampleLabels.${key}`)}
+                  onPress={() => {
+                    if (!promptsDisabled) submit(t(`assistant.examples.${key}`));
+                  }}
+                />
               ))}
             </ScrollView>
 
-            {listening ? (
-              <Text style={[styles.listeningHint, { color: colors.primary }]}>{t('voice.listening')}</Text>
+            {attachments.length ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.attachmentList}
+                keyboardShouldPersistTaps="handled"
+              >
+                {attachments.map((attachment) => (
+                  <View
+                    key={attachment.id}
+                    style={[styles.attachmentPreview, { borderColor: colors.border }]}
+                  >
+                    <Image source={{ uri: attachment.uri }} style={styles.attachmentPreviewImage} />
+                    <Pressable
+                      onPress={() => removeAttachment(attachment.id)}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('assistant.removeImage')}
+                      style={[
+                        styles.removeAttachmentButton,
+                        { backgroundColor: colors.cardSolid, borderColor: colors.border },
+                      ]}
+                    >
+                      <Feather name="x" size={14} color={colors.text} />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
             ) : null}
+
+            {listening ? (
+              <View style={styles.listeningRow}>
+                <View style={[styles.listeningDot, { backgroundColor: colors.danger }]} />
+                <Text style={[styles.listeningHint, { color: colors.danger }]}>
+                  {t('voice.listening')}
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.inputRow}>
               {speechRecognitionSupported() ? (
-                <TouchableOpacity
+                <Pressable
                   onPress={toggleListening}
                   disabled={loading || servicesLoading}
                   accessibilityRole="button"
                   accessibilityLabel={listening ? t('voice.stop') : t('voice.start')}
-                  activeOpacity={0.82}
-                  style={[
-                    styles.photoButton,
+                  style={({ pressed }) => [
+                    styles.roundBtn,
                     {
-                      backgroundColor: listening ? colors.danger : colors.primaryTint,
-                      borderColor: colors.border,
-                      opacity: loading || servicesLoading ? 0.55 : 1,
+                      backgroundColor: listening
+                        ? colors.danger
+                        : pressed
+                          ? colors.cardStrong
+                          : colors.surfaceTint,
+                      opacity: loading || servicesLoading ? 0.45 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.photoButtonText, { color: listening ? '#fff' : colors.primaryDark }]}>
-                    {listening ? t('voice.stop') : t('voice.start')}
-                  </Text>
-                </TouchableOpacity>
+                  <Feather
+                    name={listening ? 'mic-off' : 'mic'}
+                    size={20}
+                    color={listening ? colors.dangerFg : colors.text}
+                  />
+                </Pressable>
               ) : null}
               {canAttachImages ? (
-                <TouchableOpacity
+                <Pressable
                   onPress={pickImages}
                   disabled={loading || servicesLoading}
                   accessibilityRole="button"
                   accessibilityLabel={t('assistant.attachImage')}
-                  activeOpacity={0.82}
-                  style={[
-                    styles.photoButton,
+                  style={({ pressed }) => [
+                    styles.roundBtn,
                     {
-                      backgroundColor: colors.primaryTint,
-                      borderColor: colors.border,
-                      opacity: loading || servicesLoading ? 0.55 : 1,
+                      backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint,
+                      opacity: loading || servicesLoading ? 0.45 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.photoButtonText, { color: colors.primaryDark }]}>
-                    {t('assistant.attachImage')}
-                  </Text>
-                </TouchableOpacity>
+                  <Feather name="image" size={20} color={colors.text} />
+                </Pressable>
               ) : null}
               <TextInput
                 multiline
@@ -648,60 +696,122 @@ export default function AssistantScreen() {
                 placeholderTextColor={colors.textSubtle}
                 style={[
                   styles.input,
-                  {
-                    backgroundColor: colors.bgAlt,
-                    borderColor: colors.border,
-                    color: colors.text,
-                  },
+                  { backgroundColor: colors.surfaceTint, color: colors.text },
                 ]}
               />
-              <TouchableOpacity
+              <Pressable
                 onPress={() => submit()}
                 disabled={!canSend}
                 accessibilityRole="button"
                 accessibilityLabel={t('assistant.chatSend')}
-                activeOpacity={0.82}
-                style={[
-                  styles.sendButton,
+                style={({ pressed }) => [
+                  styles.sendBtn,
                   {
-                    backgroundColor: canSend ? colors.primary : colors.primaryTint,
-                    opacity: canSend ? 1 : 0.65,
+                    backgroundColor: canSend
+                      ? pressed
+                        ? colors.primaryDark
+                        : colors.primary
+                      : colors.surfaceTint,
                   },
                 ]}
               >
-                <Text style={[styles.sendButtonText, { color: colors.textOnDark }]}>
-                  {t('assistant.chatSend')}
-                </Text>
-              </TouchableOpacity>
+                {loading ? (
+                  <ActivityIndicator color={colors.textSubtle} />
+                ) : (
+                  <Feather
+                    name="arrow-up"
+                    size={24}
+                    color={canSend ? colors.primaryFg : colors.textSubtle}
+                  />
+                )}
+              </Pressable>
             </View>
-
-            {attachments.length ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.attachmentList}
-                keyboardShouldPersistTaps="handled"
-              >
-                {attachments.map((attachment) => (
-                  <View key={attachment.id} style={[styles.attachmentPreview, { borderColor: colors.border }]}>
-                    <Image source={{ uri: attachment.uri }} style={styles.attachmentPreviewImage} />
-                    <TouchableOpacity
-                      onPress={() => removeAttachment(attachment.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('assistant.removeImage')}
-                      activeOpacity={0.82}
-                      style={[styles.removeAttachmentButton, { backgroundColor: colors.cardSolid }]}
-                    >
-                      <Text style={[styles.removeAttachmentText, { color: colors.text }]}>x</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            ) : null}
           </View>
         </View>
       </View>
+
+      {!showSideHistory ? (
+        <Sheet
+          visible={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={t('assistant.chatHistory')}
+        >
+          <Button
+            label={t('assistant.newChat')}
+            onPress={() => {
+              startNewChat();
+              setHistoryOpen(false);
+            }}
+            disabled={loading}
+            icon={<Feather name="plus" size={20} color={colors.primaryFg} />}
+          />
+          <ScrollView
+            style={{ maxHeight: Math.round(height * 0.5), marginTop: space.md }}
+            contentContainerStyle={styles.sheetRows}
+            showsVerticalScrollIndicator={false}
+          >
+            {sessions.map((sessionItem) => (
+              <ChatHistoryRow
+                key={sessionItem.id}
+                item={sessionItem}
+                rounded
+                active={sessionItem.id === activeSessionId}
+                disabled={loading && sessionItem.id !== activeSessionId}
+                onPress={() => {
+                  selectChat(sessionItem.id);
+                  setHistoryOpen(false);
+                }}
+              />
+            ))}
+          </ScrollView>
+        </Sheet>
+      ) : null}
     </View>
+  );
+}
+
+function ChatHistoryRow({
+  item,
+  active,
+  disabled,
+  rounded,
+  onPress,
+}: {
+  item: ChatSession;
+  active: boolean;
+  disabled?: boolean;
+  rounded?: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
+      style={({ pressed }) => [
+        styles.historyRow,
+        rounded ? styles.historyRowRounded : null,
+        {
+          backgroundColor: active ? colors.cardStrong : pressed ? colors.overlay : 'transparent',
+          opacity: disabled ? 0.45 : 1,
+        },
+      ]}
+    >
+      <View style={[styles.historyDisc, { backgroundColor: colors.surfaceTint }]}>
+        <Feather name="message-square" size={20} color={colors.text} />
+      </View>
+      <View style={styles.historyRowText}>
+        <Text style={[styles.historyRowTitle, { color: colors.text }]} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={[styles.historyRowPreview, { color: colors.textMuted }]} numberOfLines={1}>
+          {item.preview}
+        </Text>
+      </View>
+      {active ? <Feather name="check" size={20} color={colors.text} /> : null}
+    </Pressable>
   );
 }
 
@@ -713,7 +823,7 @@ function MessageBubble({
   onAction: (action: AssistantAction, plan?: AssistantPlan) => void;
 }) {
   const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const isUser = message.role === 'user';
 
   return (
@@ -721,12 +831,10 @@ function MessageBubble({
       {!isUser ? <SmallAvatar /> : null}
       <View
         style={[
-          styles.message,
-          isUser ? styles.userMessage : styles.botMessage,
-          {
-            backgroundColor: isUser ? colors.primary : colors.cardSolid,
-            borderColor: isUser ? colors.primary : colors.border,
-          },
+          styles.bubble,
+          isUser
+            ? [styles.userBubble, { backgroundColor: colors.primary }]
+            : [styles.botBubble, { backgroundColor: colors.card, borderColor: colors.border }],
         ]}
       >
         {message.attachments?.length ? (
@@ -748,17 +856,21 @@ function MessageBubble({
           selectable
           style={[
             styles.messageText,
-            { color: isUser ? colors.textOnDark : colors.text },
+            { color: isUser ? colors.primaryFg : colors.text },
           ]}
         >
           {message.text}
         </Text>
 
         {message.plan ? (
-          <View style={[styles.simplePlan, { borderTopColor: colors.border }]}>
+          <View style={[styles.planBlock, { borderTopColor: colors.border }]}>
             {message.plan.suggestedServices[0] ? (
               <View style={styles.serviceLine}>
-                <Text style={styles.serviceIcon}>{serviceEmoji(message.plan.suggestedServices[0].category)}</Text>
+                <View style={[styles.serviceTile, { backgroundColor: colors.surfaceTint }]}>
+                  <Text style={styles.serviceEmoji}>
+                    {serviceEmoji(message.plan.suggestedServices[0].category)}
+                  </Text>
+                </View>
                 <View style={styles.serviceTextWrap}>
                   <Text style={[styles.serviceName, { color: colors.text }]} numberOfLines={2}>
                     {message.plan.suggestedServices[0].name}
@@ -770,26 +882,32 @@ function MessageBubble({
               </View>
             ) : null}
 
-            <Text style={[styles.planHint, { color: colors.textMuted }]}>
+            <Text style={[styles.planNote, { color: colors.textMuted }]}>
               {message.plan.safetyNote}
             </Text>
 
             {message.plan.actions.length > 0 ? (
-              <Text style={[styles.approveHint, { color: colors.textMuted }]}>{t('assistant.approve')}</Text>
+              <Text style={[styles.approveHint, { color: colors.textSubtle }]}>
+                {t('assistant.approve')}
+              </Text>
             ) : null}
 
             <View style={styles.actionRow}>
               {message.plan.actions.slice(0, 4).map((action, index) => (
-                <TouchableOpacity
+                <Pressable
                   key={`${action.kind}-${index}`}
                   onPress={() => onAction(action, message.plan)}
-                  activeOpacity={0.82}
-                  style={[styles.actionButton, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.label}
+                  style={({ pressed }) => [
+                    styles.actionPill,
+                    { backgroundColor: colors.accentSoft, opacity: pressed ? 0.7 : 1 },
+                  ]}
                 >
-                  <Text style={[styles.actionText, { color: colors.primaryDark }]} numberOfLines={1}>
+                  <Text style={[styles.actionPillText, { color: colors.accent }]} numberOfLines={1}>
                     {action.label}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           </View>
@@ -800,10 +918,10 @@ function MessageBubble({
 }
 
 function SmallAvatar() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <View style={[styles.smallAvatar, { backgroundColor: colors.primary }]}>
-      <Text style={[styles.smallAvatarText, { color: colors.textOnDark }]}>AI</Text>
+      <Feather name="message-circle" size={16} color={colors.primaryFg} />
     </View>
   );
 }
@@ -1074,118 +1192,121 @@ function readImageFile(file: any): Promise<AssistantAttachment | null> {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  assistantLayout: {
+  layout: {
     flex: 1,
     width: '100%',
     maxWidth: 1180,
     alignSelf: 'center',
-    padding: space.md,
+    flexDirection: 'column',
+    minWidth: 0,
+  },
+  layoutWide: {
     flexDirection: 'row',
+    padding: space.md,
     gap: space.md,
   },
-  assistantLayoutStacked: {
-    flexDirection: 'column',
-  },
   historyPanel: {
-    width: 286,
-    minWidth: 240,
+    width: 300,
     borderWidth: 1,
     borderRadius: radius.lg,
-    padding: space.sm,
-    gap: space.sm,
+    overflow: 'hidden',
     ...shadow.sm,
   },
-  historyPanelStacked: {
-    width: '100%',
-    minWidth: 0,
-    flexShrink: 0,
-    maxHeight: 190,
-  },
-  historyHeader: {
-    gap: space.sm,
-  },
-  historyTitle: {
-    fontSize: font.md,
-    fontWeight: '900',
-  },
-  newChatButton: {
-    minHeight: TAP,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-  },
-  newChatButtonText: {
-    fontSize: font.sm,
-    fontWeight: '900',
-  },
-  historyList: { flex: 1 },
-  historyListContent: {
-    gap: space.sm,
-    paddingBottom: space.sm,
-  },
-  historyListContentStacked: {
-    paddingBottom: 0,
-    paddingRight: space.sm,
-  },
-  historyItem: {
-    minHeight: 72,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    padding: space.sm,
-    justifyContent: 'center',
-    gap: 4,
-  },
-  historyItemStacked: {
-    width: 220,
-  },
-  historyItemTitle: {
-    fontSize: font.sm,
-    fontWeight: '900',
-  },
-  historyPreview: {
-    fontSize: font.xs,
-    lineHeight: font.xs * 1.25,
-  },
-  chatShell: {
-    flex: 1,
-    width: '100%',
-    gap: space.sm,
-    minWidth: 0,
-  },
-  botHeader: {
-    minHeight: 74,
-    borderWidth: 1,
-    borderRadius: radius.lg,
+  historyPanelHeader: {
     padding: space.md,
+    gap: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  historyPanelTitle: {
+    fontSize: font.lg,
+    fontFamily: family.bold,
+    letterSpacing: tracking.lg,
+    lineHeight: Math.round(font.lg * 1.3),
+  },
+  historyRows: { flex: 1 },
+  historyRow: {
+    minHeight: 64,
+    paddingVertical: 12,
+    paddingHorizontal: space.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
+    gap: 12,
+  },
+  historyRowRounded: {
+    borderRadius: radius.md,
+  },
+  historyDisc: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyRowText: { flex: 1, minWidth: 0 },
+  historyRowTitle: {
+    fontSize: font.md,
+    fontFamily: family.semibold,
+  },
+  historyRowPreview: {
+    fontSize: font.sm,
+    fontFamily: family.regular,
+    lineHeight: Math.round(font.sm * 1.45),
+    marginTop: 2,
+  },
+  historyDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 72,
+  },
+  sheetRows: {
+    gap: space.xs,
+  },
+  chatColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  chatColumnWide: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
     ...shadow.sm,
   },
-  botAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.lg,
+  botHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  botAvatarText: { fontSize: font.md, fontWeight: '900' },
-  botHeaderCopy: { flex: 1, minWidth: 0 },
-  botTitle: { fontSize: font.lg, fontWeight: '900' },
-  botStatus: { fontSize: font.sm, fontWeight: '800', marginTop: 2 },
-  calendarChip: {
-    minHeight: 40,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
     paddingHorizontal: space.md,
-    maxWidth: 140,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  calendarChipText: { fontSize: font.xs, fontWeight: '900' },
+  botAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  botHeaderCopy: { flex: 1, minWidth: 0 },
+  botTitle: {
+    fontSize: font.lg,
+    fontFamily: family.bold,
+    letterSpacing: tracking.lg,
+    lineHeight: Math.round(font.lg * 1.3),
+  },
+  botStatus: {
+    fontSize: font.sm,
+    fontFamily: family.medium,
+    marginTop: 2,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   thread: { flex: 1 },
   threadContent: {
+    paddingHorizontal: space.md,
     paddingVertical: space.md,
     gap: space.md,
   },
@@ -1193,33 +1314,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: space.sm,
+    paddingRight: space.xl,
   },
   userRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    paddingLeft: space.xxl,
   },
   smallAvatar: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  smallAvatarText: { fontSize: font.xs, fontWeight: '900' },
-  message: {
-    maxWidth: '82%',
-    borderWidth: 1,
+  bubble: {
+    maxWidth: '84%',
     paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    ...shadow.sm,
+    paddingVertical: 12,
   },
-  botMessage: {
+  botBubble: {
+    borderWidth: 1,
     borderTopLeftRadius: radius.sm,
     borderTopRightRadius: radius.lg,
     borderBottomLeftRadius: radius.lg,
     borderBottomRightRadius: radius.lg,
+    ...shadow.sm,
   },
-  userMessage: {
+  userBubble: {
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.sm,
     borderBottomLeftRadius: radius.lg,
@@ -1227,67 +1349,94 @@ const styles = StyleSheet.create({
   },
   messageText: {
     fontSize: font.md,
-    lineHeight: font.md * 1.35,
+    fontFamily: family.regular,
+    lineHeight: Math.round(font.md * 1.5),
+  },
+  messageAttachments: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.xs,
+    marginBottom: space.sm,
+  },
+  messageImage: {
+    width: 132,
+    height: 96,
+    borderRadius: radius.md,
+    borderWidth: 1,
   },
   typingBubble: {
-    minHeight: 46,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    paddingHorizontal: space.md,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
   },
-  typingText: { fontSize: font.sm, fontWeight: '700' },
-  simplePlan: {
-    marginTop: space.sm,
-    paddingTop: space.sm,
-    borderTopWidth: 1,
+  typingText: {
+    fontSize: font.sm,
+    fontFamily: family.medium,
+  },
+  planBlock: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     gap: space.sm,
   },
   serviceLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
+    gap: 12,
   },
-  serviceIcon: { fontSize: 24, width: 30, textAlign: 'center' },
+  serviceTile: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceEmoji: { fontSize: 22 },
   serviceTextWrap: { flex: 1, minWidth: 0 },
-  serviceName: { fontSize: font.sm, fontWeight: '900' },
-  serviceMeta: { fontSize: font.xs, lineHeight: font.xs * 1.25 },
-  planHint: {
-    fontSize: font.xs,
-    lineHeight: font.xs * 1.3,
+  serviceName: {
+    fontSize: font.md,
+    fontFamily: family.semibold,
+  },
+  serviceMeta: {
+    fontSize: font.sm,
+    fontFamily: family.regular,
+    lineHeight: Math.round(font.sm * 1.45),
+    marginTop: 2,
+  },
+  planNote: {
+    fontSize: font.sm,
+    fontFamily: family.regular,
+    lineHeight: Math.round(font.sm * 1.45),
   },
   approveHint: {
     fontSize: font.xs,
-    fontWeight: '700',
+    fontFamily: family.medium,
   },
   actionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: space.sm,
   },
-  actionButton: {
-    minHeight: 40,
+  actionPill: {
+    minHeight: 44,
     borderRadius: radius.pill,
-    borderWidth: 1,
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
+    paddingHorizontal: space.md,
     maxWidth: '100%',
   },
-  actionText: { fontSize: font.xs, fontWeight: '900' },
+  actionPillText: {
+    fontSize: font.sm,
+    fontFamily: family.semibold,
+  },
   composer: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: space.sm,
-    gap: space.sm,
-    ...shadow.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: space.md,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 12,
   },
-  quickPrompts: {
-    gap: space.sm,
-    paddingRight: space.md,
-  },
-  examplesHintRow: {
+  composerHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1295,69 +1444,73 @@ const styles = StyleSheet.create({
   },
   examplesHint: {
     fontSize: font.xs,
-    fontWeight: '800',
-    paddingHorizontal: 2,
+    fontFamily: family.medium,
+    flexShrink: 1,
   },
   speakToggle: {
-    minHeight: 32,
+    minHeight: 44,
     borderRadius: radius.pill,
     borderWidth: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.sm,
+    gap: 6,
+    paddingHorizontal: space.md,
   },
   speakToggleText: {
     fontSize: font.xs,
-    fontWeight: '800',
+    fontFamily: family.semibold,
+  },
+  chipsRow: {
+    alignItems: 'center',
+    paddingRight: space.md,
+  },
+  dimmed: { opacity: 0.55 },
+  listeningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: 2,
+  },
+  listeningDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.pill,
   },
   listeningHint: {
     fontSize: font.sm,
-    fontWeight: '800',
-    paddingHorizontal: 2,
+    fontFamily: family.medium,
   },
-  quickChip: {
-    minHeight: 38,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-  },
-  quickChipText: { fontSize: font.sm, fontWeight: '800' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: space.sm,
   },
-  photoButton: {
-    minHeight: TAP,
-    borderRadius: radius.lg,
-    borderWidth: 1,
+  roundBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
   },
-  photoButtonText: { fontSize: font.sm, fontWeight: '900' },
   input: {
     flex: 1,
-    minHeight: TAP,
+    minHeight: 48,
     maxHeight: 124,
     borderRadius: radius.lg,
-    borderWidth: 1,
     paddingHorizontal: space.md,
-    paddingVertical: space.sm,
+    paddingVertical: 12,
     fontSize: font.md,
-    lineHeight: font.md * 1.3,
+    fontFamily: family.regular,
+    lineHeight: 24,
     textAlignVertical: 'top',
   },
-  sendButton: {
-    minWidth: 76,
-    minHeight: TAP,
-    borderRadius: radius.lg,
+  sendBtn: {
+    width: TAP,
+    height: TAP,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
   },
-  sendButtonText: { fontSize: font.sm, fontWeight: '900' },
   attachmentList: {
     gap: space.sm,
     paddingRight: space.md,
@@ -1375,29 +1528,13 @@ const styles = StyleSheet.create({
   },
   removeAttachmentButton: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 22,
-    height: 22,
+    top: space.xs,
+    right: space.xs,
+    width: 24,
+    height: 24,
     borderRadius: radius.pill,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  removeAttachmentText: {
-    fontSize: font.sm,
-    fontWeight: '900',
-    lineHeight: font.sm,
-  },
-  messageAttachments: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.xs,
-    marginBottom: space.xs,
-  },
-  messageImage: {
-    width: 132,
-    height: 96,
-    borderRadius: radius.md,
-    borderWidth: 1,
   },
 });

@@ -5,7 +5,7 @@ import {
   Text,
   StyleSheet,
   Linking,
-  TouchableOpacity,
+  Pressable,
   ActivityIndicator,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,7 +13,16 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Card, H1, H2, Body, Muted, Button, Badge, Stars } from '../../src/components/ui';
-import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
+import {
+  AppColors,
+  family,
+  font,
+  radius,
+  space,
+  shadow,
+  TAP,
+  ROW_MIN_HEIGHT,
+} from '../../src/lib/theme';
 import { serviceEmoji } from '../../src/lib/categories';
 import { fetchService } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
@@ -48,7 +57,6 @@ export default function ServiceDetail() {
   const [showUpiFallback, setShowUpiFallback] = useState(false);
   const [upiCopied, setUpiCopied] = useState(false);
   const isFav = id ? favoriteSet.has(id) : false;
-  const onPrimary = colors.textOnDark;
 
   async function handlePayUpi() {
     if (!service?.upi_id) return;
@@ -134,6 +142,16 @@ export default function ServiceDetail() {
     },
   ];
 
+  const infoRows = [
+    service.address ? { key: 'address', icon: 'map-pin' as const, text: service.address } : null,
+    service.hours
+      ? { key: 'hours', icon: 'clock' as const, text: `${t('services.hours')}: ${service.hours}` }
+      : null,
+  ].filter((row): row is { key: string; icon: 'map-pin' | 'clock'; text: string } => row !== null);
+
+  const hasAbout = Boolean(service.description) || infoRows.length > 0;
+  const hasContactRow = Boolean(service.phone || service.map_url);
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       <Stack.Screen
@@ -141,23 +159,25 @@ export default function ServiceDetail() {
           title: t(`categories.${service.category}`),
           headerBackVisible: false,
           headerLeft: () => (
-            <TouchableOpacity
-              style={styles.headerBack}
-              activeOpacity={0.8}
+            <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('common.back')}
               onPress={leaveDetail}
+              hitSlop={8}
+              style={({ pressed }) => [styles.headerBack, pressed && styles.pressedFade]}
             >
-              <Text style={styles.headerBackText}>‹ {t('common.back')}</Text>
-            </TouchableOpacity>
+              <Feather name="chevron-left" size={24} color={colors.text} />
+              <Text style={styles.headerBackText}>{t('common.back')}</Text>
+            </Pressable>
           ),
         }}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        {/* Identity block — Kroger product-detail: image centered, facts left */}
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <Text style={{ fontSize: 56 }}>{serviceEmoji(service.category)}</Text>
+          <View style={styles.heroTile}>
+            <Text style={styles.heroEmoji}>{serviceEmoji(service.category)}</Text>
           </View>
           <Text style={styles.kicker}>{t(`categories.${service.category}`)}</Text>
           <H1 style={styles.title}>{service.name}</H1>
@@ -167,129 +187,207 @@ export default function ServiceDetail() {
           </View>
         </View>
 
-        <Card style={styles.aboutCard}>
-          {service.description ? <Body>{service.description}</Body> : null}
-          {service.address ? <Muted style={styles.detailLine}>{service.address}</Muted> : null}
-          {service.hours ? (
-            <Muted style={styles.detailLine}>
-              {t('services.hours')}: {service.hours}
-            </Muted>
-          ) : null}
-        </Card>
+        {hasAbout ? (
+          <Card>
+            {service.description ? <Body>{service.description}</Body> : null}
+            {infoRows.map((row, index) => (
+              <View key={row.key}>
+                {index > 0 || service.description ? <View style={styles.rowDivider} /> : null}
+                <View style={styles.infoRow}>
+                  <View style={styles.rowDisc}>
+                    <Feather name={row.icon} size={20} color={colors.text} />
+                  </View>
+                  <Text style={styles.infoText}>{row.text}</Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        ) : null}
 
-        <Card style={styles.checkCard}>
+        <Card>
           <H2>{t('services.trustChecklist')}</H2>
-          {checklist.map((item) => (
-            <View key={item.label} style={styles.checkRow}>
-              <View style={[styles.checkDot, { backgroundColor: item.ok ? colors.success : colors.danger }]}>
-                {item.ok ? (
-                  <Feather name="check" size={16} color={colors.textOnDark} />
-                ) : (
-                  <Feather name="alert-circle" size={16} color={colors.textOnDark} />
-                )}
+          <View style={styles.checkList}>
+            {checklist.map((item, index) => (
+              <View key={item.label}>
+                {index > 0 ? <View style={styles.rowDivider} /> : null}
+                <View style={styles.checkRow}>
+                  <View
+                    style={[
+                      styles.rowDisc,
+                      { backgroundColor: item.ok ? colors.success : colors.danger },
+                    ]}
+                  >
+                    <Feather
+                      name={item.ok ? 'check' : 'alert-circle'}
+                      size={20}
+                      color={item.ok ? colors.successFg : colors.dangerFg}
+                    />
+                  </View>
+                  <View style={styles.checkTextBlock}>
+                    <Text style={styles.checkLabel}>{item.label}</Text>
+                    <Muted style={styles.checkValue} numberOfLines={2}>
+                      {item.value}
+                    </Muted>
+                  </View>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.checkLabel}>{item.label}</Text>
-                <Muted style={styles.checkValue} numberOfLines={2}>
-                  {item.value}
-                </Muted>
-              </View>
-            </View>
-          ))}
+            ))}
+          </View>
           <Muted style={styles.careNote}>{t('services.careNote')}</Muted>
         </Card>
 
         {!service.verified ? (
           <View style={styles.callout}>
-            <Text style={styles.calloutText}>! {t('services.unverified')}</Text>
+            <Feather
+              name="alert-triangle"
+              size={20}
+              color={colors.warningText}
+              style={styles.calloutIcon}
+            />
+            <Text style={styles.calloutText}>{t('services.unverified')}</Text>
           </View>
         ) : null}
 
-        <View style={{ gap: space.md }}>
+        <View style={styles.secondaryActions}>
           <Button
             label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
-            icon={<Feather name="star" size={16} color={isFav ? colors.accent : colors.primaryDark} />}
+            icon={
+              <Feather name="star" size={20} color={isFav ? colors.accent : colors.primaryDark} />
+            }
             variant="secondary"
             onPress={() => id && toggleFavorite(id)}
           />
           {service.source_url ? (
-            <Button
-              label={t('services.viewSource')}
-              variant="secondary"
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t('services.viewSource')}
               onPress={() => Linking.openURL(service.source_url!)}
-            />
+              style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressedFade]}
+            >
+              <Feather name="external-link" size={20} color={colors.accent} />
+              <Text style={styles.ghostBtnText}>{t('services.viewSource')}</Text>
+            </Pressable>
           ) : null}
         </View>
       </ScrollView>
 
+      {/* Fixed bottom CTA bar — Uber confirm pattern */}
       {service.phone || service.map_url || service.upi_id ? (
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+        <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
           <Text style={styles.footerTitle}>{t('services.contactActions')}</Text>
-          <View style={styles.footerActions}>
-            {service.phone ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.fBtn, { backgroundColor: colors.success, flex: 1 }]}
-                  activeOpacity={0.85}
+
+          {hasContactRow ? (
+            <View style={styles.footerActions}>
+              {service.phone ? (
+                <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('common.call')}
                   onPress={() => Linking.openURL(`tel:${service.phone}`)}
+                  style={({ pressed }) => [
+                    styles.ctaPill,
+                    styles.ctaFlex,
+                    { backgroundColor: pressed ? colors.primaryDark : colors.primary },
+                    pressed && styles.ctaPressed,
+                  ]}
                 >
-                  <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('common.call')}</Text>
-                </TouchableOpacity>
-                {canUseWhatsApp(service.phone) ? (
-                  <TouchableOpacity
-                    style={styles.waBtn}
-                    activeOpacity={0.85}
+                  <Feather name="phone" size={20} color={colors.primaryFg} />
+                  <Text style={[styles.ctaText, { color: colors.primaryFg }]}>
+                    {t('common.call')}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {service.phone && canUseWhatsApp(service.phone) ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="WhatsApp"
+                  onPress={() => Linking.openURL(waLink(service.phone!))}
+                  style={({ pressed }) => [
+                    styles.ctaPill,
+                    styles.ctaFlex,
+                    { backgroundColor: colors.whatsapp },
+                    pressed && styles.ctaPressed,
+                  ]}
+                >
+                  <Feather name="message-circle" size={20} color={colors.successFg} />
+                  <Text style={[styles.ctaText, { color: colors.successFg }]}>WhatsApp</Text>
+                </Pressable>
+              ) : null}
+
+              {service.map_url ? (
+                service.phone ? (
+                  <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="WhatsApp"
-                    onPress={() => Linking.openURL(waLink(service.phone!))}
+                    accessibilityLabel={t('common.directions')}
+                    onPress={() => Linking.openURL(service.map_url!)}
+                    style={({ pressed }) => [
+                      styles.ctaSquare,
+                      { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
+                      pressed && styles.ctaPressed,
+                    ]}
                   >
-                    <Text style={styles.waText}>WhatsApp</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </>
-            ) : null}
-            {service.map_url ? (
-              <TouchableOpacity
-                style={[styles.fBtn, { backgroundColor: colors.primary, flex: 1 }]}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={t('common.directions')}
-                onPress={() => Linking.openURL(service.map_url!)}
-              >
-                <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('common.directions')}</Text>
-              </TouchableOpacity>
-            ) : null}
-            {service.upi_id ? (
-              <TouchableOpacity
-                style={[styles.fBtn, { backgroundColor: colors.accent, flex: 1 }]}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={t('pay.payUpi')}
-                onPress={handlePayUpi}
-              >
-                <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('pay.payUpi')}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
+                    <Feather name="navigation" size={24} color={colors.text} />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.directions')}
+                    onPress={() => Linking.openURL(service.map_url!)}
+                    style={({ pressed }) => [
+                      styles.ctaPill,
+                      styles.ctaFlex,
+                      { backgroundColor: pressed ? colors.primaryDark : colors.primary },
+                      pressed && styles.ctaPressed,
+                    ]}
+                  >
+                    <Feather name="navigation" size={20} color={colors.primaryFg} />
+                    <Text style={[styles.ctaText, { color: colors.primaryFg }]}>
+                      {t('common.directions')}
+                    </Text>
+                  </Pressable>
+                )
+              ) : null}
+            </View>
+          ) : null}
+
+          {service.upi_id ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('pay.payUpi')}
+              onPress={handlePayUpi}
+              style={({ pressed }) => [
+                styles.ctaPill,
+                { backgroundColor: pressed ? colors.accentDark : colors.accent },
+                pressed && styles.ctaPressed,
+              ]}
+            >
+              <Feather name="credit-card" size={20} color={colors.accentFg} />
+              <Text style={[styles.ctaText, { color: colors.accentFg }]}>{t('pay.payUpi')}</Text>
+            </Pressable>
+          ) : null}
+
           {showUpiFallback && service.upi_id ? (
-            <Card style={styles.upiFallbackCard}>
+            <View style={styles.upiPanel}>
               <Muted>{t('pay.webFallback')}</Muted>
               <Text selectable style={styles.upiId}>
                 {service.upi_id}
               </Text>
-              <TouchableOpacity
-                style={styles.copyBtn}
-                activeOpacity={0.8}
+              <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('common.copy')}
                 onPress={copyUpiId}
+                style={({ pressed }) => [
+                  styles.copyBtn,
+                  pressed && { backgroundColor: colors.overlay },
+                ]}
               >
-                <Text style={styles.copyBtnText}>{upiCopied ? t('pay.copied') : t('common.copy')}</Text>
-              </TouchableOpacity>
+                {upiCopied ? <Feather name="check" size={16} color={colors.success} /> : null}
+                <Text style={[styles.copyBtnText, upiCopied && { color: colors.success }]}>
+                  {upiCopied ? t('pay.copied') : t('common.copy')}
+                </Text>
+              </Pressable>
               <Muted style={styles.upiHint}>{t('pay.upiHint')}</Muted>
-            </Card>
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -300,123 +398,198 @@ export default function ServiceDetail() {
 function makeStyles(colors: AppColors, isDark: boolean) {
   return StyleSheet.create({
     screen: { flex: 1 },
+    scroll: { flex: 1 },
     loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg },
-    content: { padding: space.md, paddingBottom: 160, gap: space.md },
-    hero: {
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      backgroundColor: colors.cardStrong,
-      padding: space.lg,
-      ...shadow.md,
+    content: {
+      paddingHorizontal: space.md,
+      paddingTop: space.sm,
+      paddingBottom: space.xl,
+      gap: space.lg,
     },
-    heroIcon: {
-      width: 92,
-      height: 92,
-      borderRadius: radius.xl,
-      backgroundColor: colors.primaryTint,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: space.md,
-    },
-    kicker: {
-      color: colors.accentDark,
-      fontSize: font.xs,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-    },
-    title: { marginTop: space.sm },
+    pressedFade: { opacity: 0.7 },
+
     headerBack: {
       minHeight: 44,
-      minWidth: 90,
-      paddingHorizontal: space.sm,
-      alignItems: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingRight: space.sm,
+    },
+    headerBackText: { color: colors.text, fontSize: font.md, fontFamily: family.semibold },
+
+    hero: {
+      paddingTop: space.sm,
+    },
+    heroTile: {
+      alignSelf: 'center',
+      width: 112,
+      height: 112,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: space.lg,
+    },
+    heroEmoji: { fontSize: 56, lineHeight: 68 },
+    kicker: {
+      color: colors.textMuted,
+      fontSize: font.sm,
+      fontFamily: family.medium,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    title: { marginTop: space.xs },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: space.sm,
+      marginTop: space.sm,
+    },
+
+    // Shared Uber row anatomy: 44 disc + 12 gap; divider inset 44 + 12 = 56.
+    rowDisc: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
       justifyContent: 'center',
     },
-    headerBackText: { color: colors.text, fontSize: font.md, fontWeight: '900' },
-    metaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
-    aboutCard: { gap: space.sm },
-    detailLine: { fontSize: font.sm },
-    checkCard: { gap: space.sm },
+    rowDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginLeft: 56,
+    },
+
+    infoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      minHeight: ROW_MIN_HEIGHT,
+      paddingVertical: 12,
+    },
+    infoText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.md * 1.5),
+    },
+
+    checkList: { marginTop: space.xs },
     checkRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
-      paddingVertical: 4,
+      gap: 12,
+      minHeight: ROW_MIN_HEIGHT,
+      paddingVertical: 12,
     },
-    checkDot: {
-      width: 34,
-      height: 34,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
+    checkTextBlock: { flex: 1 },
+    checkLabel: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.35),
     },
-    checkDotText: { fontWeight: '900', fontSize: font.sm },
-    checkLabel: { color: colors.text, fontSize: font.sm, fontWeight: '900' },
-    checkValue: { fontSize: font.xs },
+    checkValue: { marginTop: 2 },
     careNote: {
       marginTop: space.xs,
-      paddingTop: space.sm,
-      borderTopWidth: 1,
+      paddingTop: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
+
     callout: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.sm,
       backgroundColor: colors.warningBg,
-      borderLeftWidth: 5,
-      borderLeftColor: colors.warningText,
-      borderRadius: radius.sm,
+      borderRadius: radius.md,
       padding: space.md,
     },
+    calloutIcon: { marginTop: 2 },
     calloutText: {
+      flex: 1,
       color: colors.warningText,
       fontSize: font.sm,
-      fontWeight: '800',
-      lineHeight: font.sm * 1.4,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.sm * 1.45),
     },
-    footer: {
-      padding: space.md,
-      backgroundColor: colors.nav,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+
+    secondaryActions: { gap: 12 },
+    ghostBtn: {
+      minHeight: 48,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
       gap: space.sm,
-      ...shadow.md,
+      paddingHorizontal: space.lg,
     },
-    footerTitle: { color: colors.textMuted, fontSize: font.xs, fontWeight: '900', textTransform: 'uppercase' },
-    footerActions: { flexDirection: 'row', gap: space.sm },
-    fBtn: {
-      minHeight: 60,
+    ghostBtnText: { color: colors.accent, fontSize: font.md, fontFamily: family.semibold },
+
+    footer: {
+      backgroundColor: colors.bgAlt,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingHorizontal: space.md,
+      paddingTop: 12,
+      gap: 12,
+    },
+    footerTitle: {
+      color: colors.textMuted,
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    footerActions: { flexDirection: 'row', gap: 12 },
+    ctaPill: {
+      minHeight: TAP,
+      borderRadius: radius.pill,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.sm,
+      paddingHorizontal: space.lg,
+      ...(isDark ? null : shadow.sm),
+    },
+    ctaFlex: { flex: 1 },
+    ctaPressed: { transform: [{ scale: 0.98 }] },
+    ctaText: { fontSize: font.md, fontFamily: family.bold },
+    ctaSquare: {
+      width: TAP,
+      height: TAP,
       borderRadius: radius.md,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: space.md,
-      ...shadow.sm,
     },
-    fBtnText: { fontSize: font.md, fontWeight: '900' },
-    waBtn: {
-      minHeight: 60,
+
+    upiPanel: {
+      backgroundColor: colors.surfaceTint,
       borderRadius: radius.md,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.md,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.whatsapp,
+      padding: space.md,
+      gap: space.xs,
     },
-    waText: { color: colors.whatsapp, fontSize: font.md, fontWeight: '900' },
-    upiFallbackCard: { marginTop: space.sm, gap: space.xs },
-    upiId: { color: colors.text, fontSize: font.md, fontWeight: '900', marginTop: 4 },
+    upiId: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      marginTop: space.xs,
+    },
     copyBtn: {
       alignSelf: 'flex-start',
       marginTop: space.xs,
-      minHeight: 40,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: space.md,
+      minHeight: 44,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: space.xs,
+      borderRadius: radius.pill,
+      borderWidth: 1.5,
+      borderColor: colors.glassBorder,
+      paddingHorizontal: space.md,
     },
-    copyBtnText: { color: colors.primaryDark, fontSize: font.sm, fontWeight: '900' },
-    upiHint: { marginTop: space.xs },
+    copyBtnText: { color: colors.primaryDark, fontSize: font.sm, fontFamily: family.semibold },
+    upiHint: { marginTop: space.xs, fontSize: font.xs, lineHeight: Math.round(font.xs * 1.4) },
   });
 }

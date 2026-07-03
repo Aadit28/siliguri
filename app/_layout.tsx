@@ -1,17 +1,47 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  useFonts,
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+  DMSans_800ExtraBold,
+} from '@expo-google-fonts/dm-sans';
 import '../src/lib/i18n';
 import { AuthProvider } from '../src/context/AuthContext';
 import { LocaleProvider } from '../src/context/LocaleContext';
 import { AppThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { DisplayModeProvider, useDisplayMode } from '../src/context/DisplayModeContext';
+import { FONT_BOLD } from '../src/lib/fonts';
+
+SplashScreen.preventAutoHideAsync();
 
 const PHONE_MAX_WIDTH = 480;
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+    DMSans_800ExtraBold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <SafeAreaProvider>
       <AppThemeProvider>
@@ -55,7 +85,7 @@ function RootStack() {
             screenOptions={{
               headerStyle: { backgroundColor: colors.nav },
               headerTintColor: colors.text,
-              headerTitleStyle: { fontWeight: '800' },
+              headerTitleStyle: { fontFamily: FONT_BOLD },
               contentStyle: { backgroundColor: colors.bg },
             }}
           >

@@ -1,23 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import {
   Image,
-  ImageBackground,
   Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
   View,
   type ImageStyle,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
-import { Card, H1, H2, Body, Muted, Stars } from '../../src/components/ui';
-import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
-import { SERVICE_CATEGORIES, categoryColor, serviceEmoji } from '../../src/lib/categories';
+import { Badge, Body, Button, Card, H1, H2, Muted, Stars } from '../../src/components/ui';
+import { AppColors, family, font, radius, shadow, space, tracking } from '../../src/lib/theme';
+import { SERVICE_CATEGORIES, serviceEmoji } from '../../src/lib/categories';
 import { fetchServices, fetchAnnouncements } from '../../src/lib/api';
 import { Service, Announcement } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
@@ -25,6 +25,8 @@ import { useTheme } from '../../src/context/ThemeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 
 const heroImage = require('../../assets/saathi-hero-care.png');
+
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 const TRUST_RAILS = [
   { label: 'Elderline 14567', url: 'https://scw.dosje.gov.in/elderline' },
@@ -39,12 +41,12 @@ export default function Home() {
   const { t } = useTranslation();
   const router = useRouter();
   const { displayName, isAdmin } = useAuth();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { lang } = useLocale();
   const { width } = useWindowDimensions();
   const isWide = width >= 820;
   const showHeroProof = width >= 1160;
-  const styles = makeStyles(colors, isDark, isWide);
+  const styles = makeStyles(colors, isWide);
   const [featured, setFeatured] = useState<Service[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
@@ -59,88 +61,68 @@ export default function Home() {
     fetchAnnouncements().then(setAnnouncements);
   }, []);
 
-  const quick = [
+  const quick: { label: string; caption: string; go: string; icon: FeatherName }[] = [
     {
       label: t('home.quickServices'),
       caption: t('home.heroPrimary'),
       go: '/services',
-      mark: 'Find',
-      color: colors.primary,
-      soft: colors.primaryTint,
+      icon: 'grid',
     },
     {
       label: t('home.quickCommunity'),
       caption: t('home.signalCaregiver'),
       go: '/community',
-      mark: 'Ask',
-      color: colors.accent,
-      soft: colors.accentSoft,
+      icon: 'message-circle',
     },
     {
       label: t('home.quickHelp'),
       caption: t('home.heroSecondary'),
       go: '/help',
-      mark: 'SOS',
-      color: colors.danger,
-      soft: colors.dangerSoft,
+      icon: 'phone-call',
     },
     {
       label: t('home.myCalendar'),
       caption: t('calendar.upcoming'),
       go: '/calendar',
-      mark: 'Cal',
-      color: colors.accent,
-      soft: colors.accentSoft,
+      icon: 'calendar',
     },
     {
       label: t('home.connectors'),
       caption: t('home.connectorsCaption'),
       go: '/connectors',
-      mark: 'Link',
-      color: colors.success,
-      soft: colors.successSoft,
+      icon: 'link',
     },
   ];
-  const mobileQuick = [
+  const mobileQuick: { label: string; caption: string; go: string; icon: FeatherName }[] = [
     {
       label: t('home.mobileServiceTitle'),
       caption: t('home.mobileServiceBody'),
       go: '/services',
-      mark: 'Find',
-      color: colors.primary,
-      soft: colors.primaryTint,
+      icon: 'grid',
     },
     {
       label: t('home.mobileCommunityTitle'),
       caption: t('home.mobileCommunityBody'),
       go: '/community',
-      mark: 'Ask',
-      color: colors.accent,
-      soft: colors.accentSoft,
+      icon: 'message-circle',
     },
     {
       label: t('home.mobileHelpTitle'),
       caption: t('home.mobileHelpBody'),
       go: '/help',
-      mark: 'SOS',
-      color: colors.danger,
-      soft: colors.dangerSoft,
+      icon: 'phone-call',
     },
     {
       label: t('home.myCalendar'),
       caption: t('calendar.upcoming'),
       go: '/calendar',
-      mark: 'Cal',
-      color: colors.accent,
-      soft: colors.accentSoft,
+      icon: 'calendar',
     },
     {
       label: t('home.connectors'),
       caption: t('home.connectorsCaption'),
       go: '/connectors',
-      mark: 'Link',
-      color: colors.success,
-      soft: colors.successSoft,
+      icon: 'link',
     },
   ];
 
@@ -151,184 +133,236 @@ export default function Home() {
   ];
 
   const journey = [
-    {
-      label: t('home.journeyFind'),
-      body: t('home.journeyFindBody'),
-      color: colors.primary,
-    },
-    {
-      label: t('home.journeyConfirm'),
-      body: t('home.journeyConfirmBody'),
-      color: colors.accent,
-    },
-    {
-      label: t('home.journeyFollow'),
-      body: t('home.journeyFollowBody'),
-      color: colors.success,
-    },
+    { label: t('home.journeyFind'), body: t('home.journeyFindBody') },
+    { label: t('home.journeyConfirm'), body: t('home.journeyConfirmBody') },
+    { label: t('home.journeyFollow'), body: t('home.journeyFollowBody') },
   ];
 
-  const onPrimary = colors.textOnDark;
-  const heroImageLayerStyle: ImageStyle = isWide ? { transform: [{ translateX: -18 }, { scale: 1.03 }] } : {};
+  const searchPill = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t('home.heroPrimary')}
+      onPress={() => router.push('/services')}
+      style={({ pressed }) => [
+        styles.searchPill,
+        pressed && { backgroundColor: colors.cardStrong },
+      ]}
+    >
+      <Feather name="search" size={22} color={colors.text} />
+      <Text style={styles.searchPillText} numberOfLines={1}>
+        {t('home.heroPrimary')}
+      </Text>
+    </Pressable>
+  );
+
+  const seeAllLink = (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={t('home.seeAll')}
+      onPress={() => router.push('/services')}
+      style={({ pressed }) => [styles.seeAllBtn, pressed && { opacity: 0.7 }]}
+    >
+      <Text style={styles.seeAllText}>{t('home.seeAll')}</Text>
+      <Feather name="arrow-right" size={16} color={colors.accent} />
+    </Pressable>
+  );
+
+  const announcementsBlock =
+    announcements.length > 0 ? (
+      <AnimatedSection delay={60}>
+        <Card style={styles.announceCard}>
+          <H2>{t('announcements.title')}</H2>
+          {announcements.map((a) => {
+            const annTitle = lang === 'hi' && a.title_hi ? a.title_hi : a.title;
+            const annBody = lang === 'hi' && a.body_hi ? a.body_hi : a.body;
+            return (
+              <View key={a.id} style={styles.announceItem}>
+                <Text style={styles.announceItemTitle}>{annTitle}</Text>
+                <Muted numberOfLines={3}>{annBody}</Muted>
+                <Text style={styles.announceItemDate}>
+                  {new Date(a.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+            );
+          })}
+        </Card>
+      </AnimatedSection>
+    ) : null;
+
+  const quickList = (items: typeof quick) => (
+    <Card style={styles.rowCard}>
+      {items.map((q, index) => (
+        <React.Fragment key={q.go}>
+          {index > 0 ? <View style={styles.rowDivider} /> : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={q.label}
+            onPress={() => router.push(q.go as any)}
+            style={({ pressed }) => [
+              styles.listRow,
+              pressed && { backgroundColor: colors.overlay },
+            ]}
+          >
+            <View style={styles.listDisc}>
+              <Feather name={q.icon} size={20} color={colors.text} />
+            </View>
+            <View style={styles.listCopy}>
+              <Text style={styles.listTitle}>{q.label}</Text>
+              <Text style={styles.listSubtitle} numberOfLines={2}>
+                {q.caption}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={22} color={colors.textSubtle} />
+          </Pressable>
+        </React.Fragment>
+      ))}
+    </Card>
+  );
+
+  const categoryTiles = (
+    <View style={styles.tileGrid}>
+      {SERVICE_CATEGORIES.map((c) => (
+        <Pressable
+          key={c.key}
+          accessibilityRole="button"
+          accessibilityLabel={t(`categories.${c.key}`)}
+          onPress={() => router.push({ pathname: '/services', params: { category: c.key } })}
+          style={styles.tileWrap}
+        >
+          {({ pressed }) => (
+            <>
+              <View
+                style={[
+                  styles.tile,
+                  {
+                    backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                  },
+                ]}
+              >
+                <Text style={styles.tileEmoji}>{c.emoji}</Text>
+              </View>
+              <Text style={styles.tileLabel} numberOfLines={1}>
+                {t(`categories.${c.key}`)}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  const providerCard = (s: Service) => (
+    <Pressable
+      key={s.id}
+      accessibilityRole="button"
+      accessibilityLabel={s.name}
+      onPress={() => router.push(`/service/${s.id}`)}
+      style={({ pressed }) => [
+        styles.providerCard,
+        { backgroundColor: pressed ? colors.cardStrong : colors.cardSolid },
+        isWide && styles.providerCardWide,
+      ]}
+    >
+      <View style={styles.providerLead}>
+        <Text style={styles.providerEmoji}>{serviceEmoji(s.category)}</Text>
+      </View>
+      <View style={styles.providerCopy}>
+        <Text style={styles.providerName} numberOfLines={2}>
+          {s.name}
+        </Text>
+        <Text style={styles.providerMeta} numberOfLines={1}>
+          {t(`categories.${s.category}`)}
+          {s.town ? ` · ${s.town}` : ''}
+        </Text>
+        <View style={styles.providerRating}>
+          <Stars rating={s.rating} />
+          {s.verified ? <Badge label={t('common.verified')} /> : null}
+        </View>
+      </View>
+      <Feather name="chevron-right" size={22} color={colors.textSubtle} />
+    </Pressable>
+  );
+
+  const adminBlock = isAdmin ? (
+    <View style={styles.adminWrap}>
+      <Button
+        label={t('home.adminArea')}
+        variant="secondary"
+        onPress={() => router.push('/admin')}
+      />
+    </View>
+  ) : null;
 
   if (!isWide) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.bg }]}>
-        <View style={styles.backdropTop} />
         <AppHeader />
-        <ScrollView contentContainerStyle={styles.mobileContent} contentInsetAdjustmentBehavior="automatic">
-          <AnimatedSection style={styles.mobileHero}>
-            <View style={styles.mobilePhotoWrap}>
-              <Image
-                source={heroImage}
-                resizeMode="contain"
-                style={styles.mobilePhoto as ImageStyle}
-                accessibilityLabel={t('home.heroPhotoAlt')}
-              />
-            </View>
-
-            <View style={styles.mobileHeroCopy}>
-              <Text style={styles.kickerDark}>{t('home.heroKicker')}</Text>
-              <H1 style={styles.mobileTitle}>
-                {t('home.greeting')}
-                {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
-              </H1>
-              <Body style={styles.mobileBody}>{t('home.heroBody')}</Body>
-            </View>
-
-            <View style={styles.mobileActionRow}>
-              <TouchableOpacity
-                style={[styles.mobilePrimary, { backgroundColor: colors.primary }]}
-                activeOpacity={0.88}
-                onPress={() => router.push('/services')}
-              >
-                <Text style={[styles.primaryCtaText, { color: onPrimary }]}>{t('home.heroPrimary')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.mobileSecondary} activeOpacity={0.88} onPress={() => router.push('/help')}>
-                <Text style={styles.mobileSecondaryText}>{t('home.heroSecondary')}</Text>
-              </TouchableOpacity>
-            </View>
+        <ScrollView
+          contentContainerStyle={styles.mobileContent}
+          contentInsetAdjustmentBehavior="automatic"
+        >
+          <AnimatedSection style={styles.greetingBlock}>
+            <Text style={styles.kicker}>{t('home.heroKicker')}</Text>
+            <H1>
+              {t('home.greeting')}
+              {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
+            </H1>
           </AnimatedSection>
 
-          {announcements.length > 0 ? (
-            <AnimatedSection delay={60} style={styles.announceSection}>
-              <Card style={styles.announceCard}>
-                <H2>{t('announcements.title')}</H2>
-                {announcements.map((a) => {
-                  const annTitle = lang === 'hi' && a.title_hi ? a.title_hi : a.title;
-                  const annBody = lang === 'hi' && a.body_hi ? a.body_hi : a.body;
-                  return (
-                    <View key={a.id} style={styles.announceItem}>
-                      <Text style={styles.announceItemTitle}>{annTitle}</Text>
-                      <Muted numberOfLines={3} style={styles.announceItemBody}>
-                        {annBody}
-                      </Muted>
-                      <Muted style={styles.announceItemDate}>
-                        {new Date(a.created_at).toLocaleDateString()}
-                      </Muted>
-                    </View>
-                  );
-                })}
-              </Card>
-            </AnimatedSection>
-          ) : null}
+          <AnimatedSection delay={40}>{searchPill}</AnimatedSection>
 
-          <AnimatedSection delay={80} style={styles.mobileStart}>
-            <Text style={styles.mobileSectionLabel}>{t('home.mobileNeedTitle')}</Text>
-            <View style={styles.mobileTileGrid}>
-              {mobileQuick.map((q, index) => (
-                <TouchableOpacity
-                  key={q.go}
-                  style={[styles.mobileTile, index === 2 && styles.mobileTileWide]}
-                  onPress={() => router.push(q.go as any)}
-                  activeOpacity={0.86}
-                >
-                  <View style={[styles.mobileTileIcon, { backgroundColor: q.soft }]}>
-                    <Text style={[styles.mobileTileMark, { color: q.color }]}>{q.mark}</Text>
-                  </View>
-                  <Text style={styles.mobileTileTitle}>{q.label}</Text>
-                  <Muted numberOfLines={2} style={styles.mobileTileBody}>
-                    {q.caption}
-                  </Muted>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <AnimatedSection delay={80}>
+            <Card style={styles.heroCard}>
+              <View style={styles.heroPhotoWrap}>
+                <Image
+                  source={heroImage}
+                  resizeMode="contain"
+                  style={styles.heroPhoto as ImageStyle}
+                  accessibilityLabel={t('home.heroPhotoAlt')}
+                />
+              </View>
+              <Body style={styles.heroBodyText}>{t('home.heroBody')}</Body>
+              <View style={styles.heroActions}>
+                <Button label={t('home.heroPrimary')} onPress={() => router.push('/services')} />
+                <Button
+                  label={t('home.heroSecondary')}
+                  variant="secondary"
+                  onPress={() => router.push('/help')}
+                />
+              </View>
+            </Card>
           </AnimatedSection>
 
-          <AnimatedSection delay={140} style={styles.mobileCategories}>
-            <View style={styles.mobileSectionHeader}>
-              <Text style={styles.mobileSectionLabel}>{t('home.browseCategories')}</Text>
-              <TouchableOpacity onPress={() => router.push('/services')} activeOpacity={0.7}>
-                <Text style={styles.seeAll}>{t('home.seeAll')} -&gt;</Text>
-              </TouchableOpacity>
+          {announcementsBlock}
+
+          <AnimatedSection delay={120} style={styles.section}>
+            <H2>{t('home.mobileNeedTitle')}</H2>
+            {quickList(mobileQuick)}
+          </AnimatedSection>
+
+          <AnimatedSection delay={160} style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <H2>{t('home.browseCategories')}</H2>
+              {seeAllLink}
             </View>
-            <View style={styles.mobileCategoryGrid}>
-              {SERVICE_CATEGORIES.slice(0, 6).map((c) => {
-                const cc = categoryColor(c.key);
-                return (
-                  <TouchableOpacity
-                    key={c.key}
-                    style={styles.mobileCategory}
-                    activeOpacity={0.85}
-                    onPress={() => router.push({ pathname: '/services', params: { category: c.key } })}
-                  >
-                    <View style={[styles.mobileCategoryIcon, { backgroundColor: cc.bg }]}>
-                      <Text style={styles.catEmoji}>{c.emoji}</Text>
-                    </View>
-                    <Text style={styles.mobileCategoryText} numberOfLines={2}>
-                      {t(`categories.${c.key}`)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {categoryTiles}
           </AnimatedSection>
 
           {featured.length > 0 ? (
-            <AnimatedSection delay={200} style={styles.mobileFeatured}>
-              <View style={styles.mobileSectionHeader}>
-                <View>
-                  <Text style={styles.mobileSectionLabel}>{t('common.verified')}</Text>
-                  <H2 style={styles.mobileH2}>{t('home.topRated')}</H2>
+            <AnimatedSection delay={200} style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderBlock}>
+                  <Text style={styles.kicker}>{t('common.verified')}</Text>
+                  <H2>{t('home.topRated')}</H2>
                 </View>
-                <TouchableOpacity onPress={() => router.push('/services')} activeOpacity={0.7}>
-                  <Text style={styles.seeAll}>{t('home.seeAll')} -&gt;</Text>
-                </TouchableOpacity>
+                {seeAllLink}
               </View>
-              {featured.slice(0, 3).map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={styles.mobileProvider}
-                  activeOpacity={0.85}
-                  onPress={() => router.push(`/service/${s.id}`)}
-                >
-                  <View style={[styles.mobileProviderIcon, { backgroundColor: categoryColor(s.category).bg }]}>
-                    <Text style={styles.railEmoji}>{serviceEmoji(s.category)}</Text>
-                  </View>
-                  <View style={styles.mobileProviderCopy}>
-                    <Text style={styles.mobileProviderName} numberOfLines={2}>
-                      {s.name}
-                    </Text>
-                    <Muted numberOfLines={1} style={styles.mobileProviderMeta}>
-                      {s.town ? `${s.town} - ` : ''}
-                      {t(`categories.${s.category}`)}
-                    </Muted>
-                  </View>
-                  <Stars rating={s.rating} />
-                </TouchableOpacity>
-              ))}
+              <View style={styles.providerStack}>{featured.slice(0, 3).map(providerCard)}</View>
             </AnimatedSection>
           ) : null}
 
-          {isAdmin ? (
-            <TouchableOpacity
-              style={styles.adminRow}
-              activeOpacity={0.85}
-              onPress={() => router.push('/admin')}
-            >
-              <Text style={styles.adminRowText}>{t('home.adminArea')}</Text>
-            </TouchableOpacity>
-          ) : null}
+          {adminBlock}
         </ScrollView>
       </View>
     );
@@ -336,838 +370,565 @@ export default function Home() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
-      <View style={styles.backdropTop} />
-      <View style={styles.backdropBottom} />
       <AppHeader />
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
-        <AnimatedSection style={styles.heroShell}>
-          <ImageBackground
-            source={heroImage}
-            resizeMode="cover"
-            style={styles.heroImage}
-            imageStyle={heroImageLayerStyle}
-            accessibilityLabel={t('home.heroPhotoAlt')}
-          >
-            <View style={styles.heroScrim}>
-              <View style={styles.heroLayout}>
-                <View style={styles.heroCopy}>
-                  <Text style={styles.kicker}>{t('home.heroKicker')}</Text>
-                  <H1 style={styles.heroTitle}>
-                    {t('home.greeting')}
-                    {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
-                  </H1>
-                  <Body style={styles.heroBody}>{t('home.heroBody')}</Body>
-                  <View style={styles.signalRow}>
-                    {[t('home.signalCity'), t('home.signalVerified'), t('home.signalCaregiver')].map((label) => (
-                      <View key={label} style={styles.signalPill}>
-                        <View style={styles.signalDot} />
-                        <Text style={styles.signalText}>{label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <View style={styles.heroActions}>
-                    <TouchableOpacity
-                      style={[styles.primaryCta, { backgroundColor: colors.primary }]}
-                      activeOpacity={0.88}
-                      onPress={() => router.push('/services')}
-                    >
-                      <Text style={[styles.primaryCtaText, { color: onPrimary }]}>
-                        {t('home.heroPrimary')}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.secondaryCta}
-                      activeOpacity={0.88}
-                      onPress={() => router.push('/help')}
-                    >
-                      <Text style={styles.secondaryCtaText}>{t('home.heroSecondary')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+        <AnimatedSection>
+          <Card style={styles.heroCardWide}>
+            <View style={styles.heroCopyWide}>
+              <Text style={styles.kicker}>{t('home.heroKicker')}</Text>
+              <H1 style={styles.heroTitleWide}>
+                {t('home.greeting')}
+                {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
+              </H1>
+              <Body style={styles.heroBodyText}>{t('home.heroBody')}</Body>
 
-                {showHeroProof ? (
-                  <View style={styles.heroProof}>
-                    <Text style={styles.heroProofLabel}>{t('home.scaleTitle')}</Text>
-                    <Text style={styles.heroProofBody}>{t('home.scaleBody')}</Text>
-                  </View>
-                ) : null}
+              <View style={styles.signalRow}>
+                {[t('home.signalCity'), t('home.signalVerified'), t('home.signalCaregiver')].map(
+                  (label) => (
+                    <View key={label} style={styles.signalPill}>
+                      <Feather name="check" size={16} color={colors.text} />
+                      <Text style={styles.signalText}>{label}</Text>
+                    </View>
+                  ),
+                )}
               </View>
+
+              <View style={styles.heroSearchWide}>{searchPill}</View>
+
+              <View style={styles.heroActionsWide}>
+                <View style={styles.heroActionItem}>
+                  <Button label={t('home.heroPrimary')} onPress={() => router.push('/services')} />
+                </View>
+                <View style={styles.heroActionItem}>
+                  <Button
+                    label={t('home.heroSecondary')}
+                    variant="secondary"
+                    onPress={() => router.push('/help')}
+                  />
+                </View>
+              </View>
+
+              {showHeroProof ? (
+                <View style={styles.heroProof}>
+                  <Text style={styles.heroProofLabel}>{t('home.scaleTitle')}</Text>
+                  <Text style={styles.heroProofBody}>{t('home.scaleBody')}</Text>
+                </View>
+              ) : null}
             </View>
-          </ImageBackground>
+            <View style={styles.heroMediaWide}>
+              <Image
+                source={heroImage}
+                resizeMode="cover"
+                style={styles.heroPhotoWide as ImageStyle}
+                accessibilityLabel={t('home.heroPhotoAlt')}
+              />
+            </View>
+          </Card>
         </AnimatedSection>
 
-        {announcements.length > 0 ? (
-          <AnimatedSection delay={60} style={styles.announceSection}>
-            <Card style={styles.announceCard}>
-              <H2>{t('announcements.title')}</H2>
-              {announcements.map((a) => {
-                const annTitle = lang === 'hi' && a.title_hi ? a.title_hi : a.title;
-                const annBody = lang === 'hi' && a.body_hi ? a.body_hi : a.body;
-                return (
-                  <View key={a.id} style={styles.announceItem}>
-                    <Text style={styles.announceItemTitle}>{annTitle}</Text>
-                    <Muted numberOfLines={3} style={styles.announceItemBody}>
-                      {annBody}
-                    </Muted>
-                    <Muted style={styles.announceItemDate}>
-                      {new Date(a.created_at).toLocaleDateString()}
-                    </Muted>
-                  </View>
-                );
-              })}
-            </Card>
-          </AnimatedSection>
-        ) : null}
+        {announcementsBlock}
 
-        <AnimatedSection delay={80} style={styles.metricGrid}>
-          {metrics.map((metric, index) => (
-            <View key={metric} style={styles.metricCard}>
-              <Text style={styles.metricNumber}>0{index + 1}</Text>
-              <Text style={styles.metricText}>{metric}</Text>
-            </View>
-          ))}
-        </AnimatedSection>
-
-        <AnimatedSection delay={140} style={styles.proofSection}>
-          <View style={styles.proofCopy}>
-            <Text style={styles.kickerDark}>{t('home.trustTitle')}</Text>
-            <H2 style={styles.proofTitle}>{t('home.proofTitle')}</H2>
-            <Body style={styles.proofBody}>{t('home.proofBody')}</Body>
-          </View>
-          <View style={styles.proofStack}>
-            {[
-              t('home.opsVerifyBody'),
-              t('home.opsCoordinateBody'),
-              t('home.opsEscalateBody'),
-            ].map((item, index) => (
-              <View key={item} style={styles.proofRow}>
-                <Text style={styles.proofIndex}>{index + 1}</Text>
-                <Text style={styles.proofRowText}>{item}</Text>
+        <AnimatedSection delay={80}>
+          <View style={styles.metricGrid}>
+            {metrics.map((metric, index) => (
+              <View key={metric} style={styles.metricCard}>
+                <Text style={styles.metricNumber}>{`0${index + 1}`}</Text>
+                <Text style={styles.metricText}>{metric}</Text>
               </View>
             ))}
           </View>
         </AnimatedSection>
 
-        <AnimatedSection delay={200} style={styles.quickGrid}>
-          {quick.map((q) => (
-            <TouchableOpacity
-              key={q.go}
-              style={styles.quickPanel}
-              onPress={() => router.push(q.go as any)}
-              activeOpacity={0.86}
-            >
-              <View style={[styles.quickMark, { backgroundColor: q.soft }]}>
-                <Text style={[styles.quickMarkText, { color: q.color }]}>{q.mark}</Text>
-              </View>
-              <Text style={styles.quickLabel}>{q.label}</Text>
-              <Muted style={styles.quickCaption}>{q.caption}</Muted>
-            </TouchableOpacity>
-          ))}
+        <AnimatedSection delay={140}>
+          <Card style={styles.proofCard}>
+            <View style={styles.proofCopy}>
+              <Text style={styles.kicker}>{t('home.trustTitle')}</Text>
+              <H2 style={styles.proofTitle}>{t('home.proofTitle')}</H2>
+              <Body style={styles.proofBody}>{t('home.proofBody')}</Body>
+            </View>
+            <View style={styles.proofStack}>
+              {[
+                t('home.opsVerifyBody'),
+                t('home.opsCoordinateBody'),
+                t('home.opsEscalateBody'),
+              ].map((item, index) => (
+                <View key={item} style={[styles.proofRow, index > 0 && styles.proofRowDivider]}>
+                  <View style={styles.listDisc}>
+                    <Text style={styles.stepIndex}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.proofRowText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </Card>
         </AnimatedSection>
 
-        <AnimatedSection delay={260} style={styles.journeySection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.journeyKicker}>{t('home.journeyTitle')}</Text>
-            <H2 style={styles.journeyTitle}>{t('home.opsTitle')}</H2>
-          </View>
-          <View style={styles.journeyRail}>
-            {journey.map((step, index) => (
-              <View key={step.label} style={styles.journeyStep}>
-                <View style={[styles.journeyDot, { backgroundColor: step.color }]}>
-                  <Text style={[styles.journeyDotText, { color: onPrimary }]}>{index + 1}</Text>
+        <AnimatedSection delay={200} style={styles.section}>
+          {quickList(quick)}
+        </AnimatedSection>
+
+        <AnimatedSection delay={260}>
+          <Card style={styles.journeyCard}>
+            <View style={styles.sectionHeaderBlock}>
+              <Text style={styles.kicker}>{t('home.journeyTitle')}</Text>
+              <H2>{t('home.opsTitle')}</H2>
+            </View>
+            <View style={styles.journeyRail}>
+              {journey.map((step, index) => (
+                <View
+                  key={step.label}
+                  style={[styles.journeyStep, index > 0 && styles.journeyStepBorder]}
+                >
+                  <View style={styles.listDisc}>
+                    <Text style={styles.stepIndex}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.journeyLabel}>{step.label}</Text>
+                  <Muted style={styles.journeyBody}>{step.body}</Muted>
                 </View>
-                <View style={styles.journeyLine} />
-                <Text style={styles.journeyLabel}>{step.label}</Text>
-                <Muted style={styles.journeyBody}>{step.body}</Muted>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          </Card>
         </AnimatedSection>
 
         {featured.length > 0 ? (
-          <AnimatedSection delay={320}>
-            <View style={styles.railHeader}>
-              <View>
-                <Text style={styles.kickerDark}>{t('common.verified')}</Text>
+          <AnimatedSection delay={320} style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeaderBlock}>
+                <Text style={styles.kicker}>{t('common.verified')}</Text>
                 <H2>{t('home.topRated')}</H2>
               </View>
-              <TouchableOpacity onPress={() => router.push('/services')} activeOpacity={0.7}>
-                <Text style={styles.seeAll}>{t('home.seeAll')} -&gt;</Text>
-              </TouchableOpacity>
+              {seeAllLink}
             </View>
-            <ScrollView
-              horizontal={!isWide}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalRail}
-            >
-              {featured.slice(0, isWide ? 4 : 8).map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={styles.railCard}
-                  activeOpacity={0.85}
-                  onPress={() => router.push(`/service/${s.id}`)}
-                >
-                  <View style={styles.railCardTop}>
-                    <View style={[styles.railIcon, { backgroundColor: categoryColor(s.category).bg }]}>
-                      <Text style={styles.railEmoji}>{serviceEmoji(s.category)}</Text>
-                    </View>
-                    {s.verified ? <Text style={styles.railVerified}>{t('common.verified')}</Text> : null}
-                  </View>
-                  <Text style={styles.railName} numberOfLines={2}>
-                    {s.name}
-                  </Text>
-                  {s.town ? (
-                    <Muted numberOfLines={1} style={styles.railTown}>
-                      {s.town}
-                    </Muted>
-                  ) : null}
-                  <View style={styles.railMeta}>
-                    <Stars rating={s.rating} />
-                    <Text style={styles.railCategory}>{t(`categories.${s.category}`)}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.providerGrid}>{featured.slice(0, 4).map(providerCard)}</View>
           </AnimatedSection>
         ) : null}
 
-        <AnimatedSection delay={380} style={styles.categorySection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.kickerDark}>{t('home.scaleTitle')}</Text>
+        <AnimatedSection delay={380} style={styles.section}>
+          <View style={styles.sectionHeaderBlock}>
+            <Text style={styles.kicker}>{t('home.scaleTitle')}</Text>
             <H2>{t('home.browseCategories')}</H2>
           </View>
-          <View style={styles.catGrid}>
-            {SERVICE_CATEGORIES.map((c) => {
-              const cc = categoryColor(c.key);
-              return (
-                <TouchableOpacity
-                  key={c.key}
-                  style={styles.cat}
-                  activeOpacity={0.85}
-                  onPress={() => router.push({ pathname: '/services', params: { category: c.key } })}
-                >
-                  <View style={[styles.catIcon, { backgroundColor: cc.bg }]}>
-                    <Text style={styles.catEmoji}>{c.emoji}</Text>
-                  </View>
-                  <Text style={styles.catLabel}>{t(`categories.${c.key}`)}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {categoryTiles}
         </AnimatedSection>
 
-        {isAdmin ? (
-          <TouchableOpacity
-            style={styles.adminRow}
-            activeOpacity={0.85}
-            onPress={() => router.push('/admin')}
-          >
-            <Text style={styles.adminRowText}>{t('home.adminArea')}</Text>
-          </TouchableOpacity>
-        ) : null}
+        {adminBlock}
 
-        <AnimatedSection delay={440} style={styles.railsSection}>
-          <View style={styles.railsCopy}>
-            <Text style={styles.kickerDark}>{t('home.railsTitle')}</Text>
-            <H2>{t('home.scaleTitle')}</H2>
-            <Muted style={styles.railsBody}>{t('home.railsBody')}</Muted>
-          </View>
-          <View style={styles.railsWrap}>
-            {TRUST_RAILS.map((rail) => (
-              <TouchableOpacity
-                key={rail.label}
-                style={styles.railChip}
-                activeOpacity={0.8}
-                onPress={() => Linking.openURL(rail.url)}
-              >
-                <Text style={styles.railChipText}>{rail.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <AnimatedSection delay={440}>
+          <Card style={styles.railsCard}>
+            <View style={styles.railsCopy}>
+              <Text style={styles.kicker}>{t('home.railsTitle')}</Text>
+              <H2>{t('home.scaleTitle')}</H2>
+              <Muted style={styles.railsBody}>{t('home.railsBody')}</Muted>
+            </View>
+            <View style={styles.railsWrap}>
+              {TRUST_RAILS.map((rail) => (
+                <Pressable
+                  key={rail.label}
+                  accessibilityRole="link"
+                  accessibilityLabel={rail.label}
+                  onPress={() => Linking.openURL(rail.url)}
+                  style={({ pressed }) => [
+                    styles.railChip,
+                    pressed && { backgroundColor: colors.cardStrong },
+                  ]}
+                >
+                  <Text style={styles.railChipText}>{rail.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Card>
         </AnimatedSection>
       </ScrollView>
     </View>
   );
 }
 
-function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
-  const onImage = colors.textOnDark;
+function makeStyles(colors: AppColors, isWide: boolean) {
   const contentMax = 1120;
 
   return StyleSheet.create({
     screen: { flex: 1 },
-    backdropTop: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: isWide ? 520 : 420,
-      backgroundColor: colors.surfaceTint,
-      opacity: isDark ? 0.3 : 0.96,
-    },
-    backdropBottom: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      height: 260,
-      backgroundColor: colors.accentSoft,
-      opacity: isDark ? 0.12 : 0.28,
-    },
     content: {
       width: '100%',
       maxWidth: contentMax,
       alignSelf: 'center',
       paddingHorizontal: isWide ? space.xl : space.md,
-      paddingTop: isWide ? space.xl : space.md,
-      paddingBottom: space.xl * 2,
-      gap: isWide ? space.xl : space.lg,
+      paddingTop: space.sm,
+      paddingBottom: space.xxl * 2,
+      gap: space.lg,
     },
     mobileContent: {
       width: '100%',
       alignSelf: 'center',
       paddingHorizontal: space.md,
-      paddingTop: space.md,
+      paddingTop: space.sm,
       paddingBottom: 108,
-      gap: space.md,
-    },
-    mobileHero: {
-      borderRadius: radius.xl,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      overflow: 'hidden',
-      ...shadow.sm,
-    },
-    mobileHeroCopy: {
-      paddingHorizontal: space.lg,
-      paddingTop: space.lg,
-      paddingBottom: space.md,
-      gap: space.sm,
-    },
-    mobileTitle: {
-      fontSize: 30,
-      lineHeight: 37,
-      letterSpacing: 0,
-    },
-    mobileBody: {
-      color: colors.textMuted,
-      lineHeight: 24,
-    },
-    mobilePhotoWrap: {
-      backgroundColor: colors.surfaceTint,
-      borderBottomWidth: 1,
-      borderColor: colors.glassBorder,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.sm,
-    },
-    mobilePhoto: {
-      width: '100%',
-      height: 214,
-      borderRadius: radius.lg,
-    },
-    mobileActionRow: {
-      padding: space.md,
-      gap: space.sm,
-    },
-    mobilePrimary: {
-      minHeight: 56,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.md,
-      ...shadow.sm,
-    },
-    mobileSecondary: {
-      minHeight: 52,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.chipBg,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.md,
-    },
-    mobileSecondaryText: {
-      color: colors.primaryDark,
-      fontSize: font.sm,
-      fontWeight: '900',
-      textAlign: 'center',
-    },
-    mobileStart: {
-      gap: space.sm,
-    },
-    mobileSectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: space.sm,
-    },
-    mobileSectionLabel: {
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: '900',
-    },
-    mobileTileGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: space.sm,
-    },
-    mobileTile: {
-      width: '48.4%',
-      minHeight: 132,
-      borderRadius: radius.lg,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: space.md,
-      gap: 8,
-      ...shadow.sm,
-    },
-    mobileTileWide: {
-      width: '100%',
-      minHeight: 112,
-    },
-    mobileTileIcon: {
-      alignSelf: 'flex-start',
-      minHeight: 34,
-      minWidth: 54,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.sm,
-    },
-    mobileTileMark: {
-      fontSize: font.xs,
-      fontWeight: '900',
-    },
-    mobileTileTitle: {
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: '900',
-      lineHeight: 22,
-    },
-    mobileTileBody: {
-      fontSize: font.xs,
-      lineHeight: 19,
-    },
-    mobileCategories: {
-      gap: space.sm,
-    },
-    mobileCategoryGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: space.sm,
-    },
-    mobileCategory: {
-      width: '48.4%',
-      minHeight: 116,
-      borderRadius: radius.lg,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: space.sm,
-      alignItems: 'center',
-      justifyContent: 'center',
-      ...shadow.sm,
-    },
-    mobileCategoryIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    mobileCategoryText: {
-      color: colors.text,
-      fontSize: font.xs,
-      fontWeight: '900',
-      textAlign: 'center',
-      lineHeight: 18,
-      marginTop: 8,
-    },
-    mobileFeatured: {
-      gap: space.sm,
-    },
-    mobileH2: {
-      fontSize: font.lg,
-      lineHeight: 27,
-    },
-    mobileProvider: {
-      minHeight: 94,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.sm,
-      borderRadius: radius.lg,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: space.md,
-      ...shadow.sm,
-    },
-    mobileProviderIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: radius.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    mobileProviderCopy: {
-      flex: 1,
-      minWidth: 0,
-      gap: 4,
-    },
-    mobileProviderName: {
-      color: colors.text,
-      fontSize: font.sm,
-      fontWeight: '900',
-      lineHeight: 20,
-    },
-    mobileProviderMeta: {
-      fontSize: font.xs,
-      lineHeight: 18,
-    },
-    heroShell: {
-      borderRadius: isWide ? 28 : radius.xl,
-      overflow: 'hidden',
-      backgroundColor: colors.bg,
-      ...shadow.md,
-    },
-    heroImage: {
-      minHeight: isWide ? 560 : 700,
-      justifyContent: 'flex-end',
-    },
-    heroScrim: {
-      flex: 1,
-      backgroundColor: isDark
-        ? isWide
-          ? 'rgba(0,0,0,0.44)'
-          : 'rgba(0,0,0,0.52)'
-        : isWide
-          ? 'rgba(0,0,0,0.36)'
-          : 'rgba(0,0,0,0.48)',
-      padding: isWide ? space.xl : space.lg,
-      justifyContent: 'flex-end',
-    },
-    heroLayout: {
-      flex: 1,
-      flexDirection: isWide ? 'row' : 'column',
-      alignItems: isWide ? 'flex-end' : 'stretch',
-      justifyContent: 'space-between',
       gap: space.lg,
     },
-    heroCopy: {
-      maxWidth: isWide ? 580 : '100%',
-      backgroundColor: isWide ? 'rgba(0,0,0,0.56)' : 'rgba(0,0,0,0.66)',
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.22)',
-      padding: isWide ? space.xl : space.lg,
-    },
+
+    // Shared
     kicker: {
-      color: 'rgba(255,255,255,0.72)',
+      color: colors.textMuted,
       fontSize: font.xs,
-      fontWeight: '900',
+      fontFamily: family.medium,
+      lineHeight: Math.round(font.xs * 1.4),
+      letterSpacing: 0.8,
       textTransform: 'uppercase',
     },
-    kickerDark: {
-      color: colors.accentDark,
-      fontSize: font.xs,
-      fontWeight: '900',
-      textTransform: 'uppercase',
+    section: { gap: space.md },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      gap: space.md,
     },
-    heroTitle: {
-      color: onImage,
-      marginTop: space.sm,
-      fontSize: isWide ? 48 : 32,
-      lineHeight: isWide ? 56 : 39,
-      maxWidth: 650,
+    sectionHeaderBlock: { gap: space.xs },
+    seeAllBtn: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
     },
-    heroBody: {
-      color: 'rgba(255,255,255,0.84)',
-      marginTop: space.md,
+    seeAllText: {
+      color: colors.accent,
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+    },
+    searchPill: {
+      height: 56,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      paddingHorizontal: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    searchPillText: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+    },
+
+    // Greeting (mobile)
+    greetingBlock: { gap: space.sm },
+
+    // Hero (mobile)
+    heroCard: { gap: space.md },
+    heroPhotoWrap: {
+      height: 210,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceTint,
+      overflow: 'hidden',
+    },
+    heroPhoto: { width: '100%', height: '100%' },
+    heroBodyText: { color: colors.textMuted },
+    heroActions: { gap: 12 },
+
+    // Hero (wide)
+    heroCardWide: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      borderRadius: radius.xl,
+      padding: 0,
+    },
+    heroCopyWide: {
+      flex: 1.05,
+      padding: space.xl,
+      gap: space.md,
+    },
+    heroTitleWide: {
+      fontSize: font.display,
+      lineHeight: Math.round(font.display * 1.12),
+      letterSpacing: tracking.display,
+    },
+    heroSearchWide: { maxWidth: 480 },
+    heroActionsWide: {
+      flexDirection: 'row',
+      gap: 12,
       maxWidth: 560,
     },
-    signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: space.lg },
+    heroActionItem: { flex: 1 },
+    heroMediaWide: { flex: 1, minHeight: 460 },
+    heroPhotoWide: { width: '100%', height: '100%' },
+    signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
     signalPill: {
       minHeight: 36,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
       borderRadius: radius.pill,
-      paddingHorizontal: space.sm,
-      backgroundColor: 'rgba(255,255,255,0.14)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 12,
+      backgroundColor: colors.surfaceTint,
     },
-    signalDot: {
-      width: 7,
-      height: 7,
-      borderRadius: radius.pill,
-      backgroundColor: 'rgba(255,255,255,0.92)',
-    },
-    signalText: { color: onImage, fontSize: font.xs, fontWeight: '800' },
-    heroActions: { flexDirection: isWide ? 'row' : 'column', gap: space.sm, marginTop: space.lg },
-    primaryCta: {
-      minHeight: 58,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.lg,
-      ...shadow.sm,
-    },
-    primaryCtaText: { fontSize: font.md, fontWeight: '900', textAlign: 'center' },
-    secondaryCta: {
-      minHeight: 58,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.26)',
-      backgroundColor: 'rgba(255,255,255,0.12)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.lg,
-    },
-    secondaryCtaText: { color: onImage, fontSize: font.md, fontWeight: '900', textAlign: 'center' },
-    heroProof: {
-      width: isWide ? 286 : 320,
-      marginRight: isWide ? 132 : 0,
-      borderRadius: radius.xl,
-      backgroundColor: 'rgba(255,255,255,0.82)',
-      padding: isWide ? space.md : space.lg,
-    },
-    heroProofLabel: { color: '#0F2525', fontSize: font.sm, fontWeight: '900', lineHeight: 22 },
-    heroProofBody: { color: '#526667', fontSize: font.xs, lineHeight: 20, marginTop: space.xs, fontWeight: '600' },
-    metricGrid: {
-      flexDirection: isWide ? 'row' : 'column',
-      gap: space.sm,
-    },
-    metricCard: {
-      flex: 1,
-      minHeight: 120,
-      borderRadius: radius.lg,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: space.lg,
-      justifyContent: 'space-between',
-      ...shadow.sm,
-    },
-    metricNumber: { color: colors.accentDark, fontSize: font.xs, fontWeight: '900' },
-    metricText: { color: colors.text, fontSize: font.md, lineHeight: 25, fontWeight: '900' },
-    proofSection: {
-      flexDirection: isWide ? 'row' : 'column',
-      gap: space.lg,
-      alignItems: 'stretch',
-      borderRadius: radius.xl,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: isWide ? space.xl : space.lg,
-      ...shadow.sm,
-    },
-    proofCopy: { flex: 1.05, justifyContent: 'center' },
-    proofTitle: { marginTop: space.sm },
-    proofBody: { marginTop: space.sm, color: colors.textMuted },
-    proofStack: { flex: 1, gap: space.sm },
-    proofRow: {
-      flexDirection: 'row',
-      gap: space.md,
-      alignItems: 'flex-start',
-      borderRadius: radius.lg,
-      backgroundColor: colors.chipBg,
-      padding: space.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    proofIndex: { color: colors.primaryDark, fontSize: font.md, fontWeight: '900' },
-    proofRowText: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: 22, fontWeight: '700' },
-    quickGrid: {
-      flexDirection: isWide ? 'row' : 'column',
-      gap: space.sm,
-    },
-    quickPanel: {
-      flex: 1,
-      minHeight: isWide ? 190 : 132,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      backgroundColor: colors.cardStrong,
-      padding: space.lg,
-      justifyContent: 'space-between',
-      ...shadow.sm,
-    },
-    quickMark: {
-      alignSelf: 'flex-start',
-      minWidth: 58,
-      minHeight: 38,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.sm,
-    },
-    quickMarkText: { fontSize: font.xs, fontWeight: '900' },
-    quickLabel: { color: colors.text, fontWeight: '900', fontSize: isWide ? font.lg : font.md, marginTop: space.md },
-    quickCaption: { fontSize: font.sm, marginTop: space.xs },
-    journeySection: {
-      borderRadius: radius.xl,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : '#050505',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.10)',
-      padding: isWide ? space.xl : space.lg,
-      gap: space.lg,
-      ...shadow.md,
-    },
-    journeyKicker: {
-      color: 'rgba(255,255,255,0.72)',
-      fontSize: font.xs,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-    },
-    journeyTitle: { color: onImage },
-    sectionHeader: { gap: space.xs },
-    journeyRail: {
-      flexDirection: isWide ? 'row' : 'column',
-      gap: space.md,
-    },
-    journeyStep: {
-      flex: 1,
-      borderRadius: radius.lg,
-      backgroundColor: 'rgba(255,255,255,0.10)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.16)',
-      padding: space.lg,
-      overflow: 'hidden',
-    },
-    journeyDot: {
-      width: 42,
-      height: 42,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    journeyDotText: { fontSize: font.sm, fontWeight: '900' },
-    journeyLine: {
-      height: 2,
-      width: '46%',
-      backgroundColor: 'rgba(255,255,255,0.24)',
-      marginVertical: space.md,
-    },
-    journeyLabel: { color: onImage, fontSize: font.lg, fontWeight: '900' },
-    journeyBody: { color: 'rgba(255,255,255,0.82)', marginTop: space.xs },
-    railHeader: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      marginBottom: space.md,
-      gap: space.md,
-    },
-    seeAll: { color: colors.primaryDark, fontWeight: '900', fontSize: font.sm },
-    horizontalRail: {
-      gap: space.sm,
-      paddingBottom: space.xs,
-      flexDirection: isWide ? 'row' : undefined,
-      flexWrap: isWide ? 'wrap' : undefined,
-    },
-    railCard: {
-      width: isWide ? undefined : 224,
-      flexBasis: isWide ? '24%' : undefined,
-      flexGrow: isWide ? 1 : 0,
-      minHeight: 210,
-      backgroundColor: colors.cardStrong,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: space.lg,
-      ...shadow.sm,
-    },
-    railCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    railIcon: {
-      width: 54,
-      height: 54,
-      borderRadius: radius.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    railEmoji: { fontSize: 27 },
-    railVerified: { color: colors.success, fontWeight: '900', fontSize: font.xs },
-    railName: { fontSize: font.md, fontWeight: '900', color: colors.text, lineHeight: font.md * 1.25, marginTop: space.md },
-    railTown: { fontSize: font.xs, marginTop: 4 },
-    railMeta: { gap: space.xs, marginTop: 'auto', paddingTop: space.md },
-    railCategory: { color: colors.textMuted, fontSize: font.xs, fontWeight: '800' },
-    categorySection: { gap: space.md },
-    catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-    cat: {
-      width: isWide ? '15.4%' : '31.5%',
-      minHeight: isWide ? 150 : 122,
-      backgroundColor: colors.cardStrong,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: space.sm,
-      ...shadow.sm,
-    },
-    catIcon: {
-      width: 58,
-      height: 58,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    catEmoji: { fontSize: 29 },
-    catLabel: {
-      marginTop: 8,
-      fontSize: font.xs,
-      fontWeight: '900',
+    signalText: {
       color: colors.text,
-      textAlign: 'center',
+      fontSize: font.xs,
+      fontFamily: family.medium,
     },
-    railsSection: {
-      flexDirection: isWide ? 'row' : 'column',
-      alignItems: isWide ? 'center' : 'stretch',
-      gap: space.lg,
-      borderRadius: radius.xl,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: isWide ? space.xl : space.lg,
-      ...shadow.sm,
+    heroProof: {
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceTint,
+      padding: space.md,
+      gap: space.xs,
+      maxWidth: 480,
     },
-    railsCopy: { flex: 1.1, gap: space.xs },
-    railsBody: { fontSize: font.sm, marginTop: space.sm },
-    railsWrap: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    railChip: {
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.chipBg,
-      paddingVertical: 10,
-      paddingHorizontal: space.md,
+    heroProofLabel: {
+      color: colors.text,
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.sm * 1.45),
     },
-    railChipText: { color: colors.primaryDark, fontSize: font.xs, fontWeight: '900' },
-    announceSection: { gap: space.sm },
+    heroProofBody: {
+      color: colors.textMuted,
+      fontSize: font.xs,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.xs * 1.4),
+    },
+
+    // Announcements
     announceCard: { gap: space.sm },
     announceItem: {
-      gap: 4,
+      gap: space.xs,
       paddingTop: space.sm,
-      borderTopWidth: 1,
+      borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    announceItemTitle: { color: colors.text, fontSize: font.sm, fontWeight: '900' },
-    announceItemBody: { fontSize: font.sm },
-    announceItemDate: { fontSize: font.xs },
-    adminRow: {
-      alignSelf: isWide ? 'flex-start' : 'stretch',
-      minHeight: 48,
+    announceItemTitle: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.5),
+    },
+    announceItemDate: {
+      color: colors.textSubtle,
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      lineHeight: Math.round(font.xs * 1.4),
+    },
+
+    // Quick-action list (Uber row anatomy)
+    rowCard: { padding: 0 },
+    listRow: {
+      minHeight: 64,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: space.md,
+      gap: 12,
+    },
+    rowDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginLeft: 72,
+    },
+    listDisc: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    listCopy: { flex: 1, minWidth: 0 },
+    listTitle: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.5),
+    },
+    listSubtitle: {
+      color: colors.textMuted,
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+      marginTop: 2,
+    },
+
+    // Category tiles (Uber suggestions grid)
+    tileGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    tileWrap: {
+      width: isWide ? '14%' : '22%',
+      minHeight: 96,
+    },
+    tile: {
+      height: 72,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tileEmoji: { fontSize: 32 },
+    tileLabel: {
+      marginTop: space.sm,
+      color: colors.text,
+      fontSize: font.sm,
+      fontFamily: family.medium,
+      textAlign: 'center',
+    },
+
+    // Provider cards (Kroger anatomy)
+    providerStack: { gap: 12 },
+    providerGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    providerCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.md,
+      ...shadow.sm,
+    },
+    providerCardWide: { width: '48.8%' },
+    providerLead: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    providerEmoji: { fontSize: 32 },
+    providerCopy: { flex: 1, minWidth: 0 },
+    providerName: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.35),
+    },
+    providerMeta: {
+      color: colors.textMuted,
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+      marginTop: space.xs,
+    },
+    providerRating: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginTop: 6,
+    },
+
+    // Metrics (wide)
+    metricGrid: { flexDirection: 'row', gap: 12 },
+    metricCard: {
+      flex: 1,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      padding: space.lg,
+      gap: space.sm,
+      ...shadow.sm,
+    },
+    metricNumber: {
+      color: colors.text,
+      fontSize: font.xl,
+      fontFamily: family.heavy,
+      letterSpacing: tracking.xl,
+      lineHeight: Math.round(font.xl * 1.25),
+    },
+    metricText: {
+      color: colors.textMuted,
+      fontSize: font.sm,
+      fontFamily: family.medium,
+      lineHeight: Math.round(font.sm * 1.45),
+    },
+
+    // Proof (wide)
+    proofCard: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: space.lg,
+      padding: space.xl,
+    },
+    proofCopy: { flex: 1.05, justifyContent: 'center', gap: space.xs },
+    proofTitle: { marginTop: space.xs },
+    proofBody: { color: colors.textMuted, marginTop: space.xs },
+    proofStack: { flex: 1 },
+    proofRow: {
+      minHeight: 64,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+    },
+    proofRowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    stepIndex: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.bold,
+    },
+    proofRowText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+    },
+
+    // Journey (wide)
+    journeyCard: { gap: space.lg, padding: space.xl },
+    journeyRail: { flexDirection: 'row', gap: space.lg },
+    journeyStep: { flex: 1 },
+    journeyStepBorder: {
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: colors.border,
+      paddingLeft: space.lg,
+    },
+    journeyLabel: {
+      color: colors.text,
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.5),
+      marginTop: 12,
+    },
+    journeyBody: { marginTop: space.xs },
+
+    // Trust rails (wide)
+    railsCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.lg,
+      padding: space.xl,
+    },
+    railsCopy: { flex: 1.1, gap: space.xs },
+    railsBody: { marginTop: space.xs },
+    railsWrap: {
+      flex: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    railChip: {
+      minHeight: 44,
       borderRadius: radius.pill,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.primaryTint,
+      backgroundColor: colors.chipBg,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: space.lg,
+      paddingHorizontal: space.md,
     },
-    adminRowText: { color: colors.primaryDark, fontSize: font.sm, fontWeight: '900' },
+    railChipText: {
+      color: colors.accent,
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+    },
+
+    // Admin
+    adminWrap: isWide ? { alignSelf: 'flex-start', minWidth: 260 } : {},
   });
 }

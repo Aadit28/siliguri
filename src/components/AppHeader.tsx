@@ -18,7 +18,7 @@ export default function AppHeader({ title }: { title?: string }) {
   const { lang, toggle } = useLocale();
   const { displayName, user, signOut } = useAuth();
   const { colors, mode, isDark, toggleTheme } = useTheme();
-  const { isComputerMode } = useDisplayMode();
+  const { isComputerMode, toggleDisplayMode } = useDisplayMode();
   const router = useRouter();
   const pathname = usePathname();
   const showNav = isComputerMode;
@@ -111,6 +111,22 @@ export default function AppHeader({ title }: { title?: string }) {
               <Feather name="sun" size={20} color={colors.text} />
             ) : (
               <Feather name="moon" size={20} color={colors.text} />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={toggleDisplayMode}
+            style={[styles.iconBtn, { backgroundColor: colors.chipBg, borderColor: colors.border }]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: isComputerMode }}
+            accessibilityLabel={
+              isComputerMode ? 'Switch to phone view' : 'Switch to computer view'
+            }
+          >
+            {isComputerMode ? (
+              <Feather name="smartphone" size={20} color={colors.text} />
+            ) : (
+              <Feather name="monitor" size={20} color={colors.text} />
             )}
           </TouchableOpacity>
 

@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import {
+  ActivityIndicator,
+  ScrollView,
+  View,
+  Text,
+  TextInput,
+  TextInputProps,
+  StyleSheet,
+  Pressable,
+} from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { Card, H1, H2, Body, Muted, Button, Badge } from '../src/components/ui';
-import { AppColors, font, radius, space } from '../src/lib/theme';
+import { Feather } from '@expo/vector-icons';
+import { Card, H1, H2, Muted, Button, Chip, Dialog } from '../src/components/ui';
+import { AppColors, family, font, radius, space, TAP, ROW_MIN_HEIGHT } from '../src/lib/theme';
 import { SERVICE_CATEGORIES } from '../src/lib/categories';
 import { Announcement, ServiceCategory } from '../src/lib/types';
 import { useAuth } from '../src/context/AuthContext';
@@ -12,13 +22,104 @@ import { useTheme } from '../src/context/ThemeContext';
 import { backendRequest } from '../src/lib/backend';
 import { supabase, supabaseConfigured } from '../src/lib/supabase';
 
+function Field({
+  label,
+  value,
+  onChangeText,
+  multiline,
+  keyboardType,
+  autoCapitalize,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  multiline?: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+}) {
+  const { colors } = useTheme();
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={fieldStyles.wrap}>
+      <Text style={[fieldStyles.label, { color: colors.textMuted }]}>{label}</Text>
+      <TextInput
+        style={[
+          fieldStyles.input,
+          {
+            backgroundColor: colors.surfaceTint,
+            borderColor: focused ? colors.glassBorder : colors.border,
+            color: colors.text,
+          },
+          multiline ? fieldStyles.inputMultiline : null,
+        ]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={label}
+        placeholderTextColor={colors.textMuted}
+        multiline={multiline}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+}
+
+function Notice({ kind, message }: { kind: 'error' | 'success'; message: string }) {
+  const { colors } = useTheme();
+  const tint = kind === 'error' ? colors.danger : colors.success;
+  return (
+    <View style={fieldStyles.notice}>
+      <Feather name={kind === 'error' ? 'alert-circle' : 'check-circle'} size={16} color={tint} />
+      <Text style={[fieldStyles.noticeText, { color: tint }]}>{message}</Text>
+    </View>
+  );
+}
+
+const fieldStyles = StyleSheet.create({
+  wrap: { marginTop: space.md },
+  label: {
+    fontSize: font.sm,
+    fontFamily: family.medium,
+    lineHeight: Math.round(font.sm * 1.45),
+    marginBottom: space.sm,
+  },
+  input: {
+    minHeight: TAP,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: 12,
+    fontSize: font.md,
+    fontFamily: family.regular,
+  },
+  inputMultiline: {
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginTop: space.md,
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: font.sm,
+    fontFamily: family.medium,
+    lineHeight: Math.round(font.sm * 1.45),
+  },
+});
+
 export default function AdminScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { session, user, isAdmin } = useAuth();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = makeStyles(colors, isDark);
+  const styles = makeStyles(colors);
 
   // Announcements form state.
   const [titleEn, setTitleEn] = useState('');
@@ -30,6 +131,7 @@ export default function AdminScreen() {
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<Announcement | null>(null);
 
   // Service form state.
   const [serviceName, setServiceName] = useState('');
@@ -67,12 +169,18 @@ export default function AdminScreen() {
 
   if (!session || !user) {
     return (
-      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.lg }}>
+      <ScrollView
+        style={{ backgroundColor: colors.bg }}
+        contentContainerStyle={styles.gateContainer}
+      >
         <Stack.Screen options={{ title: t('admin.title') }} />
-        <Card>
-          <H2>{t('admin.notAdmin')}</H2>
-          <Muted style={{ marginTop: space.sm }}>{t('admin.signInFirst')}</Muted>
-          <View style={{ marginTop: space.lg }}>
+        <Card style={styles.gateCard}>
+          <View style={styles.gateIconBlock}>
+            <Feather name="lock" size={28} color={colors.text} />
+          </View>
+          <H2 style={styles.gateTitle}>{t('admin.notAdmin')}</H2>
+          <Muted style={styles.gateBody}>{t('admin.signInFirst')}</Muted>
+          <View style={styles.gateAction}>
             <Button label={t('common.signIn')} onPress={() => router.push('/login')} />
           </View>
         </Card>
@@ -82,10 +190,16 @@ export default function AdminScreen() {
 
   if (!isAdmin) {
     return (
-      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.lg }}>
+      <ScrollView
+        style={{ backgroundColor: colors.bg }}
+        contentContainerStyle={styles.gateContainer}
+      >
         <Stack.Screen options={{ title: t('admin.title') }} />
-        <Card>
-          <H2>{t('admin.notAdmin')}</H2>
+        <Card style={styles.gateCard}>
+          <View style={styles.gateIconBlock}>
+            <Feather name="shield-off" size={28} color={colors.text} />
+          </View>
+          <H2 style={styles.gateTitle}>{t('admin.notAdmin')}</H2>
         </Card>
       </ScrollView>
     );
@@ -170,65 +284,41 @@ export default function AdminScreen() {
     }
   }
 
+  function confirmRemove() {
+    if (!removeTarget) return;
+    const id = removeTarget.id;
+    setRemoveTarget(null);
+    deactivate(id);
+  }
+
   return (
     <ScrollView
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: space.lg, paddingBottom: Math.max(insets.bottom, space.lg) }}
+      contentContainerStyle={{
+        padding: space.md,
+        paddingTop: space.sm,
+        paddingBottom: Math.max(insets.bottom, space.lg),
+      }}
     >
       <Stack.Screen options={{ title: t('admin.title') }} />
+
       <H1>{t('admin.title')}</H1>
-      <Muted style={{ marginTop: 4, marginBottom: space.lg }}>{t('admin.subtitle')}</Muted>
+      <Muted style={styles.screenSubtitle}>{t('admin.subtitle')}</Muted>
 
       {/* Announcements */}
+      <H2 style={styles.sectionHeader}>{t('admin.announcements')}</H2>
+
       <Card>
-        <H2>{t('admin.announcements')}</H2>
+        <Text style={styles.cardTitle}>{t('admin.newAnnouncement')}</Text>
+        <Field label={t('admin.titleLabel')} value={titleEn} onChangeText={setTitleEn} />
+        <Field label={t('admin.bodyLabel')} value={bodyEn} onChangeText={setBodyEn} multiline />
+        <Field label={t('admin.titleHiLabel')} value={titleHi} onChangeText={setTitleHi} />
+        <Field label={t('admin.bodyHiLabel')} value={bodyHi} onChangeText={setBodyHi} multiline />
 
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.titleLabel')}</Muted>
-        <TextInput
-          style={styles.input}
-          value={titleEn}
-          onChangeText={setTitleEn}
-          placeholder={t('admin.titleLabel')}
-          placeholderTextColor={colors.textMuted}
-        />
+        {publishError ? <Notice kind="error" message={publishError} /> : null}
+        {publishSuccess ? <Notice kind="success" message={t('admin.published')} /> : null}
 
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.bodyLabel')}</Muted>
-        <TextInput
-          style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
-          value={bodyEn}
-          onChangeText={setBodyEn}
-          placeholder={t('admin.bodyLabel')}
-          placeholderTextColor={colors.textMuted}
-          multiline
-        />
-
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.titleHiLabel')}</Muted>
-        <TextInput
-          style={styles.input}
-          value={titleHi}
-          onChangeText={setTitleHi}
-          placeholder={t('admin.titleHiLabel')}
-          placeholderTextColor={colors.textMuted}
-        />
-
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.bodyHiLabel')}</Muted>
-        <TextInput
-          style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
-          value={bodyHi}
-          onChangeText={setBodyHi}
-          placeholder={t('admin.bodyHiLabel')}
-          placeholderTextColor={colors.textMuted}
-          multiline
-        />
-
-        {publishError ? (
-          <Text style={[styles.message, { color: colors.danger }]}>{publishError}</Text>
-        ) : null}
-        {publishSuccess ? (
-          <Text style={[styles.message, { color: colors.success }]}>{t('admin.published')}</Text>
-        ) : null}
-
-        <View style={{ marginTop: space.lg }}>
+        <View style={styles.formAction}>
           <Button
             label={t('admin.publish')}
             onPress={publish}
@@ -236,148 +326,127 @@ export default function AdminScreen() {
             disabled={!titleEn.trim() || !bodyEn.trim()}
           />
         </View>
+      </Card>
 
-        <View style={styles.divider} />
-
-        {!supabaseConfigured || announcements.length === 0 ? (
-          <Muted>{t('announcements.empty')}</Muted>
+      <Card style={styles.listCard}>
+        {loadingAnnouncements ? (
+          <View style={styles.stateBlock}>
+            <ActivityIndicator color={colors.textMuted} />
+            <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+          </View>
+        ) : !supabaseConfigured || announcements.length === 0 ? (
+          <View style={styles.stateBlock}>
+            <Feather name="bell-off" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('announcements.empty')}</Muted>
+          </View>
         ) : (
-          announcements.map((item) => (
-            <View key={item.id} style={styles.listRow}>
-              <Body style={{ fontWeight: '800' }}>{item.title}</Body>
-              <Muted numberOfLines={2} style={{ marginTop: 4 }}>
-                {item.body}
-              </Muted>
-              <View style={styles.listRowFooter}>
-                <Muted style={{ fontSize: font.xs }}>
-                  {new Date(item.created_at).toLocaleDateString()}
-                </Muted>
+          announcements.map((item, index) => (
+            <View key={item.id}>
+              <View style={styles.listRow}>
+                <View style={styles.rowDisc}>
+                  <Feather name="bell" size={20} color={colors.text} />
+                </View>
+                <View style={styles.rowBody}>
+                  <Text style={styles.rowTitle}>{item.title}</Text>
+                  <Text numberOfLines={2} style={styles.rowSubtitle}>
+                    {item.body}
+                  </Text>
+                  <Text style={styles.rowMeta}>
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </Text>
+                </View>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => deactivate(item.id)}
-                  style={styles.deactivateBtn}
+                  accessibilityLabel={t('admin.deactivate')}
+                  onPress={() => setRemoveTarget(item)}
+                  style={({ pressed }) => [
+                    styles.ghostDanger,
+                    pressed ? { backgroundColor: colors.dangerSoft } : null,
+                  ]}
                 >
-                  <Text style={styles.deactivateText}>{t('admin.deactivate')}</Text>
+                  <Text style={styles.ghostDangerText}>{t('admin.deactivate')}</Text>
                 </Pressable>
               </View>
+              {index < announcements.length - 1 ? <View style={styles.rowDivider} /> : null}
             </View>
           ))
         )}
       </Card>
 
       {/* Services */}
-      <Card style={{ marginTop: space.lg }}>
-        <H2>{t('admin.services')}</H2>
-        <Muted style={{ marginTop: 4 }}>{t('admin.addService')}</Muted>
+      <H2 style={styles.sectionHeader}>{t('admin.services')}</H2>
 
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.serviceName')}</Muted>
-        <TextInput
-          style={styles.input}
-          value={serviceName}
-          onChangeText={setServiceName}
-          placeholder={t('admin.serviceName')}
-          placeholderTextColor={colors.textMuted}
-        />
+      <Card>
+        <Text style={styles.cardTitle}>{t('admin.addService')}</Text>
+        <Field label={t('admin.serviceName')} value={serviceName} onChangeText={setServiceName} />
 
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.category')}</Muted>
-        <View style={styles.chipRow}>
-          {SERVICE_CATEGORIES.map((c) => {
-            const active = category === c.key;
-            return (
-              <Pressable
+        <View style={fieldStyles.wrap}>
+          <Text style={[fieldStyles.label, { color: colors.textMuted }]}>
+            {t('admin.category')}
+          </Text>
+          <View style={styles.chipRow}>
+            {SERVICE_CATEGORIES.map((c) => (
+              <Chip
                 key={c.key}
-                accessibilityRole="button"
+                label={t(`categories.${c.key}`)}
+                emoji={c.emoji}
+                active={category === c.key}
                 onPress={() => setCategory(c.key)}
-                style={[
-                  styles.categoryChip,
-                  {
-                    backgroundColor: active ? colors.primaryTint : colors.chipBg,
-                    borderColor: active ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.categoryChipText, { color: colors.text }]}>
-                  {c.emoji} {t(`categories.${c.key}`)}
-                </Text>
-              </Pressable>
-            );
-          })}
+              />
+            ))}
+          </View>
         </View>
 
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.phone')}</Muted>
-        <TextInput
-          style={styles.input}
+        <Field
+          label={t('admin.phone')}
           value={phone}
           onChangeText={setPhone}
-          placeholder={t('admin.phone')}
-          placeholderTextColor={colors.textMuted}
           keyboardType="phone-pad"
         />
-
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.address')}</Muted>
-        <TextInput
-          style={styles.input}
-          value={address}
-          onChangeText={setAddress}
-          placeholder={t('admin.address')}
-          placeholderTextColor={colors.textMuted}
-        />
-
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.hours')}</Muted>
-        <TextInput
-          style={styles.input}
-          value={hours}
-          onChangeText={setHours}
-          placeholder={t('admin.hours')}
-          placeholderTextColor={colors.textMuted}
-        />
-
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.description')}</Muted>
-        <TextInput
-          style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
+        <Field label={t('admin.address')} value={address} onChangeText={setAddress} />
+        <Field label={t('admin.hours')} value={hours} onChangeText={setHours} />
+        <Field
+          label={t('admin.description')}
           value={description}
           onChangeText={setDescription}
-          placeholder={t('admin.description')}
-          placeholderTextColor={colors.textMuted}
           multiline
         />
-
-        <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('admin.upiId')}</Muted>
-        <TextInput
-          style={styles.input}
+        <Field
+          label={t('admin.upiId')}
           value={upiId}
           onChangeText={setUpiId}
-          placeholder={t('admin.upiId')}
-          placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
         />
 
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ selected: verified }}
           onPress={() => setVerified((v) => !v)}
-          style={[
-            styles.verifiedChip,
-            {
-              backgroundColor: verified ? colors.primaryTint : colors.chipBg,
-              borderColor: verified ? colors.primary : colors.border,
-            },
+          style={({ pressed }) => [
+            styles.toggleChip,
+            verified
+              ? { backgroundColor: colors.accent, borderColor: colors.accent }
+              : {
+                  backgroundColor: pressed ? colors.cardStrong : colors.chipBg,
+                  borderColor: colors.border,
+                },
           ]}
         >
-          {verified ? (
-            <Badge label={t('admin.verified')} />
-          ) : (
-            <Text style={[styles.categoryChipText, { color: colors.text }]}>{t('admin.verified')}</Text>
-          )}
+          {verified ? <Feather name="check" size={16} color={colors.accentFg} /> : null}
+          <Text
+            style={[
+              styles.toggleChipText,
+              { color: verified ? colors.accentFg : colors.text },
+            ]}
+          >
+            {t('admin.verified')}
+          </Text>
         </Pressable>
 
-        {serviceError ? (
-          <Text style={[styles.message, { color: colors.danger }]}>{serviceError}</Text>
-        ) : null}
-        {serviceSuccess ? (
-          <Text style={[styles.message, { color: colors.success }]}>{t('admin.saved')}</Text>
-        ) : null}
+        {serviceError ? <Notice kind="error" message={serviceError} /> : null}
+        {serviceSuccess ? <Notice kind="success" message={t('admin.saved')} /> : null}
 
-        <View style={{ marginTop: space.lg }}>
+        <View style={styles.formAction}>
           <Button
             label={t('admin.save')}
             onPress={saveService}
@@ -386,87 +455,180 @@ export default function AdminScreen() {
           />
         </View>
       </Card>
+
+      {/* Destructive confirmation */}
+      <Dialog
+        visible={removeTarget !== null}
+        onClose={() => setRemoveTarget(null)}
+        title={t('admin.deactivate')}
+      >
+        {removeTarget ? (
+          <Text style={styles.dialogBody} numberOfLines={3}>
+            {removeTarget.title}
+          </Text>
+        ) : null}
+        <View style={styles.dialogActions}>
+          <Button label={t('admin.deactivate')} variant="danger" onPress={confirmRemove} />
+          <Button
+            label={t('common.cancel')}
+            variant="secondary"
+            onPress={() => setRemoveTarget(null)}
+          />
+        </View>
+      </Dialog>
     </ScrollView>
   );
 }
 
-function makeStyles(colors: AppColors, isDark: boolean) {
+function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    input: {
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius.md,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
-      fontSize: font.md,
-      color: colors.text,
-      minHeight: 54,
+    screenSubtitle: {
+      marginTop: space.xs,
     },
-    message: {
-      fontSize: font.sm,
-      fontWeight: '700',
-      marginTop: space.sm,
-    },
-    divider: {
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+    sectionHeader: {
       marginTop: space.lg,
-      marginBottom: space.sm,
+      marginBottom: 12,
     },
-    listRow: {
-      paddingVertical: space.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+    cardTitle: {
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.md * 1.5),
+      color: colors.text,
     },
-    listRowFooter: {
+    formAction: {
+      marginTop: space.lg,
+    },
+    listCard: {
+      marginTop: 12,
+      paddingHorizontal: 0,
+      paddingVertical: space.xs,
+    },
+    stateBlock: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: space.sm,
+      justifyContent: 'center',
+      gap: space.sm,
+      paddingHorizontal: space.md,
+      paddingVertical: space.lg,
     },
-    deactivateBtn: {
+    stateText: {
+      textAlign: 'center',
+    },
+    listRow: {
+      minHeight: ROW_MIN_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: space.md,
+      paddingVertical: 12,
+    },
+    rowDisc: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowBody: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    rowTitle: {
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      color: colors.text,
+    },
+    rowSubtitle: {
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    rowMeta: {
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      color: colors.textSubtle,
+      marginTop: space.xs,
+    },
+    rowDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginLeft: 72,
+    },
+    ghostDanger: {
       minHeight: 44,
       paddingHorizontal: space.md,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.dangerSoft,
-      borderWidth: 1,
-      borderColor: colors.danger,
+      alignSelf: 'center',
+      marginLeft: space.sm,
     },
-    deactivateText: {
+    ghostDangerText: {
       fontSize: font.sm,
-      fontWeight: '800',
+      fontFamily: family.semibold,
       color: colors.danger,
     },
     chipRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: space.sm,
+      rowGap: space.sm,
     },
-    categoryChip: {
-      minHeight: 48,
+    toggleChip: {
+      marginTop: space.md,
+      minHeight: 44,
       paddingHorizontal: space.md,
-      paddingVertical: space.xs,
       borderRadius: radius.pill,
       borderWidth: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'flex-start',
+      gap: 6,
+    },
+    toggleChipText: {
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+    },
+    dialogBody: {
+      fontSize: font.md,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.md * 1.5),
+      color: colors.textMuted,
+      marginTop: space.sm,
+    },
+    dialogActions: {
+      marginTop: space.lg,
+      gap: 12,
+    },
+    gateContainer: {
+      padding: space.md,
+      paddingTop: space.xl,
+    },
+    gateCard: {
+      alignItems: 'center',
+      padding: space.lg,
+    },
+    gateIconBlock: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceTint,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    categoryChipText: {
-      fontSize: font.sm,
-      fontWeight: '700',
-    },
-    verifiedChip: {
+    gateTitle: {
       marginTop: space.md,
-      minHeight: 48,
-      paddingHorizontal: space.md,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      alignItems: 'flex-start',
-      justifyContent: 'center',
-      alignSelf: 'flex-start',
+      textAlign: 'center',
+    },
+    gateBody: {
+      marginTop: space.sm,
+      textAlign: 'center',
+    },
+    gateAction: {
+      marginTop: space.lg,
+      alignSelf: 'stretch',
     },
   });
 }
