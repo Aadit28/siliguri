@@ -24,7 +24,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: { fontSize: font.xs, fontWeight: '700', paddingBottom: 4 },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '700', paddingBottom: 4 },
         tabBarStyle: isComputerMode
           ? { display: 'none' }
           : {

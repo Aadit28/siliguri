@@ -16,7 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import AppHeader from '../../src/components/AppHeader';
-import { Button, Chip, Sheet } from '../../src/components/ui';
+import { Button, Sheet } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
@@ -484,6 +484,28 @@ export default function AssistantScreen() {
                 {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
               </Text>
             </View>
+            <Pressable
+              onPress={() => setSpeakReplies((current) => !current)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: speakReplies }}
+              accessibilityLabel={t('voice.speakReplies')}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                {
+                  backgroundColor: speakReplies
+                    ? colors.accentSoft
+                    : pressed
+                      ? colors.cardStrong
+                      : colors.surfaceTint,
+                },
+              ]}
+            >
+              <Feather
+                name={speakReplies ? 'volume-2' : 'volume-x'}
+                size={20}
+                color={speakReplies ? colors.accent : colors.textMuted}
+              />
+            </Pressable>
             {!showSideHistory ? (
               <Pressable
                 onPress={() => setHistoryOpen(true)}
@@ -543,6 +565,44 @@ export default function AssistantScreen() {
                 </View>
               </View>
             ) : null}
+
+            {!loading && !messages.some((message) => message.role === 'user') ? (
+              <View style={styles.starterBlock}>
+                <Text style={[styles.examplesHint, { color: colors.textSubtle }]}>
+                  {t('assistant.examplesHint')}
+                </Text>
+                {EXAMPLE_KEYS.map((key) => (
+                  <Pressable
+                    key={key}
+                    disabled={promptsDisabled}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(`assistant.exampleLabels.${key}`)}
+                    onPress={() => {
+                      if (!promptsDisabled) submit(t(`assistant.examples.${key}`));
+                    }}
+                    style={({ pressed }) => [
+                      styles.starterRow,
+                      {
+                        backgroundColor: pressed ? colors.cardStrong : colors.card,
+                        borderColor: colors.border,
+                        opacity: promptsDisabled ? 0.55 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.starterDisc, { backgroundColor: colors.surfaceTint }]}>
+                      <Feather name="message-circle" size={18} color={colors.text} />
+                    </View>
+                    <Text
+                      style={[styles.starterText, { color: colors.text }]}
+                      numberOfLines={2}
+                    >
+                      {t(`assistant.exampleLabels.${key}`)}
+                    </Text>
+                    <Feather name="arrow-up-right" size={18} color={colors.textSubtle} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </ScrollView>
 
           <View
@@ -551,56 +611,6 @@ export default function AssistantScreen() {
               { backgroundColor: colors.bgAlt, borderTopColor: colors.border },
             ]}
           >
-            <View style={styles.composerHintRow}>
-              <Text style={[styles.examplesHint, { color: colors.textSubtle }]} numberOfLines={1}>
-                {t('assistant.examplesHint')}
-              </Text>
-              <Pressable
-                onPress={() => setSpeakReplies((current) => !current)}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: speakReplies }}
-                accessibilityLabel={t('voice.speakReplies')}
-                style={[
-                  styles.speakToggle,
-                  speakReplies
-                    ? { backgroundColor: colors.accent, borderColor: colors.accent }
-                    : { backgroundColor: colors.chipBg, borderColor: colors.border },
-                ]}
-              >
-                <Feather
-                  name={speakReplies ? 'volume-2' : 'volume-x'}
-                  size={16}
-                  color={speakReplies ? colors.accentFg : colors.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.speakToggleText,
-                    { color: speakReplies ? colors.accentFg : colors.textMuted },
-                  ]}
-                >
-                  {t('voice.speakReplies')}
-                </Text>
-              </Pressable>
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={promptsDisabled ? styles.dimmed : null}
-              contentContainerStyle={styles.chipsRow}
-              keyboardShouldPersistTaps="handled"
-            >
-              {EXAMPLE_KEYS.map((key) => (
-                <Chip
-                  key={key}
-                  label={t(`assistant.exampleLabels.${key}`)}
-                  onPress={() => {
-                    if (!promptsDisabled) submit(t(`assistant.examples.${key}`));
-                  }}
-                />
-              ))}
-            </ScrollView>
-
             {attachments.length ? (
               <ScrollView
                 horizontal
@@ -1312,7 +1322,7 @@ const styles = StyleSheet.create({
   },
   botRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     gap: space.sm,
     paddingRight: space.xl,
   },
@@ -1436,35 +1446,39 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 12,
   },
-  composerHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.sm,
-  },
   examplesHint: {
     fontSize: font.xs,
     fontFamily: family.medium,
-    flexShrink: 1,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  speakToggle: {
-    minHeight: 44,
-    borderRadius: radius.pill,
-    borderWidth: 1,
+  starterBlock: {
+    marginTop: space.sm,
+    gap: space.sm,
+  },
+  starterRow: {
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: radius.lg,
     paddingHorizontal: space.md,
+    paddingVertical: space.sm,
   },
-  speakToggleText: {
-    fontSize: font.xs,
-    fontFamily: family.semibold,
-  },
-  chipsRow: {
+  starterDisc: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
     alignItems: 'center',
-    paddingRight: space.md,
+    justifyContent: 'center',
   },
-  dimmed: { opacity: 0.55 },
+  starterText: {
+    flex: 1,
+    fontSize: font.sm,
+    fontFamily: family.semibold,
+    lineHeight: Math.round(font.sm * 1.35),
+  },
   listeningRow: {
     flexDirection: 'row',
     alignItems: 'center',

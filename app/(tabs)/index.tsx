@@ -242,7 +242,7 @@ export default function Home() {
               >
                 <Text style={styles.tileEmoji}>{c.emoji}</Text>
               </View>
-              <Text style={styles.tileLabel} numberOfLines={1}>
+              <Text style={styles.tileLabel} numberOfLines={2}>
                 {t(`categories.${c.key}`)}
               </Text>
             </>
@@ -304,7 +304,7 @@ export default function Home() {
         >
           <AnimatedSection style={styles.greetingBlock}>
             <Text style={styles.kicker}>{t('home.heroKicker')}</Text>
-            <H1>
+            <H1 style={styles.greetingTitle}>
               {t('home.greeting')}
               {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
             </H1>
@@ -312,41 +312,38 @@ export default function Home() {
 
           <AnimatedSection delay={40}>{searchPill}</AnimatedSection>
 
-          <AnimatedSection delay={80}>
-            <Card style={styles.heroCard}>
-              <View style={styles.heroPhotoWrap}>
-                <Image
-                  source={heroImage}
-                  resizeMode="contain"
-                  style={styles.heroPhoto as ImageStyle}
-                  accessibilityLabel={t('home.heroPhotoAlt')}
-                />
-              </View>
-              <Body style={styles.heroBodyText}>{t('home.heroBody')}</Body>
-              <View style={styles.heroActions}>
-                <Button label={t('home.heroPrimary')} onPress={() => router.push('/services')} />
-                <Button
-                  label={t('home.heroSecondary')}
-                  variant="secondary"
-                  onPress={() => router.push('/help')}
-                />
-              </View>
-            </Card>
+          <AnimatedSection delay={80} style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <H2>{t('home.browseCategories')}</H2>
+              {seeAllLink}
+            </View>
+            {categoryTiles}
           </AnimatedSection>
-
-          {announcementsBlock}
 
           <AnimatedSection delay={120} style={styles.section}>
             <H2>{t('home.mobileNeedTitle')}</H2>
             {quickList(mobileQuick)}
           </AnimatedSection>
 
-          <AnimatedSection delay={160} style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <H2>{t('home.browseCategories')}</H2>
-              {seeAllLink}
-            </View>
-            {categoryTiles}
+          {announcementsBlock}
+
+          <AnimatedSection delay={160}>
+            <Card style={styles.heroCard}>
+              <View style={styles.heroPhotoWrap}>
+                <Image
+                  source={heroImage}
+                  resizeMode="cover"
+                  style={styles.heroPhoto as ImageStyle}
+                  accessibilityLabel={t('home.heroPhotoAlt')}
+                />
+              </View>
+              <Body style={styles.heroBodyText}>{t('home.heroBody')}</Body>
+              <Button
+                label={t('home.heroSecondary')}
+                variant="secondary"
+                onPress={() => router.push('/help')}
+              />
+            </Card>
           </AnimatedSection>
 
           {featured.length > 0 ? (
@@ -612,11 +609,16 @@ function makeStyles(colors: AppColors, isWide: boolean) {
 
     // Greeting (mobile)
     greetingBlock: { gap: space.sm },
+    greetingTitle: {
+      fontSize: font.xl,
+      lineHeight: Math.round(font.xl * 1.25),
+      letterSpacing: tracking.xl,
+    },
 
     // Hero (mobile)
     heroCard: { gap: space.md },
     heroPhotoWrap: {
-      height: 210,
+      height: 150,
       borderRadius: radius.md,
       backgroundColor: colors.surfaceTint,
       overflow: 'hidden',
@@ -752,21 +754,22 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       gap: 12,
     },
     tileWrap: {
-      width: isWide ? '14%' : '22%',
-      minHeight: 96,
+      width: isWide ? '14%' : '30%',
+      minHeight: 118,
     },
     tile: {
-      height: 72,
+      height: 80,
       borderRadius: radius.md,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    tileEmoji: { fontSize: 32 },
+    tileEmoji: { fontSize: 34 },
     tileLabel: {
-      marginTop: space.sm,
+      marginTop: space.xs,
       color: colors.text,
-      fontSize: font.sm,
+      fontSize: font.xs,
       fontFamily: family.medium,
+      lineHeight: Math.round(font.xs * 1.3),
       textAlign: 'center',
     },
 
