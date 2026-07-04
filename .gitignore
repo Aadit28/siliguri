@@ -40,9 +40,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# graphify knowledge-graph output (tool artifact)
-graphify-out/
-
 # generated native folders
 /ios
 /android

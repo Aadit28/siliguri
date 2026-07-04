@@ -1,0 +1,332 @@
+{
+  "C:\\My projects Main\\Silliguri New\\siliguri\\.claude\\settings.json": {
+    "mtime": 1782979699.289374,
+    "ast_hash": "0e5fa9ee1de7421260d9f6695b5b6683",
+    "semantic_hash": "0e5fa9ee1de7421260d9f6695b5b6683"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\.graphify_detect.json": {
+    "mtime": 1782979887.1284542,
+    "ast_hash": "d991526535b4739290b01d97ca7f6465",
+    "semantic_hash": "d991526535b4739290b01d97ca7f6465"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\_lib\\auth.js": {
+    "mtime": 1782979699.3209233,
+    "ast_hash": "70c77da541c2c35952e92d53b26f706d",
+    "semantic_hash": "70c77da541c2c35952e92d53b26f706d"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\assistant\\plan.js": {
+    "mtime": 1782979699.329204,
+    "ast_hash": "ed7619174121eeb399ad1e2f540a810d",
+    "semantic_hash": "ed7619174121eeb399ad1e2f540a810d"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\auth\\me.js": {
+    "mtime": 1782979699.336632,
+    "ast_hash": "eddb6b4f0cb330c5a13399948a9d7016",
+    "semantic_hash": "eddb6b4f0cb330c5a13399948a9d7016"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\auth\\signin.js": {
+    "mtime": 1782979699.338653,
+    "ast_hash": "f660d8cbaba6a68a69db13a35e389a3c",
+    "semantic_hash": "f660d8cbaba6a68a69db13a35e389a3c"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\auth\\signout.js": {
+    "mtime": 1782979699.3396623,
+    "ast_hash": "8b24d1304813841fe65e2979f7967b90",
+    "semantic_hash": "8b24d1304813841fe65e2979f7967b90"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\auth\\signup.js": {
+    "mtime": 1782979699.3416798,
+    "ast_hash": "dbf4dfdc4191180735f4d430b196d324",
+    "semantic_hash": "dbf4dfdc4191180735f4d430b196d324"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\community\\like.js": {
+    "mtime": 1782979699.3469417,
+    "ast_hash": "a2d9d04d54702ba8340ad9fd163accbb",
+    "semantic_hash": "a2d9d04d54702ba8340ad9fd163accbb"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\community\\post.js": {
+    "mtime": 1782979699.3529198,
+    "ast_hash": "93fabd2af69a46358dcdc7bbdc7f01f0",
+    "semantic_hash": "93fabd2af69a46358dcdc7bbdc7f01f0"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\api\\community\\reply.js": {
+    "mtime": 1782979699.356248,
+    "ast_hash": "8d6f190f417fe0d6b4ad74256657f82e",
+    "semantic_hash": "8d6f190f417fe0d6b4ad74256657f82e"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app.json": {
+    "mtime": 1782979699.358258,
+    "ast_hash": "8d798c8753d6c08d738ea027ae942592",
+    "semantic_hash": "8d798c8753d6c08d738ea027ae942592"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\(tabs)\\_layout.tsx": {
+    "mtime": 1782979699.3702228,
+    "ast_hash": "c2ba535d7bef5483254ba20f6575ae15",
+    "semantic_hash": "c2ba535d7bef5483254ba20f6575ae15"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\(tabs)\\assistant.tsx": {
+    "mtime": 1782979699.3761153,
+    "ast_hash": "bb18b522845da0cde92515d9da2194e4",
+    "semantic_hash": "bb18b522845da0cde92515d9da2194e4"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\(tabs)\\community.tsx": {
+    "mtime": 1782979699.377761,
+    "ast_hash": "6c7751238a7a3377d9bfc33a0109a5f7",
+    "semantic_hash": "6c7751238a7a3377d9bfc33a0109a5f7"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\(tabs)\\help.tsx": {
+    "mtime": 1782979699.379264,
+    "ast_hash": "7867d31b86310b2625ce311564d0077b",
+    "semantic_hash": "7867d31b86310b2625ce311564d0077b"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\(tabs)\\index.tsx": {
+    "mtime": 1782979699.3929322,
+    "ast_hash": "9d30e84e1d5a13da8dfc6f3d717aa973",
+    "semantic_hash": "9d30e84e1d5a13da8dfc6f3d717aa973"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\(tabs)\\services.tsx": {
+    "mtime": 1782979699.396094,
+    "ast_hash": "c97c2553e5a0a6849196cc0f2b05433d",
+    "semantic_hash": "c97c2553e5a0a6849196cc0f2b05433d"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\_layout.tsx": {
+    "mtime": 1782979699.3989217,
+    "ast_hash": "7cad6592bc568003365631b868b673bf",
+    "semantic_hash": "7cad6592bc568003365631b868b673bf"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\login.tsx": {
+    "mtime": 1782979699.4094224,
+    "ast_hash": "13f75e4c90905c7b75cafa858f7d7a4a",
+    "semantic_hash": "13f75e4c90905c7b75cafa858f7d7a4a"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\new-post.tsx": {
+    "mtime": 1782979699.4120266,
+    "ast_hash": "58a803d35cf0bf2fd98fa7babd9a5e59",
+    "semantic_hash": "58a803d35cf0bf2fd98fa7babd9a5e59"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\post\\[id].tsx": {
+    "mtime": 1782979699.4151604,
+    "ast_hash": "cf7cd359090cd24c288035b4edb9c133",
+    "semantic_hash": "cf7cd359090cd24c288035b4edb9c133"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\app\\service\\[id].tsx": {
+    "mtime": 1782979699.4218903,
+    "ast_hash": "19928800660227b606b6d8af914ed6a8",
+    "semantic_hash": "19928800660227b606b6d8af914ed6a8"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\babel.config.js": {
+    "mtime": 1782979699.4945984,
+    "ast_hash": "e54f26c850def29cf28a85ec0a655c80",
+    "semantic_hash": "e54f26c850def29cf28a85ec0a655c80"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\package.json": {
+    "mtime": 1782979699.5008173,
+    "ast_hash": "1c0f6c7defe3d37c6abf01286d1774a8",
+    "semantic_hash": "1c0f6c7defe3d37c6abf01286d1774a8"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\scripts\\dev-api.js": {
+    "mtime": 1782979699.503404,
+    "ast_hash": "d88efa66add005c6ed6c5d0f42940e5d",
+    "semantic_hash": "d88efa66add005c6ed6c5d0f42940e5d"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\scripts\\gemini-verify.mjs": {
+    "mtime": 1782979699.5054138,
+    "ast_hash": "092fdba808e1281ea6f69331e633f566",
+    "semantic_hash": "092fdba808e1281ea6f69331e633f566"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\scripts\\seed.mjs": {
+    "mtime": 1782979699.506415,
+    "ast_hash": "b8d5402d27b9ff7c918a7ab71ee39c94",
+    "semantic_hash": "b8d5402d27b9ff7c918a7ab71ee39c94"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\components\\AppHeader.tsx": {
+    "mtime": 1782979699.5140903,
+    "ast_hash": "a2684e173edea9a50ca8411bb466ea9e",
+    "semantic_hash": "a2684e173edea9a50ca8411bb466ea9e"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\components\\animated-section.tsx": {
+    "mtime": 1782979699.5150905,
+    "ast_hash": "1948a79c39768971eac80069fb7ff830",
+    "semantic_hash": "1948a79c39768971eac80069fb7ff830"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\components\\ui.tsx": {
+    "mtime": 1782979699.51609,
+    "ast_hash": "b19321ca4097725ca41d21ea77a076e7",
+    "semantic_hash": "b19321ca4097725ca41d21ea77a076e7"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\context\\AuthContext.tsx": {
+    "mtime": 1782979699.5201645,
+    "ast_hash": "6785c0b6d7580b490b0ee3090729a77a",
+    "semantic_hash": "6785c0b6d7580b490b0ee3090729a77a"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\context\\DisplayModeContext.tsx": {
+    "mtime": 1782979699.5221746,
+    "ast_hash": "6a2a1961eb45e11a35d5b8d12ea70744",
+    "semantic_hash": "6a2a1961eb45e11a35d5b8d12ea70744"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\context\\LocaleContext.tsx": {
+    "mtime": 1782979699.5241742,
+    "ast_hash": "92690dea55f254f99ad4419e83f77d20",
+    "semantic_hash": "92690dea55f254f99ad4419e83f77d20"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\context\\ThemeContext.tsx": {
+    "mtime": 1782979699.5251746,
+    "ast_hash": "76a055527a1693d9393d1d8358f4dc79",
+    "semantic_hash": "76a055527a1693d9393d1d8358f4dc79"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\data\\mockData.ts": {
+    "mtime": 1782979699.5276818,
+    "ast_hash": "b9b49b380c325e4714d6c6568a98ccd4",
+    "semantic_hash": "b9b49b380c325e4714d6c6568a98ccd4"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\data\\services.json": {
+    "mtime": 1782979699.529999,
+    "ast_hash": "2f118e9b309e9c608b8f6e094a7de8d0",
+    "semantic_hash": "2f118e9b309e9c608b8f6e094a7de8d0"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\api.ts": {
+    "mtime": 1782979699.5329983,
+    "ast_hash": "a7aac8dea3fc698cb293ed64f9ae80f1",
+    "semantic_hash": "a7aac8dea3fc698cb293ed64f9ae80f1"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\assistant.ts": {
+    "mtime": 1782979699.5349982,
+    "ast_hash": "d72e30c4b60fa14394d1e4904c694396",
+    "semantic_hash": "d72e30c4b60fa14394d1e4904c694396"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\backend.ts": {
+    "mtime": 1782979699.5377176,
+    "ast_hash": "c863bf267ab428fcdbbf746429b45037",
+    "semantic_hash": "c863bf267ab428fcdbbf746429b45037"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\categories.ts": {
+    "mtime": 1782979699.5387268,
+    "ast_hash": "033028052b97ea170146f59cf0f48e94",
+    "semantic_hash": "033028052b97ea170146f59cf0f48e94"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\config.ts": {
+    "mtime": 1782979699.5407262,
+    "ast_hash": "0edfdfc7ac0298712d70cc3e2cea1a74",
+    "semantic_hash": "0edfdfc7ac0298712d70cc3e2cea1a74"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\contentI18n.ts": {
+    "mtime": 1782979699.5442455,
+    "ast_hash": "4aa06795f47dd1ae0d60a712566ddbea",
+    "semantic_hash": "4aa06795f47dd1ae0d60a712566ddbea"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\i18n.ts": {
+    "mtime": 1782979699.546243,
+    "ast_hash": "62eaeb56897d41579b232883282c9a26",
+    "semantic_hash": "62eaeb56897d41579b232883282c9a26"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\servicePreferences.ts": {
+    "mtime": 1782979699.548242,
+    "ast_hash": "fec9cd78d01302ef00650ee2298ec637",
+    "semantic_hash": "fec9cd78d01302ef00650ee2298ec637"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\supabase.ts": {
+    "mtime": 1782979699.549682,
+    "ast_hash": "be787c98d78760892014dd8e5d5f08f7",
+    "semantic_hash": "be787c98d78760892014dd8e5d5f08f7"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\theme.ts": {
+    "mtime": 1782979699.5506942,
+    "ast_hash": "43e393681550e863414ede7d59d353ae",
+    "semantic_hash": "43e393681550e863414ede7d59d353ae"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\lib\\types.ts": {
+    "mtime": 1782979699.5516968,
+    "ast_hash": "2bd4d83ac5f8ed943111c8c4c7c60b01",
+    "semantic_hash": "2bd4d83ac5f8ed943111c8c4c7c60b01"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\locales\\en.json": {
+    "mtime": 1782979699.5567029,
+    "ast_hash": "1bec7f94e42dd679adcccbe52ea4d5c4",
+    "semantic_hash": "1bec7f94e42dd679adcccbe52ea4d5c4"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\src\\locales\\hi.json": {
+    "mtime": 1782979699.56411,
+    "ast_hash": "80dc9c4095a6a478ff99c6cee76d022a",
+    "semantic_hash": "80dc9c4095a6a478ff99c6cee76d022a"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\start.ps1": {
+    "mtime": 1782979699.566111,
+    "ast_hash": "5f3f3a20e7b460f291a4a8c69143588c",
+    "semantic_hash": "5f3f3a20e7b460f291a4a8c69143588c"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\supabase-auth-migration.sql": {
+    "mtime": 1782979699.5681117,
+    "ast_hash": "8a5f27b319c0b2a1737bc4b4c4ee573b",
+    "semantic_hash": "8a5f27b319c0b2a1737bc4b4c4ee573b"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\supabase-migration-2.sql": {
+    "mtime": 1782979699.5701194,
+    "ast_hash": "45ed3542e3381fcd31bf50406a7b7542",
+    "semantic_hash": "45ed3542e3381fcd31bf50406a7b7542"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\supabase-schema.sql": {
+    "mtime": 1782979699.572121,
+    "ast_hash": "8c92d2ea0428823d5550e157add29085",
+    "semantic_hash": "8c92d2ea0428823d5550e157add29085"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\tsconfig.json": {
+    "mtime": 1782979699.5751183,
+    "ast_hash": "a38fb61efb6719e3fe2c0cebf58ffe70",
+    "semantic_hash": "a38fb61efb6719e3fe2c0cebf58ffe70"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\vercel.json": {
+    "mtime": 1782979699.576119,
+    "ast_hash": "0f0530b7113d78e62feb417d843acde2",
+    "semantic_hash": "0f0530b7113d78e62feb417d843acde2"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\AGENTS.md": {
+    "mtime": 1782979699.312263,
+    "ast_hash": "3849a89dc1df6f983b2776651ea35129",
+    "semantic_hash": "3849a89dc1df6f983b2776651ea35129"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\CLAUDE.md": {
+    "mtime": 1782979699.3132632,
+    "ast_hash": "771faa62feb60b7de901a397aebb29b0",
+    "semantic_hash": "771faa62feb60b7de901a397aebb29b0"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\README.md": {
+    "mtime": 1782979699.3166018,
+    "ast_hash": "f04869bc9476e4e2240e492ff91da278",
+    "semantic_hash": "f04869bc9476e4e2240e492ff91da278"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\android-icon-background.png": {
+    "mtime": 1782979699.425107,
+    "ast_hash": "2d65569cc0e2afdcea0af9f9902d4173",
+    "semantic_hash": "2d65569cc0e2afdcea0af9f9902d4173"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\android-icon-foreground.png": {
+    "mtime": 1782979699.4292538,
+    "ast_hash": "72e71a9c846c6aa4ae32476641a00e18",
+    "semantic_hash": "72e71a9c846c6aa4ae32476641a00e18"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\android-icon-monochrome.png": {
+    "mtime": 1782979699.4312632,
+    "ast_hash": "1e097dab989759fc0b69440092ca22cd",
+    "semantic_hash": "1e097dab989759fc0b69440092ca22cd"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\favicon.png": {
+    "mtime": 1782979699.4641552,
+    "ast_hash": "d9f444efbdfbe7931aa93beada07318a",
+    "semantic_hash": "d9f444efbdfbe7931aa93beada07318a"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\icon.png": {
+    "mtime": 1782979699.47635,
+    "ast_hash": "cb975bba2216ce10a60e6c0ffe9941a2",
+    "semantic_hash": "cb975bba2216ce10a60e6c0ffe9941a2"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\saathi-hero-care.png": {
+    "mtime": 1782979699.4883697,
+    "ast_hash": "c7667f4c80887a46798de0447bc8776f",
+    "semantic_hash": "c7667f4c80887a46798de0447bc8776f"
+  },
+  "C:\\My projects Main\\Silliguri New\\siliguri\\assets\\splash-icon.png": {
+    "mtime": 1782979699.4917798,
+    "ast_hash": "97dae5a0e62ad8551d8a31897b425e63",
+    "semantic_hash": "97dae5a0e62ad8551d8a31897b425e63"
+  }
+}
