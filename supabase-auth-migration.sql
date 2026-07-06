@@ -4,11 +4,17 @@
 create table if not exists public.user_accounts (
   id uuid primary key default gen_random_uuid(),
   username text not null unique,
+  phone_number text unique,
   full_name text,
   password_hash text not null,
   password_salt text not null,
   created_at timestamptz default now()
 );
+
+alter table public.user_accounts add column if not exists phone_number text;
+create unique index if not exists user_accounts_phone_number_key
+  on public.user_accounts(phone_number)
+  where phone_number is not null;
 
 create table if not exists public.auth_tokens (
   id uuid primary key default gen_random_uuid(),

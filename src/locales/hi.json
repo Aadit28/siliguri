@@ -313,6 +313,12 @@
   "auth": {
     "welcome": "साथी में आपका स्वागत है",
     "fullName": "पूरा नाम",
+    "identifier": "यूज़रनेम या फोन नंबर",
+    "identifierPlaceholder": "Aadit_J या +91 98765 43210",
+    "phoneNumber": "फोन नंबर",
+    "phonePlaceholder": "+91 98765 43210",
+    "phoneUsernameHint": "आपका यूज़रनेम आपके नाम से अपने आप बनेगा।",
+    "phoneUsernamePreview": "यूज़रनेम {{username}} होगा।",
     "createAccount": "खाता बनाएँ",
     "haveAccount": "मेरा पहले से खाता है",
     "needAccount": "नया खाता बनाएँ",

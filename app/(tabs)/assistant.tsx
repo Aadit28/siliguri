@@ -16,6 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import AppHeader from '../../src/components/AppHeader';
+import SiteFooter from '../../src/components/SiteFooter';
 import { Button, Sheet } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
@@ -24,6 +25,7 @@ import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMe
 import { fetchServices } from '../../src/lib/api';
 import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
 import { serviceEmoji } from '../../src/lib/categories';
+import { languageForContent } from '../../src/lib/languages';
 import { appendTurn, buildAssistantContext, loadMemory } from '../../src/lib/memory';
 import { openUpiPayment } from '../../src/lib/payments';
 import { family, font, radius, shadow, space, TAP, tracking } from '../../src/lib/theme';
@@ -66,9 +68,11 @@ let cachedInitialChatState: ChatState | null = null;
 export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
+  const assistantLang = languageForContent(lang);
   const { session, displayName } = useAuth();
   const { colors } = useTheme();
   const { width, height } = useWindowDimensions();
+  const assistantSectionMinHeight = Math.max(520, height - 84);
   const router = useRouter();
   const initialChatState = getInitialChatState(t);
   const [services, setServices] = useState<Service[]>([]);
@@ -281,7 +285,7 @@ export default function AssistantScreen() {
       const plan = await requestAssistantPlan({
         message: body,
         services,
-        lang,
+        lang: assistantLang,
         imageAttachments: currentAttachments,
         token: session?.access_token,
         context,
@@ -298,7 +302,7 @@ export default function AssistantScreen() {
         },
       ]);
       await appendTurn({ role: 'assistant', text: reply }).catch(() => undefined);
-      if (speakReplies) speak(reply, lang);
+      if (speakReplies) speak(reply, assistantLang);
     } finally {
       submitInFlightRef.current = false;
       setLoading(false);
@@ -345,7 +349,7 @@ export default function AssistantScreen() {
             ...current,
             { id: `cal-${Date.now()}`, role: 'assistant', text: confirmationText },
           ]);
-          if (speakReplies) speak(confirmationText, lang);
+          if (speakReplies) speak(confirmationText, assistantLang);
         });
       } catch {
         // Malformed action payload; ignore silently.
@@ -401,7 +405,7 @@ export default function AssistantScreen() {
     }
     stopSpeaking();
     const handle = startListening({
-      lang,
+      lang: assistantLang,
       onResult: (text) => {
         setListening(false);
         submit(text);
@@ -421,116 +425,127 @@ export default function AssistantScreen() {
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       <AppHeader title={t('assistant.title')} />
 
-      <View style={[styles.layout, showSideHistory ? styles.layoutWide : null]}>
-        {showSideHistory ? (
-          <View
-            style={[
-              styles.historyPanel,
-              { backgroundColor: colors.cardSolid, borderColor: colors.border },
-            ]}
-          >
-            <View style={[styles.historyPanelHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.historyPanelTitle, { color: colors.text }]}>
-                {t('assistant.chatHistory')}
-              </Text>
-              <Button
-                label={t('assistant.newChat')}
-                onPress={startNewChat}
-                disabled={loading}
-                icon={<Feather name="plus" size={20} color={colors.primaryFg} />}
-              />
-            </View>
-            <ScrollView style={styles.historyRows} showsVerticalScrollIndicator={false}>
-              {sessions.map((sessionItem, index) => (
-                <React.Fragment key={sessionItem.id}>
-                  {index > 0 ? (
-                    <View style={[styles.historyDivider, { backgroundColor: colors.border }]} />
-                  ) : null}
-                  <ChatHistoryRow
-                    item={sessionItem}
-                    active={sessionItem.id === activeSessionId}
-                    disabled={loading && sessionItem.id !== activeSessionId}
-                    onPress={() => selectChat(sessionItem.id)}
-                  />
-                </React.Fragment>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
+      <ScrollView
+        style={styles.pageScroll}
+        contentContainerStyle={styles.pageContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View
           style={[
-            styles.chatColumn,
-            showSideHistory
-              ? [styles.chatColumnWide, { backgroundColor: colors.bg, borderColor: colors.border }]
-              : null,
+            styles.layout,
+            { minHeight: assistantSectionMinHeight },
+            showSideHistory ? styles.layoutWide : null,
           ]}
         >
-          <View style={[styles.botHeader, { borderBottomColor: colors.border }]}>
-            <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-              <Feather name="message-circle" size={20} color={colors.primaryFg} />
-            </View>
-            <View style={styles.botHeaderCopy}>
-              <Text style={[styles.botTitle, { color: colors.text }]} numberOfLines={1}>
-                {t('assistant.botTitle')}
-              </Text>
-              <Text
-                style={[
-                  styles.botStatus,
-                  { color: servicesLoading ? colors.textMuted : colors.success },
-                ]}
-                numberOfLines={1}
-              >
-                {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => setSpeakReplies((current) => !current)}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: speakReplies }}
-              accessibilityLabel={t('voice.speakReplies')}
-              style={({ pressed }) => [
-                styles.iconBtn,
-                {
-                  backgroundColor: speakReplies
-                    ? colors.accentSoft
-                    : pressed
-                      ? colors.cardStrong
-                      : colors.surfaceTint,
-                },
+          {showSideHistory ? (
+            <View
+              style={[
+                styles.historyPanel,
+                { backgroundColor: colors.cardSolid, borderColor: colors.border },
               ]}
             >
-              <Feather
-                name={speakReplies ? 'volume-2' : 'volume-x'}
-                size={20}
-                color={speakReplies ? colors.accent : colors.textMuted}
-              />
-            </Pressable>
-            {!showSideHistory ? (
+              <View style={[styles.historyPanelHeader, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.historyPanelTitle, { color: colors.text }]}>
+                  {t('assistant.chatHistory')}
+                </Text>
+                <Button
+                  label={t('assistant.newChat')}
+                  onPress={startNewChat}
+                  disabled={loading}
+                  icon={<Feather name="plus" size={20} color={colors.primaryFg} />}
+                />
+              </View>
+              <ScrollView style={styles.historyRows} showsVerticalScrollIndicator={false}>
+                {sessions.map((sessionItem, index) => (
+                  <React.Fragment key={sessionItem.id}>
+                    {index > 0 ? (
+                      <View style={[styles.historyDivider, { backgroundColor: colors.border }]} />
+                    ) : null}
+                    <ChatHistoryRow
+                      item={sessionItem}
+                      active={sessionItem.id === activeSessionId}
+                      disabled={loading && sessionItem.id !== activeSessionId}
+                      onPress={() => selectChat(sessionItem.id)}
+                    />
+                  </React.Fragment>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              styles.chatColumn,
+              showSideHistory
+                ? [styles.chatColumnWide, { backgroundColor: colors.bg, borderColor: colors.border }]
+                : null,
+            ]}
+          >
+            <View style={[styles.botHeader, { borderBottomColor: colors.border }]}>
+              <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
+                <Feather name="message-circle" size={20} color={colors.primaryFg} />
+              </View>
+              <View style={styles.botHeaderCopy}>
+                <Text style={[styles.botTitle, { color: colors.text }]} numberOfLines={1}>
+                  {t('assistant.botTitle')}
+                </Text>
+                <Text
+                  style={[
+                    styles.botStatus,
+                    { color: servicesLoading ? colors.textMuted : colors.success },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
+                </Text>
+              </View>
               <Pressable
-                onPress={() => setHistoryOpen(true)}
+                onPress={() => setSpeakReplies((current) => !current)}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: speakReplies }}
+                accessibilityLabel={t('voice.speakReplies')}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  {
+                    backgroundColor: speakReplies
+                      ? colors.accentSoft
+                      : pressed
+                        ? colors.cardStrong
+                        : colors.surfaceTint,
+                  },
+                ]}
+              >
+                <Feather
+                  name={speakReplies ? 'volume-2' : 'volume-x'}
+                  size={20}
+                  color={speakReplies ? colors.accent : colors.textMuted}
+                />
+              </Pressable>
+              {!showSideHistory ? (
+                <Pressable
+                  onPress={() => setHistoryOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('assistant.chatHistory')}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
+                  ]}
+                >
+                  <Feather name="clock" size={20} color={colors.text} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={() => router.push('/calendar')}
                 accessibilityRole="button"
-                accessibilityLabel={t('assistant.chatHistory')}
+                accessibilityLabel={t('calendar.title')}
                 style={({ pressed }) => [
                   styles.iconBtn,
                   { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
                 ]}
               >
-                <Feather name="clock" size={20} color={colors.text} />
+                <Feather name="calendar" size={20} color={colors.text} />
               </Pressable>
-            ) : null}
-            <Pressable
-              onPress={() => router.push('/calendar')}
-              accessibilityRole="button"
-              accessibilityLabel={t('calendar.title')}
-              style={({ pressed }) => [
-                styles.iconBtn,
-                { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
-              ]}
-            >
-              <Feather name="calendar" size={20} color={colors.text} />
-            </Pressable>
-          </View>
+            </View>
 
           <ScrollView
             ref={scrollRef}
@@ -738,7 +753,9 @@ export default function AssistantScreen() {
             </View>
           </View>
         </View>
-      </View>
+        </View>
+        <SiteFooter services={services} />
+      </ScrollView>
 
       {!showSideHistory ? (
         <Sheet
@@ -1202,6 +1219,11 @@ function readImageFile(file: any): Promise<AssistantAttachment | null> {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  pageScroll: { flex: 1 },
+  pageContent: {
+    flexGrow: 1,
+    paddingBottom: 0,
+  },
   layout: {
     flex: 1,
     width: '100%',

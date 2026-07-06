@@ -1,12 +1,15 @@
 const {
   adminClient,
   createSession,
+  localPhoneUserId,
+  normalizePhone,
   normalizeUsername,
   passwordHash,
   publicUser,
   readBody,
   send,
   validatePassword,
+  validatePhone,
   validateUsername,
   withCors,
 } = require('../_lib/auth');
@@ -18,21 +21,46 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readBody(req);
-    const username = normalizeUsername(body.username);
+    const phone = normalizePhone(body.phone);
+    const username = phone ? '' : normalizeUsername(body.username);
     const password = String(body.password || '');
-    const validationError = validateUsername(username) || validatePassword(password);
+    const validationError =
+      (phone ? validatePhone(phone) : validateUsername(username)) || validatePassword(password);
     if (validationError) return send(res, 400, { error: validationError });
 
     const supabase = adminClient();
-    const { data: user, error } = await supabase
-      .from('user_accounts')
-      .select('id,username,full_name,password_hash,password_salt,created_at')
-      .eq('username', username)
-      .maybeSingle();
+    let { data: user, error } = await (phone
+      ? supabase
+          .from('user_accounts')
+          .select('id,username,full_name,phone_number,password_hash,password_salt,created_at')
+          .eq('phone_number', phone)
+          .maybeSingle()
+      : supabase
+          .from('user_accounts')
+          .select('id,username,full_name,password_hash,password_salt,created_at')
+          .eq('username', username)
+          .maybeSingle());
 
-    if (error) throw error;
+    if (error) {
+      if (phone && String(error.message || '').toLowerCase().includes('phone_number')) {
+        const userId = localPhoneUserId(phone);
+        if (!userId) {
+          return send(res, 401, { error: 'Invalid phone number or password.' });
+        }
+        const fallback = await supabase
+          .from('user_accounts')
+          .select('id,username,full_name,password_hash,password_salt,created_at')
+          .eq('id', userId)
+          .maybeSingle();
+        user = fallback.data ? { ...fallback.data, phone_number: phone } : null;
+        error = fallback.error;
+      }
+      if (error) throw error;
+    }
     if (!user || passwordHash(password, user.password_salt) !== user.password_hash) {
-      return send(res, 401, { error: 'Invalid username or password.' });
+      return send(res, 401, {
+        error: phone ? 'Invalid phone number or password.' : 'Invalid username or password.',
+      });
     }
 
     const session = await createSession(supabase, user.id);

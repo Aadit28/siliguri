@@ -19,10 +19,12 @@ import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme
 import { postEmoji } from '../../src/lib/categories';
 import { fetchPost, fetchReplies, createReply, toggleLike } from '../../src/lib/api';
 import { tContent } from '../../src/lib/contentI18n';
+import { languageForContent } from '../../src/lib/languages';
 import { CommunityPost, CommunityReply } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
+import { markLoginIntent } from '../../src/lib/authNavigation';
 
 function initials(name?: string | null) {
   if (!name) return '';
@@ -40,6 +42,7 @@ export default function PostDetail() {
   const { t } = useTranslation();
   const router = useRouter();
   const { lang } = useLocale();
+  const contentLang = languageForContent(lang);
   const { session, user, displayName } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -66,6 +69,7 @@ export default function PostDetail() {
 
   async function onSend() {
     if (!user) {
+      markLoginIntent();
       router.push('/login');
       return;
     }
@@ -91,6 +95,7 @@ export default function PostDetail() {
 
   async function onLike() {
     if (!user) {
+      markLoginIntent();
       router.push('/login');
       return;
     }
@@ -156,8 +161,8 @@ export default function PostDetail() {
             </View>
           </View>
 
-          <H2 style={styles.postTitle}>{tContent(post.title, lang)}</H2>
-          <Body style={styles.postBody}>{tContent(post.body, lang)}</Body>
+          <H2 style={styles.postTitle}>{tContent(post.title, contentLang)}</H2>
+          <Body style={styles.postBody}>{tContent(post.body, contentLang)}</Body>
 
           <View style={styles.actionRow}>
             <Pressable
@@ -216,7 +221,7 @@ export default function PostDetail() {
                       </Text>
                     </View>
                   </View>
-                  <Body style={styles.replyBody}>{tContent(r.body, lang)}</Body>
+                  <Body style={styles.replyBody}>{tContent(r.body, contentLang)}</Body>
                 </View>
                 {i < replies.length - 1 ? <View style={styles.replyDivider} /> : null}
               </View>

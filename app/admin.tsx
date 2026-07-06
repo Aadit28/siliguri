@@ -21,6 +21,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
 import { backendRequest } from '../src/lib/backend';
 import { supabase, supabaseConfigured } from '../src/lib/supabase';
+import { markLoginIntent } from '../src/lib/authNavigation';
 
 function Field({
   label,
@@ -181,7 +182,13 @@ export default function AdminScreen() {
           <H2 style={styles.gateTitle}>{t('admin.notAdmin')}</H2>
           <Muted style={styles.gateBody}>{t('admin.signInFirst')}</Muted>
           <View style={styles.gateAction}>
-            <Button label={t('common.signIn')} onPress={() => router.push('/login')} />
+            <Button
+              label={t('common.signIn')}
+              onPress={() => {
+                markLoginIntent();
+                router.push('/login');
+              }}
+            />
           </View>
         </Card>
       </ScrollView>

@@ -20,6 +20,7 @@ import { createPost } from '../src/lib/api';
 import { PostCategory } from '../src/lib/types';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
+import { markLoginIntent } from '../src/lib/authNavigation';
 
 export default function NewPost() {
   const { t } = useTranslation();
@@ -36,6 +37,7 @@ export default function NewPost() {
 
   async function submit() {
     if (!user) {
+      markLoginIntent();
       router.replace('/login');
       return;
     }

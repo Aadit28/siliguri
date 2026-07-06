@@ -10,17 +10,16 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
-import Animated, { Easing, FadeInDown, ReduceMotion } from 'react-native-reanimated';
 import AppHeader from '../../src/components/AppHeader';
-import { Badge, Body, Card, Chip, H1, Muted, Stars } from '../../src/components/ui';
+import SiteFooter from '../../src/components/SiteFooter';
+import { Badge, Body, Card, H1, Muted, Stars } from '../../src/components/ui';
 import {
   AppColors,
   family,
   font,
-  motion,
   radius,
   ROW_MIN_HEIGHT,
   space,
@@ -34,42 +33,25 @@ import { useTheme } from '../../src/context/ThemeContext';
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
 
-const EASE_OUT_QUART = Easing.bezier(...motion.easeOutQuart);
-const STAGGER_MS = 40;
-const STAGGER_CAP = 6;
-
-function cardEntering(index: number) {
-  return FadeInDown.duration(motion.dur.base)
-    .easing(EASE_OUT_QUART.factory())
-    .delay(Math.min(index, STAGGER_CAP - 1) * STAGGER_MS)
-    .withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] })
-    .reduceMotion(ReduceMotion.System);
-}
-
 export default function Services() {
   const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; view?: string }>();
   const { favoriteIds, favoriteSet, recentIds, toggleFavorite } = useServicePreferences();
   const { colors } = useTheme();
-  const { height, width } = useWindowDimensions();
-  const resultsMaxHeight = Math.max(
-    width >= 820 ? 420 : 360,
-    Math.round(height * (width >= 820 ? 0.72 : 0.58)),
-  );
-  const styles = makeStyles(colors, resultsMaxHeight);
+  const { width } = useWindowDimensions();
+  const isProfileGrid = width >= 760;
+  const styles = makeStyles(colors, isProfileGrid);
 
   const [all, setAll] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState<DirectoryView>((params.category as ServiceCategory) || 'all');
   const pageScrollRef = useRef<ScrollView>(null);
-  const resultsScrollRef = useRef<ScrollView>(null);
 
   const resetDirectoryScroll = useCallback(() => {
     requestAnimationFrame(() => {
       pageScrollRef.current?.scrollTo({ y: 0, animated: false });
-      resultsScrollRef.current?.scrollTo({ y: 0, animated: false });
     });
   }, []);
 
@@ -128,6 +110,22 @@ export default function Services() {
       }, {}),
     [all],
   );
+  const verifiedCount = useMemo(() => all.filter((service) => service.verified).length, [all]);
+  const callableCount = useMemo(() => all.filter((service) => Boolean(service.phone)).length, [all]);
+  const statTiles = [
+    { label: t('common.all'), value: all.length },
+    { label: t('common.verified'), value: verifiedCount },
+    { label: t('common.call'), value: callableCount },
+  ];
+  const categoryTiles = [
+    { key: 'all' as const, emoji: '', label: t('common.all'), count: all.length },
+    ...SERVICE_CATEGORIES.map((item) => ({
+      key: item.key,
+      emoji: item.emoji,
+      label: t(`categories.${item.key}`),
+      count: categoryCounts[item.key] ?? 0,
+    })),
+  ];
 
   const libraryRows = [
     {
@@ -154,24 +152,24 @@ export default function Services() {
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
-        {/* Hero */}
-        <View style={styles.hero}>
-          <Text style={styles.kicker}>{t('services.directoryKicker')}</Text>
-          <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
-          <Body style={styles.heroBody}>{t('services.directoryBody')}</Body>
-          <View style={styles.trustRow}>
-            {[t('services.trustPhone'), t('services.trustSource'), t('services.trustFamily')].map(
-              (item) => (
-                <View key={item} style={styles.trustPill}>
-                  <Feather name="check" size={14} color={colors.textMuted} />
-                  <Text style={styles.trustPillText}>{item}</Text>
-                </View>
-              ),
-            )}
+        <View style={styles.catalogHero}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.kicker}>{t('services.directoryKicker')}</Text>
+            <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
+            <Body style={styles.heroBody}>{t('services.directoryBody')}</Body>
+          </View>
+          <View style={styles.statGrid}>
+            {statTiles.map((item) => (
+              <View key={item.label} style={styles.statTile}>
+                <Text style={styles.statValue}>{item.value}</Text>
+                <Text style={styles.statLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </View>
+            ))}
           </View>
         </View>
 
-        {/* Search pill (Uber sunk surface) */}
         <View style={styles.searchPill}>
           <Feather name="search" size={22} color={colors.text} />
           <TextInput
@@ -193,62 +191,57 @@ export default function Services() {
             </Pressable>
           ) : null}
         </View>
-        <Muted style={styles.searchHint}>{t('services.searchScope')}</Muted>
 
-        {/* Library rows (Uber list anatomy) */}
-        <View style={styles.libraryList}>
+        <View style={styles.quickGrid}>
           {libraryRows.map((item, index) => {
             const active = cat === item.key;
             return (
-              <React.Fragment key={item.key}>
-                {index > 0 ? <View style={styles.libraryDivider} /> : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => {
-                    setCat(item.key);
-                    setQuery('');
-                    router.setParams({ category: undefined, view: item.key });
-                  }}
-                  style={({ pressed }) => [
-                    styles.libraryRow,
-                    active && styles.libraryRowActive,
-                    pressed && !active && { backgroundColor: colors.overlay },
-                  ]}
-                >
-                  <View style={styles.libraryDisc}>
-                    <Feather name={item.icon} size={20} color={colors.text} />
-                  </View>
-                  <View style={styles.libraryTextBlock}>
-                    <Text style={styles.libraryTitle}>{item.label}</Text>
-                    <Text style={styles.librarySubtitle}>
-                      {t('services.savedCount', { count: item.count })}
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={22} color={colors.textSubtle} />
-                </Pressable>
-              </React.Fragment>
+              <Pressable
+                key={item.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => {
+                  setCat(item.key);
+                  setQuery('');
+                  router.setParams({ category: undefined, view: item.key });
+                }}
+                style={({ pressed }) => [
+                  styles.quickCard,
+                  active && styles.quickCardActive,
+                  pressed && !active && { backgroundColor: colors.overlay },
+                ]}
+              >
+                <View style={styles.quickIcon}>
+                  <Feather name={item.icon} size={20} color={colors.text} />
+                </View>
+                <View style={styles.quickTextBlock}>
+                  <Text style={styles.quickTitle}>{item.label}</Text>
+                  <Text style={styles.quickSubtitle}>
+                    {t('services.savedCount', { count: item.count })}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={22} color={colors.textSubtle} />
+              </Pressable>
             );
           })}
         </View>
 
-        {/* Category chips */}
-        <View style={styles.chipSection}>
+        <View style={styles.categorySection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t('home.browseCategories')}</Text>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipScroller}
+            contentContainerStyle={styles.categoryPillScroller}
           >
-            {[{ key: 'all' as const, emoji: undefined }, ...SERVICE_CATEGORIES].map((item) => {
-              const count =
-                item.key === 'all' ? all.length : (categoryCounts[item.key as ServiceCategory] ?? 0);
-              const label = `${item.key === 'all' ? t('common.all') : t(`categories.${item.key}`)} (${count})`;
+            {categoryTiles.map((item) => {
+              const active = cat === item.key;
               return (
-                <Chip
+                <Pressable
                   key={item.key}
-                  label={label}
-                  emoji={item.emoji}
-                  active={cat === item.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                   onPress={() => {
                     const nextCategory = item.key as ServiceCategory | 'all';
                     setCat(nextCategory);
@@ -258,13 +251,25 @@ export default function Services() {
                       view: undefined,
                     });
                   }}
-                />
+                  style={({ pressed }) => [
+                    styles.categoryPill,
+                    active && styles.categoryPillActive,
+                    pressed && !active && { backgroundColor: colors.overlay },
+                  ]}
+                >
+                  {item.emoji ? <Text style={styles.categoryPillEmoji}>{item.emoji}</Text> : null}
+                  <Text style={styles.categoryPillText} numberOfLines={1}>
+                    {item.label}
+                  </Text>
+                  <View style={styles.categoryPillCountBadge}>
+                    <Text style={styles.categoryPillCount}>{item.count}</Text>
+                  </View>
+                </Pressable>
               );
             })}
           </ScrollView>
         </View>
 
-        {/* Results */}
         {loading ? (
           <ActivityIndicator style={styles.loadingIndicator} color={colors.primary} size="large" />
         ) : filtered.length === 0 ? (
@@ -275,109 +280,144 @@ export default function Services() {
             <Muted style={styles.emptyText}>{t('common.noResults')}</Muted>
           </View>
         ) : (
-          <ScrollView
-            ref={resultsScrollRef}
-            style={styles.resultsScroller}
-            contentContainerStyle={styles.list}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator
-            keyboardShouldPersistTaps="handled"
-          >
-            {filtered.map((item, index) => {
+          <View style={styles.list}>
+            {filtered.map((item) => {
               const isFavorite = favoriteSet.has(item.id);
               const meta = [t(`categories.${item.category}`), item.address]
                 .filter(Boolean)
                 .join(' · ');
               return (
-                <Animated.View key={`${cat}-${item.id}`} entering={cardEntering(index)}>
-                  <Link
-                    href={{ pathname: '/service/[id]', params: { id: item.id } }}
-                    asChild
-                  >
-                    <Pressable style={({ pressed }) => (pressed ? styles.cardPressed : null)}>
-                      <Card>
-                        <View style={styles.cardTopRow}>
-                          <View style={styles.leadingBlock}>
-                            <Text style={styles.leadingEmoji}>{serviceEmoji(item.category)}</Text>
-                          </View>
-                          <View style={styles.cardTextBlock}>
-                            <Text style={styles.serviceName} numberOfLines={2}>
-                              {item.name}
-                            </Text>
-                            <Text style={styles.serviceMeta} numberOfLines={1}>
-                              {meta}
-                            </Text>
-                            <View style={styles.ratingRow}>
-                              <Stars rating={item.rating} />
-                              {item.verified && <Badge label={t('common.verified')} />}
-                            </View>
-                          </View>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: isFavorite }}
-                            accessibilityLabel={
-                              isFavorite
-                                ? t('services.unstarService', { name: item.name })
-                                : t('services.starService', { name: item.name })
-                            }
-                            onPress={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              toggleFavorite(item.id);
-                            }}
-                            style={({ pressed }) => [
-                              styles.favoriteBtn,
-                              pressed && { backgroundColor: colors.overlay },
-                            ]}
-                          >
-                            <Feather
-                              name="star"
-                              size={20}
-                              color={isFavorite ? colors.accent : colors.textSubtle}
-                            />
-                          </Pressable>
-                        </View>
-                        {item.phone ? (
-                          <View style={styles.ctaRow}>
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`${t('common.call')} ${item.name}`}
-                              onPress={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                Linking.openURL(`tel:${item.phone}`);
-                              }}
-                              style={({ pressed }) => [
-                                styles.callPill,
-                                { backgroundColor: pressed ? colors.accentDark : colors.accent },
-                              ]}
-                            >
-                              <Feather name="phone" size={20} color={colors.accentFg} />
-                              <Text style={styles.callLabel}>{t('common.call')}</Text>
-                            </Pressable>
-                          </View>
-                        ) : null}
-                      </Card>
+                <View
+                  key={`${cat}-${item.id}`}
+                  style={styles.resultPressable}
+                >
+                  <Card style={styles.resultCard}>
+                    <View style={styles.profileHead}>
+                      <View style={styles.leadingBlock}>
+                        <Text style={styles.leadingEmoji}>{serviceEmoji(item.category)}</Text>
+                      </View>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isFavorite }}
+                        accessibilityLabel={
+                          isFavorite
+                            ? t('services.unstarService', { name: item.name })
+                            : t('services.starService', { name: item.name })
+                        }
+                        onPress={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          toggleFavorite(item.id);
+                        }}
+                        style={({ pressed }) => [
+                          styles.favoriteBtn,
+                          pressed && { backgroundColor: colors.overlay },
+                        ]}
+                      >
+                        <Feather
+                          name="star"
+                          size={20}
+                          color={isFavorite ? colors.accent : colors.textSubtle}
+                        />
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={item.name}
+                      onPress={() => router.push({ pathname: '/service/[id]', params: { id: item.id } })}
+                      style={({ pressed }) => [
+                        styles.serviceInfoPressable,
+                        pressed && { backgroundColor: colors.overlay },
+                      ]}
+                    >
+                      <Text style={styles.serviceName} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.serviceMeta} numberOfLines={2}>
+                        {meta}
+                      </Text>
+                      <View style={styles.ratingRow}>
+                        <Stars rating={item.rating} />
+                        {item.verified && <Badge label={t('common.verified')} />}
+                      </View>
                     </Pressable>
-                  </Link>
-                </Animated.View>
+                    <View style={styles.profileSpacer} />
+                    <View style={styles.ctaRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${t('services.about')} ${item.name}`}
+                        onPress={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          router.push({ pathname: '/service/[id]', params: { id: item.id } });
+                        }}
+                        style={({ pressed }) => [
+                          styles.aboutPill,
+                          {
+                            backgroundColor: pressed ? colors.overlay : colors.surfaceTint,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Feather name="info" size={17} color={colors.text} />
+                        <Text style={styles.aboutLabel}>{t('services.about')}</Text>
+                      </Pressable>
+                      {item.phone ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t('common.call')} ${item.name}`}
+                          onPress={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            Linking.openURL(`tel:${item.phone}`);
+                          }}
+                          style={({ pressed }) => [
+                            styles.callPill,
+                            {
+                              backgroundColor: pressed ? colors.primaryDark : colors.primary,
+                              borderColor: pressed ? colors.primaryDark : colors.primary,
+                            },
+                          ]}
+                        >
+                          <Feather name="phone" size={18} color={colors.primaryFg} />
+                          <Text style={styles.callLabel}>{t('common.call')}</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </Card>
+                </View>
               );
             })}
-          </ScrollView>
+          </View>
         )}
+        <SiteFooter services={all} />
       </ScrollView>
     </View>
   );
 }
 
-function makeStyles(colors: AppColors, resultsMaxHeight: number) {
+function makeStyles(colors: AppColors, isProfileGrid: boolean) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.bg },
-    pageScroll: { paddingBottom: space.xl },
+    pageScroll: {
+      flexGrow: 1,
+      paddingBottom: 0,
+    },
 
-    hero: {
+    catalogHero: {
       paddingHorizontal: space.md,
-      paddingTop: space.sm,
+      paddingTop: space.lg,
+      paddingBottom: space.md,
+      flexDirection: isProfileGrid ? 'row' : 'column',
+      alignItems: isProfileGrid ? 'flex-end' : 'stretch',
+      justifyContent: 'space-between',
+      gap: space.md,
+      backgroundColor: colors.bg,
+    },
+    heroCopy: {
+      flex: 1,
+      minWidth: 0,
+      maxWidth: 760,
     },
     kicker: {
       color: colors.textMuted,
@@ -389,21 +429,36 @@ function makeStyles(colors: AppColors, resultsMaxHeight: number) {
     },
     heroTitle: { marginTop: space.xs },
     heroBody: { marginTop: space.sm, color: colors.textMuted },
-    trustRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
-    trustPill: {
+    statGrid: {
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.xs,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceTint,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      gap: space.sm,
+      width: isProfileGrid ? 360 : '100%',
     },
-    trustPillText: {
+    statTile: {
+      flex: 1,
+      minHeight: 76,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      justifyContent: 'center',
+      paddingHorizontal: space.sm,
+      paddingVertical: space.sm,
+    },
+    statValue: {
+      color: colors.text,
+      fontSize: font.xl,
+      fontFamily: family.bold,
+      lineHeight: Math.round(font.xl * 1.1),
+      textAlign: 'center',
+    },
+    statLabel: {
+      marginTop: 2,
       color: colors.textMuted,
       fontSize: font.xs,
-      fontFamily: family.medium,
-      lineHeight: Math.round(font.xs * 1.4),
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.xs * 1.35),
+      textAlign: 'center',
     },
 
     searchPill: {
@@ -432,24 +487,31 @@ function makeStyles(colors: AppColors, resultsMaxHeight: number) {
       justifyContent: 'center',
     },
     searchClearPressed: { backgroundColor: colors.overlay },
-    searchHint: {
-      marginTop: 6,
-      paddingHorizontal: space.md + 20,
-      fontSize: font.xs,
-      lineHeight: Math.round(font.xs * 1.4),
+    quickGrid: {
+      flexDirection: 'row',
+      gap: 12,
+      paddingHorizontal: space.md,
+      marginTop: space.md,
+      flexWrap: isProfileGrid ? 'nowrap' : 'wrap',
     },
-
-    libraryList: { marginTop: space.lg },
-    libraryRow: {
+    quickCard: {
+      flex: isProfileGrid ? 1 : undefined,
+      width: isProfileGrid ? undefined : '100%',
       minHeight: ROW_MIN_HEIGHT,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      paddingVertical: 12,
-      paddingHorizontal: space.md,
+      padding: space.md,
     },
-    libraryRowActive: { backgroundColor: colors.cardStrong },
-    libraryDisc: {
+    quickCardActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+    },
+    quickIcon: {
       width: 44,
       height: 44,
       borderRadius: radius.pill,
@@ -457,28 +519,98 @@ function makeStyles(colors: AppColors, resultsMaxHeight: number) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    libraryTextBlock: { flex: 1, minWidth: 0 },
-    libraryTitle: {
+    quickTextBlock: { flex: 1, minWidth: 0 },
+    quickTitle: {
       color: colors.text,
       fontSize: font.md,
       fontFamily: family.semibold,
       lineHeight: Math.round(font.md * 1.5),
     },
-    librarySubtitle: {
+    quickSubtitle: {
       marginTop: 2,
       color: colors.textMuted,
       fontSize: font.sm,
       fontFamily: family.regular,
       lineHeight: Math.round(font.sm * 1.45),
     },
-    libraryDivider: {
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.border,
-      marginLeft: space.md + 44 + 12,
-    },
 
-    chipSection: { flexGrow: 0, marginTop: space.md },
-    chipScroller: { paddingHorizontal: space.md, paddingVertical: space.sm },
+    categorySection: {
+      marginHorizontal: space.md,
+      marginTop: space.lg,
+    },
+    sectionHeader: {
+      minHeight: 32,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: space.md,
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: font.lg,
+      fontFamily: family.bold,
+      lineHeight: Math.round(font.lg * 1.25),
+    },
+    sectionCount: {
+      color: colors.textMuted,
+      fontSize: font.xs,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.xs * 1.35),
+    },
+    categoryPillScroller: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingTop: space.xs,
+      paddingBottom: space.sm,
+    },
+    categoryPill: {
+      minHeight: 48,
+      maxWidth: 270,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 9,
+      paddingHorizontal: space.md,
+      paddingVertical: 9,
+    },
+    categoryPillActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+    },
+    categoryPillEmoji: {
+      width: 24,
+      fontSize: 18,
+      lineHeight: 22,
+      textAlign: 'center',
+    },
+    categoryPillText: {
+      flexShrink: 1,
+      color: colors.text,
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      lineHeight: Math.round(font.sm * 1.3),
+    },
+    categoryPillCountBadge: {
+      minWidth: 28,
+      height: 24,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+    },
+    categoryPillCount: {
+      color: colors.textMuted,
+      fontSize: font.xs,
+      fontFamily: family.bold,
+      lineHeight: Math.round(font.xs * 1.1),
+      textAlign: 'center',
+    },
 
     loadingIndicator: { marginTop: space.xl, marginBottom: space.xl },
 
@@ -499,58 +631,116 @@ function makeStyles(colors: AppColors, resultsMaxHeight: number) {
     },
     emptyText: { textAlign: 'center' },
 
-    resultsScroller: { maxHeight: resultsMaxHeight },
-    list: { paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.xl, gap: 12 },
-    cardPressed: { transform: [{ scale: 0.97 }] },
-
-    cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    leadingBlock: {
-      width: 64,
-      height: 64,
+    list: {
+      paddingHorizontal: space.md,
+      paddingTop: space.sm,
+      paddingBottom: space.xl,
+      flexDirection: isProfileGrid ? 'row' : 'column',
+      flexWrap: isProfileGrid ? 'wrap' : 'nowrap',
+      gap: 12,
+    },
+    resultPressable: {
+      width: isProfileGrid ? '48.8%' : '100%',
+      minWidth: isProfileGrid ? 300 : undefined,
+    },
+    resultCard: {
+      minHeight: isProfileGrid ? 246 : 0,
+      height: isProfileGrid ? '100%' : undefined,
+    },
+    serviceInfoPressable: {
       borderRadius: radius.md,
+      marginHorizontal: -space.xs,
+      marginTop: space.sm,
+      paddingHorizontal: space.xs,
+      paddingBottom: space.xs,
+    },
+
+    profileHead: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    leadingBlock: {
+      width: 58,
+      height: 58,
+      borderRadius: radius.lg,
       backgroundColor: colors.surfaceTint,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    leadingEmoji: { fontSize: 32 },
-    cardTextBlock: { flex: 1, minWidth: 0 },
+    leadingEmoji: { fontSize: 30 },
     serviceName: {
       color: colors.text,
       fontSize: font.md,
       fontFamily: family.semibold,
-      lineHeight: Math.round(font.md * 1.5),
+      lineHeight: Math.round(font.md * 1.35),
     },
     serviceMeta: {
-      marginTop: space.xs,
+      marginTop: 6,
       color: colors.textMuted,
       fontSize: font.sm,
       fontFamily: family.regular,
       lineHeight: Math.round(font.sm * 1.45),
     },
-    ratingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 6 },
+    ratingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: space.sm,
+      marginTop: 10,
+      minHeight: 28,
+    },
+    profileSpacer: { flex: 1, minHeight: isProfileGrid ? 10 : 0 },
     favoriteBtn: {
-      width: 44,
-      height: 44,
+      width: 40,
+      height: 40,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      alignSelf: 'flex-start',
       marginTop: -space.xs,
       marginRight: -space.xs,
     },
 
-    ctaRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-    callPill: {
-      flex: 1,
-      height: 48,
+    ctaRow: {
+      flexDirection: isProfileGrid ? 'row' : 'column',
+      alignItems: 'stretch',
+      gap: isProfileGrid ? 10 : 8,
+      marginTop: 12,
+    },
+    aboutPill: {
+      flex: isProfileGrid ? 1 : undefined,
+      width: isProfileGrid ? undefined : '100%',
+      minHeight: 38,
       borderRadius: radius.pill,
+      borderWidth: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: space.sm,
+      gap: 7,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    aboutLabel: {
+      color: colors.text,
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+    },
+    callPill: {
+      flex: isProfileGrid ? 1 : undefined,
+      width: isProfileGrid ? undefined : '100%',
+      minHeight: 42,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: space.md,
+      paddingVertical: 10,
     },
     callLabel: {
-      color: colors.accentFg,
+      color: colors.primaryFg,
       fontSize: font.sm,
       fontFamily: family.bold,
     },
