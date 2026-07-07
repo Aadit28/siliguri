@@ -40,8 +40,8 @@ export default function Services() {
   const { favoriteIds, favoriteSet, recentIds, toggleFavorite } = useServicePreferences();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const isProfileGrid = width >= 760;
-  const styles = makeStyles(colors, isProfileGrid);
+  const serviceColumnCount = width >= 1060 ? 3 : width >= 720 ? 2 : 1;
+  const styles = makeStyles(colors, serviceColumnCount);
 
   const [all, setAll] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -396,7 +396,11 @@ export default function Services() {
   );
 }
 
-function makeStyles(colors: AppColors, isProfileGrid: boolean) {
+function makeStyles(colors: AppColors, serviceColumnCount: number) {
+  const isThreeColumn = serviceColumnCount === 3;
+  const isSingleColumn = serviceColumnCount === 1;
+  const serviceCardWidth = isThreeColumn ? '32.55%' : isSingleColumn ? '100%' : '47.2%';
+
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.bg },
     pageScroll: {
@@ -408,8 +412,8 @@ function makeStyles(colors: AppColors, isProfileGrid: boolean) {
       paddingHorizontal: space.md,
       paddingTop: space.lg,
       paddingBottom: space.md,
-      flexDirection: isProfileGrid ? 'row' : 'column',
-      alignItems: isProfileGrid ? 'flex-end' : 'stretch',
+      flexDirection: isThreeColumn ? 'row' : 'column',
+      alignItems: isThreeColumn ? 'flex-end' : 'stretch',
       justifyContent: 'space-between',
       gap: space.md,
       backgroundColor: colors.bg,
@@ -432,7 +436,7 @@ function makeStyles(colors: AppColors, isProfileGrid: boolean) {
     statGrid: {
       flexDirection: 'row',
       gap: space.sm,
-      width: isProfileGrid ? 360 : '100%',
+      width: isThreeColumn ? 360 : '100%',
     },
     statTile: {
       flex: 1,
@@ -492,11 +496,11 @@ function makeStyles(colors: AppColors, isProfileGrid: boolean) {
       gap: 12,
       paddingHorizontal: space.md,
       marginTop: space.md,
-      flexWrap: isProfileGrid ? 'nowrap' : 'wrap',
+      flexWrap: isThreeColumn ? 'nowrap' : 'wrap',
     },
     quickCard: {
-      flex: isProfileGrid ? 1 : undefined,
-      width: isProfileGrid ? undefined : '100%',
+      flex: isThreeColumn ? 1 : undefined,
+      width: isThreeColumn ? undefined : '100%',
       minHeight: ROW_MIN_HEIGHT,
       borderRadius: radius.md,
       borderWidth: 1,
@@ -635,17 +639,18 @@ function makeStyles(colors: AppColors, isProfileGrid: boolean) {
       paddingHorizontal: space.md,
       paddingTop: space.sm,
       paddingBottom: space.xl,
-      flexDirection: isProfileGrid ? 'row' : 'column',
-      flexWrap: isProfileGrid ? 'wrap' : 'nowrap',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 12,
     },
     resultPressable: {
-      width: isProfileGrid ? '48.8%' : '100%',
-      minWidth: isProfileGrid ? 300 : undefined,
+      width: serviceCardWidth,
+      minWidth: 0,
     },
     resultCard: {
-      minHeight: isProfileGrid ? 246 : 0,
-      height: isProfileGrid ? '100%' : undefined,
+      minHeight: isSingleColumn ? 0 : isThreeColumn ? 218 : 210,
+      height: isSingleColumn ? undefined : '100%',
+      padding: isThreeColumn ? space.sm : 12,
     },
     serviceInfoPressable: {
       borderRadius: radius.md,
@@ -662,39 +667,39 @@ function makeStyles(colors: AppColors, isProfileGrid: boolean) {
       gap: 12,
     },
     leadingBlock: {
-      width: 58,
-      height: 58,
+      width: isSingleColumn ? 58 : isThreeColumn ? 48 : 50,
+      height: isSingleColumn ? 58 : isThreeColumn ? 48 : 50,
       borderRadius: radius.lg,
       backgroundColor: colors.surfaceTint,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    leadingEmoji: { fontSize: 30 },
+    leadingEmoji: { fontSize: isSingleColumn ? 30 : isThreeColumn ? 26 : 27 },
     serviceName: {
       color: colors.text,
-      fontSize: font.md,
+      fontSize: isThreeColumn ? font.sm : font.sm,
       fontFamily: family.semibold,
-      lineHeight: Math.round(font.md * 1.35),
+      lineHeight: Math.round(font.sm * 1.3),
     },
     serviceMeta: {
-      marginTop: 6,
+      marginTop: 4,
       color: colors.textMuted,
-      fontSize: font.sm,
+      fontSize: font.xs,
       fontFamily: family.regular,
-      lineHeight: Math.round(font.sm * 1.45),
+      lineHeight: Math.round(font.xs * 1.45),
     },
     ratingRow: {
       flexDirection: 'row',
       alignItems: 'center',
       flexWrap: 'wrap',
       gap: space.sm,
-      marginTop: 10,
-      minHeight: 28,
+      marginTop: 8,
+      minHeight: 26,
     },
-    profileSpacer: { flex: 1, minHeight: isProfileGrid ? 10 : 0 },
+    profileSpacer: { flex: 1, minHeight: 8 },
     favoriteBtn: {
-      width: 40,
-      height: 40,
+      width: 34,
+      height: 34,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
@@ -703,45 +708,47 @@ function makeStyles(colors: AppColors, isProfileGrid: boolean) {
     },
 
     ctaRow: {
-      flexDirection: isProfileGrid ? 'row' : 'column',
+      flexDirection: isSingleColumn ? 'column' : 'row',
       alignItems: 'stretch',
-      gap: isProfileGrid ? 10 : 8,
-      marginTop: 12,
+      gap: isSingleColumn ? 8 : 8,
+      marginTop: isSingleColumn ? 12 : 10,
     },
     aboutPill: {
-      flex: isProfileGrid ? 1 : undefined,
-      width: isProfileGrid ? undefined : '100%',
-      minHeight: 38,
+      flex: 1,
+      minWidth: 0,
+      width: isSingleColumn ? '100%' : undefined,
+      minHeight: isSingleColumn ? 38 : 36,
       borderRadius: radius.pill,
       borderWidth: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 7,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
     },
     aboutLabel: {
       color: colors.text,
-      fontSize: font.sm,
+      fontSize: font.xs,
       fontFamily: family.semibold,
     },
     callPill: {
-      flex: isProfileGrid ? 1 : undefined,
-      width: isProfileGrid ? undefined : '100%',
-      minHeight: 42,
+      flex: 1,
+      minWidth: 0,
+      width: isSingleColumn ? '100%' : undefined,
+      minHeight: isSingleColumn ? 42 : 36,
       borderRadius: radius.pill,
       borderWidth: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      paddingHorizontal: space.md,
-      paddingVertical: 10,
+      gap: 7,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
     },
     callLabel: {
       color: colors.primaryFg,
-      fontSize: font.sm,
+      fontSize: font.xs,
       fontFamily: family.bold,
     },
   });
