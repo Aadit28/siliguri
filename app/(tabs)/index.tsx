@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -49,8 +49,16 @@ export default function Home() {
   const isTranslatedLayout = lang !== 'en';
   const showHeroProof = width >= 1160;
   const styles = makeStyles(colors, isWide, isTranslatedLayout);
+  const homeScrollRef = useRef<ScrollView>(null);
   const [featured, setFeatured] = useState<Service[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      homeScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isWide]);
 
   useEffect(() => {
     fetchServices().then((all) => {
@@ -95,39 +103,6 @@ export default function Home() {
       icon: 'link',
     },
   ];
-  const mobileQuick: { label: string; caption: string; go: string; icon: FeatherName }[] = [
-    {
-      label: t('home.mobileServiceTitle'),
-      caption: t('home.mobileServiceBody'),
-      go: '/services',
-      icon: 'grid',
-    },
-    {
-      label: t('home.mobileCommunityTitle'),
-      caption: t('home.mobileCommunityBody'),
-      go: '/community',
-      icon: 'message-circle',
-    },
-    {
-      label: t('home.mobileHelpTitle'),
-      caption: t('home.mobileHelpBody'),
-      go: '/help',
-      icon: 'phone-call',
-    },
-    {
-      label: t('home.myCalendar'),
-      caption: t('calendar.upcoming'),
-      go: '/calendar',
-      icon: 'calendar',
-    },
-    {
-      label: t('home.connectors'),
-      caption: t('home.connectorsCaption'),
-      go: '/connectors',
-      icon: 'link',
-    },
-  ];
-
   const metrics = [
     t('home.metricCities'),
     t('home.metricProviders'),
@@ -301,36 +276,30 @@ export default function Home() {
       <View style={[styles.screen, { backgroundColor: colors.bg }]}>
         <AppHeader />
         <ScrollView
+          ref={homeScrollRef}
           contentContainerStyle={styles.mobileContent}
           contentInsetAdjustmentBehavior="automatic"
         >
-          <AnimatedSection style={styles.greetingBlock}>
-            <Text style={styles.kicker}>{t('home.heroKicker')}</Text>
-            <H1 style={styles.greetingTitle}>
-              {t('home.greeting')}
-              {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
-            </H1>
-          </AnimatedSection>
-
-          <AnimatedSection delay={40}>{searchPill}</AnimatedSection>
-
-          <AnimatedSection delay={80} style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <H2>{t('home.browseCategories')}</H2>
-              {seeAllLink}
-            </View>
-            {categoryTiles}
-          </AnimatedSection>
-
-          <AnimatedSection delay={120} style={styles.section}>
-            <H2>{t('home.mobileNeedTitle')}</H2>
-            {quickList(mobileQuick)}
-          </AnimatedSection>
-
-          {announcementsBlock}
-
-          <AnimatedSection delay={160}>
+          <AnimatedSection>
             <Card style={styles.heroCard}>
+              <Text style={styles.kicker}>{t('home.heroKicker')}</Text>
+              <H1 style={styles.greetingTitle}>
+                {t('home.greeting')}
+                {displayName ? `, ${displayName}` : ''}. {t('home.heroTitle')}
+              </H1>
+              <Body style={styles.heroBodyText}>{t('home.heroBody')}</Body>
+              <View style={styles.signalRow}>
+                {[t('home.signalCity'), t('home.signalVerified'), t('home.signalCaregiver')].map(
+                  (label) => (
+                    <View key={label} style={styles.signalPill}>
+                      <Feather name="check" size={16} color={colors.text} />
+                      <Text style={styles.signalText} numberOfLines={1}>
+                        {label}
+                      </Text>
+                    </View>
+                  ),
+                )}
+              </View>
               <View style={styles.heroPhotoWrap}>
                 <Image
                   source={heroImage}
@@ -339,17 +308,69 @@ export default function Home() {
                   accessibilityLabel={t('home.heroPhotoAlt')}
                 />
               </View>
-              <Body style={styles.heroBodyText}>{t('home.heroBody')}</Body>
-              <Button
-                label={t('home.heroSecondary')}
-                variant="secondary"
-                onPress={() => router.push('/help')}
-              />
+              {searchPill}
+              <View style={styles.heroActionsWide}>
+                <View style={styles.heroActionItem}>
+                  <Button label={t('home.heroPrimary')} onPress={() => router.push('/services')} />
+                </View>
+                <View style={styles.heroActionItem}>
+                  <Button
+                    label={t('home.heroSecondary')}
+                    variant="secondary"
+                    onPress={() => router.push('/help')}
+                  />
+                </View>
+              </View>
+              <View style={styles.heroProof}>
+                <Text style={styles.heroProofLabel}>{t('home.scaleTitle')}</Text>
+                <Text style={styles.heroProofBody}>{t('home.scaleBody')}</Text>
+              </View>
             </Card>
           </AnimatedSection>
 
+          {announcementsBlock}
+
+          <AnimatedSection delay={80}>
+            <View style={styles.metricGrid}>
+              {metrics.map((metric, index) => (
+                <View key={metric} style={styles.metricCard}>
+                  <Text style={styles.metricNumber}>{`0${index + 1}`}</Text>
+                  <Text style={styles.metricText}>{metric}</Text>
+                </View>
+              ))}
+            </View>
+          </AnimatedSection>
+
+          <AnimatedSection delay={140}>
+            <Card style={styles.proofCard}>
+              <View style={styles.proofCopy}>
+                <Text style={styles.kicker}>{t('home.trustTitle')}</Text>
+                <H2 style={styles.proofTitle}>{t('home.proofTitle')}</H2>
+                <Body style={styles.proofBody}>{t('home.proofBody')}</Body>
+              </View>
+              <View style={styles.proofStack}>
+                {[
+                  t('home.opsVerifyBody'),
+                  t('home.opsCoordinateBody'),
+                  t('home.opsEscalateBody'),
+                ].map((item, index) => (
+                  <View key={item} style={[styles.proofRow, index > 0 && styles.proofRowDivider]}>
+                    <View style={styles.listDisc}>
+                      <Text style={styles.stepIndex}>{index + 1}</Text>
+                    </View>
+                    <Text style={styles.proofRowText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            </Card>
+          </AnimatedSection>
+
+          <AnimatedSection delay={200} style={styles.section}>
+            {quickList(quick)}
+          </AnimatedSection>
+
           {featured.length > 0 ? (
-            <AnimatedSection delay={200} style={[styles.section, styles.featuredSection]}>
+            <AnimatedSection delay={260} style={[styles.section, styles.featuredSection]}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderBlock}>
                   <Text style={styles.kicker}>{t('common.verified')}</Text>
@@ -361,6 +382,63 @@ export default function Home() {
             </AnimatedSection>
           ) : null}
 
+          <AnimatedSection delay={320} style={styles.section}>
+            <View style={styles.sectionHeaderBlock}>
+              <Text style={styles.kicker}>{t('home.scaleTitle')}</Text>
+              <H2>{t('home.browseCategories')}</H2>
+            </View>
+            {categoryTiles}
+          </AnimatedSection>
+
+          <AnimatedSection delay={380}>
+            <Card style={styles.journeyCard}>
+              <View style={styles.sectionHeaderBlock}>
+                <Text style={styles.kicker}>{t('home.journeyTitle')}</Text>
+                <H2>{t('home.opsTitle')}</H2>
+              </View>
+              <View style={styles.journeyRail}>
+                {journey.map((step, index) => (
+                  <View
+                    key={step.label}
+                    style={[styles.journeyStep, index > 0 && styles.journeyStepBorder]}
+                  >
+                    <View style={styles.listDisc}>
+                      <Text style={styles.stepIndex}>{index + 1}</Text>
+                    </View>
+                    <Text style={styles.journeyLabel}>{step.label}</Text>
+                    <Muted style={styles.journeyBody}>{step.body}</Muted>
+                  </View>
+                ))}
+              </View>
+            </Card>
+          </AnimatedSection>
+
+          <AnimatedSection delay={440}>
+            <Card style={styles.railsCard}>
+              <View style={styles.railsCopy}>
+                <Text style={styles.kicker}>{t('home.railsTitle')}</Text>
+                <H2>{t('home.scaleTitle')}</H2>
+                <Muted style={styles.railsBody}>{t('home.railsBody')}</Muted>
+              </View>
+              <View style={styles.railsWrap}>
+                {TRUST_RAILS.map((rail) => (
+                  <Pressable
+                    key={rail.label}
+                    accessibilityRole="link"
+                    accessibilityLabel={rail.label}
+                    onPress={() => Linking.openURL(rail.url)}
+                    style={({ pressed }) => [
+                      styles.railChip,
+                      pressed && { backgroundColor: colors.cardStrong },
+                    ]}
+                  >
+                    <Text style={styles.railChipText}>{rail.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </Card>
+          </AnimatedSection>
+
           {adminBlock}
           <SiteFooter />
         </ScrollView>
@@ -371,7 +449,11 @@ export default function Home() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       <AppHeader />
-      <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+      <ScrollView
+        ref={homeScrollRef}
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+      >
         <AnimatedSection>
           <Card style={styles.heroCardWide}>
             <View style={styles.heroCopyWide}>
@@ -659,7 +741,7 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
     },
     heroSearchWide: { maxWidth: 480 },
     heroActionsWide: {
-      flexDirection: 'row',
+      flexDirection: isWide ? 'row' : 'column',
       gap: 12,
       maxWidth: 560,
     },
@@ -845,7 +927,7 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
     },
 
     // Metrics (wide)
-    metricGrid: { flexDirection: 'row', gap: 12 },
+    metricGrid: { flexDirection: isWide ? 'row' : 'column', gap: 12 },
     metricCard: {
       flex: 1,
       borderRadius: radius.lg,
@@ -872,10 +954,10 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
 
     // Proof (wide)
     proofCard: {
-      flexDirection: 'row',
+      flexDirection: isWide ? 'row' : 'column',
       alignItems: 'stretch',
       gap: space.lg,
-      padding: space.xl,
+      padding: isWide ? space.xl : space.md,
     },
     proofCopy: { flex: 1.05, justifyContent: 'center', gap: space.xs },
     proofTitle: { marginTop: space.xs },
@@ -906,13 +988,16 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
     },
 
     // Journey (wide)
-    journeyCard: { gap: space.lg, padding: space.xl },
-    journeyRail: { flexDirection: 'row', gap: space.lg },
+    journeyCard: { gap: space.lg, padding: isWide ? space.xl : space.md },
+    journeyRail: { flexDirection: isWide ? 'row' : 'column', gap: space.lg },
     journeyStep: { flex: 1 },
     journeyStepBorder: {
-      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftWidth: isWide ? StyleSheet.hairlineWidth : 0,
+      borderTopWidth: isWide ? 0 : StyleSheet.hairlineWidth,
       borderLeftColor: colors.border,
-      paddingLeft: space.lg,
+      borderTopColor: colors.border,
+      paddingLeft: isWide ? space.lg : 0,
+      paddingTop: isWide ? 0 : space.lg,
     },
     journeyLabel: {
       color: colors.text,
@@ -925,10 +1010,10 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
 
     // Trust rails (wide)
     railsCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: isWide ? 'row' : 'column',
+      alignItems: isWide ? 'center' : 'stretch',
       gap: space.lg,
-      padding: space.xl,
+      padding: isWide ? space.xl : space.md,
     },
     railsCopy: { flex: 1.1, gap: space.xs },
     railsBody: { marginTop: space.xs },
