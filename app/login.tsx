@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -6,10 +6,10 @@ import { Feather } from '@expo/vector-icons';
 import { H1, Muted, Button } from '../src/components/ui';
 import { AppColors, family, font, radius, space, TAP, tracking } from '../src/lib/theme';
 import { useAuth } from '../src/context/AuthContext';
-import { supabaseConfigured } from '../src/lib/supabase';
 import { useTheme } from '../src/context/ThemeContext';
+import { consumeLoginIntent } from '../src/lib/authNavigation';
 
-type FieldId = 'name' | 'username' | 'password';
+type FieldId = 'name' | 'username' | 'phone' | 'password';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -20,11 +20,18 @@ export default function Login() {
 
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [focused, setFocused] = useState<FieldId | null>(null);
+
+  useEffect(() => {
+    if (!consumeLoginIntent()) {
+      router.replace('/');
+    }
+  }, [router]);
 
   function goHome() {
     router.replace('/');
@@ -34,16 +41,13 @@ export default function Login() {
     setMsg(null);
     setMode(nextMode);
     setUsername('');
+    setPhone('');
     setPassword('');
     setFullName('');
   }
 
   async function submit() {
     setMsg(null);
-    if (!supabaseConfigured) {
-      setMsg('Backend not configured. Add Supabase keys to .env.');
-      return;
-    }
     setBusy(true);
     if (mode === 'in') {
       const { error } = await signIn(username, password);
@@ -53,7 +57,7 @@ export default function Login() {
       return;
     }
 
-    const { error } = await signUp(username, password, fullName.trim());
+    const { error } = await signUp(username, password, fullName.trim(), 'username', phone);
     setBusy(false);
     if (error) setMsg(error);
     else goHome();
@@ -61,6 +65,8 @@ export default function Login() {
 
   const isSignIn = mode === 'in';
   const formKey = `auth-form-${mode}`;
+  const visibleMsg =
+    msg === 'Backend not configured. Add Supabase keys to .env.' ? null : msg;
 
   function inputStyle(id: FieldId) {
     return [styles.input, focused === id ? styles.inputFocused : null];
@@ -108,17 +114,19 @@ export default function Login() {
           ) : null}
           <View style={styles.field}>
             <Text nativeID="label-username" style={styles.label}>
-              {t('common.username')}
+              {isSignIn ? t('auth.identifier') : t('common.username')}
             </Text>
             <TextInput
               style={inputStyle('username')}
-              accessibilityLabel={t('common.username')}
+              accessibilityLabel={isSignIn ? t('auth.identifier') : t('common.username')}
               accessibilityLabelledBy="label-username"
               autoComplete="username"
               autoCapitalize="none"
               keyboardType="default"
               textContentType="username"
               importantForAutofill="yes"
+              placeholder={isSignIn ? t('auth.identifierPlaceholder') : undefined}
+              placeholderTextColor={colors.textSubtle}
               value={username}
               onChangeText={setUsername}
               onFocus={() => setFocused('username')}
@@ -126,6 +134,29 @@ export default function Login() {
               selectionColor={colors.accent}
             />
           </View>
+          {!isSignIn ? (
+            <View style={styles.field}>
+              <Text nativeID="label-phone" style={styles.label}>
+                {t('auth.phoneNumber')}
+              </Text>
+              <TextInput
+                style={inputStyle('phone')}
+                accessibilityLabel={t('auth.phoneNumber')}
+                accessibilityLabelledBy="label-phone"
+                autoComplete="tel"
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                importantForAutofill="yes"
+                placeholder={t('auth.phonePlaceholder')}
+                placeholderTextColor={colors.textSubtle}
+                value={phone}
+                onChangeText={setPhone}
+                onFocus={() => setFocused('phone')}
+                onBlur={() => setFocused(null)}
+                selectionColor={colors.accent}
+              />
+            </View>
+          ) : null}
           <View style={styles.field}>
             <Text nativeID="label-password" style={styles.label}>
               {t('common.password')}
@@ -147,10 +178,10 @@ export default function Login() {
           </View>
         </View>
 
-        {msg ? (
+        {visibleMsg ? (
           <View style={styles.errorBox} accessibilityRole="alert">
             <Feather name="alert-circle" size={20} color={colors.danger} />
-            <Text style={styles.errorText}>{msg}</Text>
+            <Text style={styles.errorText}>{visibleMsg}</Text>
           </View>
         ) : null}
 
@@ -210,7 +241,7 @@ function makeStyles(colors: AppColors) {
       lineHeight: Math.round(font.md * 1.5),
     },
     form: {
-      marginTop: space.xl,
+      marginTop: space.lg,
       gap: space.md,
     },
     field: {
@@ -221,6 +252,11 @@ function makeStyles(colors: AppColors) {
       fontFamily: family.medium,
       lineHeight: Math.round(font.sm * 1.45),
       color: colors.text,
+    },
+    fieldHint: {
+      marginTop: 0,
+      fontSize: font.xs,
+      lineHeight: Math.round(font.xs * 1.4),
     },
     input: {
       backgroundColor: colors.surfaceTint,

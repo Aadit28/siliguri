@@ -19,15 +19,18 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import AppHeader from '../../src/components/AppHeader';
+import SiteFooter from '../../src/components/SiteFooter';
 import { Button, Muted } from '../../src/components/ui';
 import { AppColors, family, font, motion, radius, space } from '../../src/lib/theme';
 import { postEmoji } from '../../src/lib/categories';
 import { fetchPosts } from '../../src/lib/api';
 import { tContent } from '../../src/lib/contentI18n';
+import { languageForContent } from '../../src/lib/languages';
 import { CommunityPost } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
+import { markLoginIntent } from '../../src/lib/authNavigation';
 
 const EASE_OUT_QUART = Easing.bezier(...motion.easeOutQuart);
 const STAGGER_MS = 40;
@@ -37,6 +40,7 @@ export default function Community() {
   const { t } = useTranslation();
   const router = useRouter();
   const { lang } = useLocale();
+  const contentLang = languageForContent(lang);
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = makeStyles(colors);
@@ -64,7 +68,14 @@ export default function Community() {
         <Button
           label={t('community.askQuestion')}
           icon={<Feather name="edit-3" size={20} color={colors.primaryFg} />}
-          onPress={() => (user ? router.push('/new-post') : router.push('/login'))}
+          onPress={() => {
+            if (user) {
+              router.push('/new-post');
+              return;
+            }
+            markLoginIntent();
+            router.push('/login');
+          }}
         />
       </View>
 
@@ -76,7 +87,8 @@ export default function Community() {
         <FlatList
           data={posts}
           keyExtractor={(p) => p.id}
-          contentContainerStyle={{ paddingBottom: space.xl }}
+          contentContainerStyle={styles.listContent}
+          ListFooterComponent={<SiteFooter />}
           renderItem={({ item, index }) => (
             <PostAppear index={index} reduced={reduced}>
               <Pressable
@@ -105,16 +117,16 @@ export default function Community() {
                     <Text style={styles.metaLine} numberOfLines={1}>
                       {postEmoji(item.category)} {t(`postCategories.${item.category}`)}
                       {'  ·  '}
-                      {postDate(item.created_at, lang)}
+                      {postDate(item.created_at, contentLang)}
                     </Text>
                   </View>
                 </View>
 
                 <Text style={styles.postTitle} numberOfLines={2}>
-                  {tContent(item.title, lang)}
+                  {tContent(item.title, contentLang)}
                 </Text>
                 <Text style={styles.postBody} numberOfLines={2}>
-                  {tContent(item.body, lang)}
+                  {tContent(item.body, contentLang)}
                 </Text>
 
                 <View style={styles.actionRow}>
@@ -204,6 +216,7 @@ function initialsFor(name: string): string {
   return name
     .trim()
     .split(/\s+/)
+    .filter((part) => /^\p{L}/u.test(part))
     .slice(0, 2)
     .map((part) => part[0])
     .join('')
@@ -230,6 +243,9 @@ function makeStyles(colors: AppColors) {
     loadingWrap: {
       paddingTop: space.xl,
       alignItems: 'center',
+    },
+    listContent: {
+      paddingBottom: 0,
     },
     // Community post card: transparent, no border/shadow, hairline divider.
     post: {

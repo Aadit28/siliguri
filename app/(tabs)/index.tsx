@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
+import SiteFooter from '../../src/components/SiteFooter';
 import { Badge, Body, Button, Card, H1, H2, Muted, Stars } from '../../src/components/ui';
 import { AppColors, family, font, radius, shadow, space, tracking } from '../../src/lib/theme';
 import { SERVICE_CATEGORIES, serviceEmoji } from '../../src/lib/categories';
@@ -45,8 +46,9 @@ export default function Home() {
   const { lang } = useLocale();
   const { width } = useWindowDimensions();
   const isWide = width >= 820;
+  const isTranslatedLayout = lang !== 'en';
   const showHeroProof = width >= 1160;
-  const styles = makeStyles(colors, isWide);
+  const styles = makeStyles(colors, isWide, isTranslatedLayout);
   const [featured, setFeatured] = useState<Service[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
@@ -347,7 +349,7 @@ export default function Home() {
           </AnimatedSection>
 
           {featured.length > 0 ? (
-            <AnimatedSection delay={200} style={styles.section}>
+            <AnimatedSection delay={200} style={[styles.section, styles.featuredSection]}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderBlock}>
                   <Text style={styles.kicker}>{t('common.verified')}</Text>
@@ -360,6 +362,7 @@ export default function Home() {
           ) : null}
 
           {adminBlock}
+          <SiteFooter />
         </ScrollView>
       </View>
     );
@@ -384,7 +387,9 @@ export default function Home() {
                   (label) => (
                     <View key={label} style={styles.signalPill}>
                       <Feather name="check" size={16} color={colors.text} />
-                      <Text style={styles.signalText}>{label}</Text>
+                      <Text style={styles.signalText} numberOfLines={1}>
+                        {label}
+                      </Text>
                     </View>
                   ),
                 )}
@@ -464,7 +469,28 @@ export default function Home() {
           {quickList(quick)}
         </AnimatedSection>
 
-        <AnimatedSection delay={260}>
+        {featured.length > 0 ? (
+          <AnimatedSection delay={260} style={[styles.section, styles.featuredSection]}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeaderBlock}>
+                <Text style={styles.kicker}>{t('common.verified')}</Text>
+                <H2>{t('home.topRated')}</H2>
+              </View>
+              {seeAllLink}
+            </View>
+            <View style={styles.providerGrid}>{featured.slice(0, 4).map(providerCard)}</View>
+          </AnimatedSection>
+        ) : null}
+
+        <AnimatedSection delay={320} style={styles.section}>
+          <View style={styles.sectionHeaderBlock}>
+            <Text style={styles.kicker}>{t('home.scaleTitle')}</Text>
+            <H2>{t('home.browseCategories')}</H2>
+          </View>
+          {categoryTiles}
+        </AnimatedSection>
+
+        <AnimatedSection delay={380}>
           <Card style={styles.journeyCard}>
             <View style={styles.sectionHeaderBlock}>
               <Text style={styles.kicker}>{t('home.journeyTitle')}</Text>
@@ -485,27 +511,6 @@ export default function Home() {
               ))}
             </View>
           </Card>
-        </AnimatedSection>
-
-        {featured.length > 0 ? (
-          <AnimatedSection delay={320} style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <View style={styles.sectionHeaderBlock}>
-                <Text style={styles.kicker}>{t('common.verified')}</Text>
-                <H2>{t('home.topRated')}</H2>
-              </View>
-              {seeAllLink}
-            </View>
-            <View style={styles.providerGrid}>{featured.slice(0, 4).map(providerCard)}</View>
-          </AnimatedSection>
-        ) : null}
-
-        <AnimatedSection delay={380} style={styles.section}>
-          <View style={styles.sectionHeaderBlock}>
-            <Text style={styles.kicker}>{t('home.scaleTitle')}</Text>
-            <H2>{t('home.browseCategories')}</H2>
-          </View>
-          {categoryTiles}
         </AnimatedSection>
 
         {adminBlock}
@@ -535,32 +540,34 @@ export default function Home() {
             </View>
           </Card>
         </AnimatedSection>
+        <SiteFooter />
       </ScrollView>
     </View>
   );
 }
 
-function makeStyles(colors: AppColors, isWide: boolean) {
-  const contentMax = 1120;
+function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: boolean) {
+  const heroTitleSize = isTranslatedLayout ? (isWide ? 32 : 25) : isWide ? font.display : font.xl;
+  const heroTitleLine = isTranslatedLayout ? Math.round(heroTitleSize * 1.52) : Math.round(heroTitleSize * 1.18);
+  const bodyLine = isTranslatedLayout ? Math.round(font.sm * 1.65) : Math.round(font.md * 1.5);
 
   return StyleSheet.create({
     screen: { flex: 1 },
     content: {
       width: '100%',
-      maxWidth: contentMax,
-      alignSelf: 'center',
       paddingHorizontal: isWide ? space.xl : space.md,
       paddingTop: space.sm,
-      paddingBottom: space.xxl * 2,
+      paddingBottom: 0,
       gap: space.lg,
+      flexGrow: 1,
     },
     mobileContent: {
       width: '100%',
-      alignSelf: 'center',
       paddingHorizontal: space.md,
       paddingTop: space.sm,
-      paddingBottom: 108,
+      paddingBottom: 0,
       gap: space.lg,
+      flexGrow: 1,
     },
 
     // Shared
@@ -568,11 +575,12 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       color: colors.textMuted,
       fontSize: font.xs,
       fontFamily: family.medium,
-      lineHeight: Math.round(font.xs * 1.4),
-      letterSpacing: 0.8,
+      lineHeight: isTranslatedLayout ? Math.round(font.xs * 1.55) : Math.round(font.xs * 1.4),
+      letterSpacing: isTranslatedLayout ? 0 : 0.8,
       textTransform: 'uppercase',
     },
     section: { gap: space.md },
+    featuredSection: { marginTop: 0 },
     sectionHeaderRow: {
       flexDirection: 'row',
       alignItems: 'flex-end',
@@ -603,16 +611,17 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     searchPillText: {
       flex: 1,
       color: colors.textMuted,
-      fontSize: font.md,
+      fontSize: isTranslatedLayout ? font.sm : font.md,
       fontFamily: family.semibold,
+      lineHeight: isTranslatedLayout ? Math.round(font.sm * 1.55) : undefined,
     },
 
     // Greeting (mobile)
     greetingBlock: { gap: space.sm },
     greetingTitle: {
-      fontSize: font.xl,
-      lineHeight: Math.round(font.xl * 1.25),
-      letterSpacing: tracking.xl,
+      fontSize: heroTitleSize,
+      lineHeight: heroTitleLine,
+      letterSpacing: isTranslatedLayout ? 0 : tracking.xl,
     },
 
     // Hero (mobile)
@@ -624,7 +633,11 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       overflow: 'hidden',
     },
     heroPhoto: { width: '100%', height: '100%' },
-    heroBodyText: { color: colors.textMuted },
+    heroBodyText: {
+      color: colors.textMuted,
+      fontSize: isTranslatedLayout ? font.sm : font.md,
+      lineHeight: bodyLine,
+    },
     heroActions: { gap: 12 },
 
     // Hero (wide)
@@ -636,13 +649,13 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     },
     heroCopyWide: {
       flex: 1.05,
-      padding: space.xl,
-      gap: space.md,
+      padding: isTranslatedLayout ? space.lg : space.xl,
+      gap: isTranslatedLayout ? space.sm : space.md,
     },
     heroTitleWide: {
-      fontSize: font.display,
-      lineHeight: Math.round(font.display * 1.12),
-      letterSpacing: tracking.display,
+      fontSize: heroTitleSize,
+      lineHeight: heroTitleLine,
+      letterSpacing: isTranslatedLayout ? 0 : tracking.display,
     },
     heroSearchWide: { maxWidth: 480 },
     heroActionsWide: {
@@ -651,7 +664,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       maxWidth: 560,
     },
     heroActionItem: { flex: 1 },
-    heroMediaWide: { flex: 1, minHeight: 460 },
+    heroMediaWide: { flex: isTranslatedLayout ? 0.92 : 1, minHeight: isTranslatedLayout ? 520 : 460 },
     heroPhotoWide: { width: '100%', height: '100%' },
     signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
     signalPill: {
@@ -662,11 +675,14 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       borderRadius: radius.pill,
       paddingHorizontal: 12,
       backgroundColor: colors.surfaceTint,
+      maxWidth: isTranslatedLayout ? 230 : undefined,
     },
     signalText: {
+      flexShrink: 1,
       color: colors.text,
       fontSize: font.xs,
       fontFamily: family.medium,
+      lineHeight: isTranslatedLayout ? Math.round(font.xs * 1.55) : undefined,
     },
     heroProof: {
       borderRadius: radius.md,
@@ -750,22 +766,29 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     // Category tiles (Uber suggestions grid)
     tileGrid: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
+      flexWrap: isWide ? 'nowrap' : 'wrap',
+      alignItems: 'flex-start',
+      gap: isWide ? 14 : 12,
     },
-    tileWrap: {
-      width: isWide ? '14%' : '30%',
-      minHeight: 118,
-    },
+    tileWrap: isWide
+      ? {
+          flex: 1,
+          minWidth: 0,
+          minHeight: 112,
+        }
+      : {
+          width: '30%',
+          minHeight: 118,
+        },
     tile: {
-      height: 80,
+      height: isWide ? 88 : 80,
       borderRadius: radius.md,
       alignItems: 'center',
       justifyContent: 'center',
     },
     tileEmoji: { fontSize: 34 },
     tileLabel: {
-      marginTop: space.xs,
+      marginTop: isWide ? 10 : space.xs,
       color: colors.text,
       fontSize: font.xs,
       fontFamily: family.medium,

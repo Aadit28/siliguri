@@ -1,9 +1,12 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
 const TOKEN_TTL_DAYS = 30;
 const PASSWORD_ITERATIONS = 310000;
+const LOCAL_PHONE_AUTH_PATH = path.resolve(__dirname, '..', '..', '.codex', 'local-phone-auth.json');
 
 function adminClient() {
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -21,6 +24,7 @@ function withCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
 }
 
 function send(res, status, body) {
@@ -41,10 +45,26 @@ function normalizeUsername(username) {
   return String(username || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function normalizePhone(phone) {
+  const raw = String(phone || '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : raw;
+}
+
 function validateUsername(username) {
   if (!username) return 'Enter your username.';
   if (username.length < 3) return 'Username must be at least 3 characters.';
   if (username.length > 80) return 'Username is too long.';
+  return undefined;
+}
+
+function validatePhone(phone) {
+  if (!phone) return 'Enter your phone number.';
+  if (!/^\+\d{8,15}$/.test(phone)) return 'Enter a valid phone number.';
   return undefined;
 }
 
@@ -63,12 +83,35 @@ function tokenHash(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function readLocalPhoneAuth() {
+  try {
+    return JSON.parse(fs.readFileSync(LOCAL_PHONE_AUTH_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function localPhoneUserId(phone) {
+  const map = readLocalPhoneAuth();
+  return typeof map[phone] === 'string' ? map[phone] : null;
+}
+
+function saveLocalPhoneAuth(phone, userId) {
+  const map = readLocalPhoneAuth();
+  fs.mkdirSync(path.dirname(LOCAL_PHONE_AUTH_PATH), { recursive: true });
+  fs.writeFileSync(
+    LOCAL_PHONE_AUTH_PATH,
+    `${JSON.stringify({ ...map, [phone]: userId }, null, 2)}\n`,
+  );
+}
+
 function publicUser(row) {
   return {
     id: row.id,
     user_metadata: {
       username: row.username,
       full_name: row.full_name || row.username,
+      phone_number: row.phone_number || null,
       role: row.role || 'user',
       city_id: row.city_id || null,
     },
@@ -117,14 +160,18 @@ module.exports = {
   adminClient,
   authenticate,
   createSession,
+  localPhoneUserId,
+  normalizePhone,
   normalizeUsername,
   passwordHash,
   publicUser,
   readBody,
   requireAdmin,
+  saveLocalPhoneAuth,
   send,
   tokenHash,
   validatePassword,
+  validatePhone,
   validateUsername,
   withCors,
 };

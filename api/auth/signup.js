@@ -2,12 +2,16 @@ const crypto = require('crypto');
 const {
   adminClient,
   createSession,
+  localPhoneUserId,
+  normalizePhone,
   normalizeUsername,
   passwordHash,
   publicUser,
   readBody,
+  saveLocalPhoneAuth,
   send,
   validatePassword,
+  validatePhone,
   validateUsername,
   withCors,
 } = require('../_lib/auth');
@@ -19,32 +23,61 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = await readBody(req);
-    const username = normalizeUsername(body.username);
+    const phone = normalizePhone(body.phone);
+    let username = normalizeUsername(body.username);
     const fullName = String(body.fullName || '').trim();
     const password = String(body.password || '');
-    const validationError = validateUsername(username) || validatePassword(password);
+    const validationError =
+      (!fullName ? 'Enter your full name.' : undefined) ||
+      validateUsername(username) ||
+      validatePhone(phone) ||
+      validatePassword(password);
     if (validationError) return send(res, 400, { error: validationError });
 
     const supabase = adminClient();
+    if (phone && localPhoneUserId(phone)) {
+      return send(res, 409, { error: 'That phone number is already registered.' });
+    }
     const salt = crypto.randomBytes(16).toString('base64');
-    const { data: user, error } = await supabase
+    const insertRow = {
+      username,
+      full_name: fullName,
+      password_salt: salt,
+      password_hash: passwordHash(password, salt),
+      phone_number: phone,
+    };
+    let { data: user, error } = await supabase
       .from('user_accounts')
-      .insert({
-        username,
-        full_name: fullName || username,
-        password_salt: salt,
-        password_hash: passwordHash(password, salt),
-      })
-      .select('id,username,full_name,created_at')
+      .insert(insertRow)
+      .select('id,username,full_name,phone_number,created_at')
       .single();
 
     if (error) {
+      if (phone && String(error.message || '').toLowerCase().includes('phone_number')) {
+        const fallbackRow = { ...insertRow };
+        delete fallbackRow.phone_number;
+        const fallback = await supabase
+          .from('user_accounts')
+          .insert(fallbackRow)
+          .select('id,username,full_name,created_at')
+          .single();
+        user = fallback.data ? { ...fallback.data, phone_number: null } : null;
+        error = fallback.error;
+        if (!error && user) {
+          saveLocalPhoneAuth(phone, user.id);
+          const session = await createSession(supabase, user.id);
+          return send(res, 200, { session: { ...session, user: publicUser({ ...user, phone_number: phone }) } });
+        }
+      }
       if (String(error.message || '').toLowerCase().includes('duplicate')) {
-        return send(res, 409, { error: 'That username is already taken.' });
+        return send(res, 409, {
+          error: phone ? 'That phone number is already registered.' : 'That username is already taken.',
+        });
       }
       throw error;
     }
 
+    if (phone) saveLocalPhoneAuth(phone, user.id);
     const session = await createSession(supabase, user.id);
     return send(res, 200, { session: { ...session, user: publicUser(user) } });
   } catch (error) {

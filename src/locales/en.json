@@ -315,6 +315,12 @@
     "signInOnly": "Sign in to your account",
     "createAccountOnly": "Create your account",
     "fullName": "Full name",
+    "identifier": "Username or phone number",
+    "identifierPlaceholder": "Aadit_J or +91 98765 43210",
+    "phoneNumber": "Phone number",
+    "phonePlaceholder": "+91 98765 43210",
+    "phoneUsernameHint": "Your username will be created from your name automatically.",
+    "phoneUsernamePreview": "Username will be {{username}}.",
     "createAccount": "Create account",
     "haveAccount": "I already have an account",
     "needAccount": "Create a new account"

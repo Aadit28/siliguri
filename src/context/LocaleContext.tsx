@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import i18n from '../lib/i18n';
-
-type Lang = 'hi' | 'en';
+import { type Lang, isSupportedLang } from '../lib/languages';
 
 interface LocaleState {
   lang: Lang;
@@ -12,7 +11,9 @@ interface LocaleState {
 const LocaleContext = createContext<LocaleState | undefined>(undefined);
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>((i18n.language as Lang) || 'hi');
+  const [lang, setLangState] = useState<Lang>(
+    isSupportedLang(i18n.language) ? i18n.language : 'hi',
+  );
 
   const setLang = useCallback((l: Lang) => {
     i18n.changeLanguage(l);

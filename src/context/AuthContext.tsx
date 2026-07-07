@@ -2,12 +2,12 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { backendRequest } from '../lib/backend';
 import { clearMemory } from '../lib/memory';
-import { supabaseConfigured } from '../lib/supabase';
 
 type SaathiUser = {
   id: string;
   user_metadata?: {
     username?: string;
+    phone_number?: string | null;
     full_name?: string;
     role?: string;
     city_id?: string | null;
@@ -27,16 +27,44 @@ interface AuthState {
   displayName: string;
   isAdmin: boolean;
   role: string;
-  signIn: (username: string, password: string) => Promise<{ error?: string }>;
-  signUp: (username: string, password: string, fullName: string) => Promise<{ error?: string }>;
+  signIn: (
+    identifier: string,
+    password: string,
+    method?: AuthMethod,
+  ) => Promise<{ error?: string }>;
+  signUp: (
+    identifier: string,
+    password: string,
+    fullName: string,
+    method?: AuthMethod,
+    phoneNumber?: string,
+  ) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 const SESSION_KEY = 'saathi.usernameSession';
+export type AuthMethod = 'username' | 'phone';
 
 function normalizeUsername(username: string) {
   return username.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizePhone(phone: string) {
+  const raw = phone.trim();
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : raw;
+}
+
+function inferAuthMethod(identifier: string, method?: AuthMethod): AuthMethod {
+  if (method) return method;
+  const raw = identifier.trim();
+  const digits = raw.replace(/\D/g, '');
+  const phoneLike = /^[+\d\s().-]+$/.test(raw) && digits.length >= 8;
+  return phoneLike ? 'phone' : 'username';
 }
 
 function validateUsername(username: string) {
@@ -46,15 +74,17 @@ function validateUsername(username: string) {
   return undefined;
 }
 
+function validatePhone(phone: string) {
+  if (!phone) return 'Enter your phone number.';
+  if (!/^\+\d{8,15}$/.test(phone)) return 'Enter a valid phone number.';
+  return undefined;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SaathiSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabaseConfigured) {
-      setLoading(false);
-      return;
-    }
     AsyncStorage.getItem(SESSION_KEY)
       .then(async (stored) => {
         if (!stored) return;
@@ -80,15 +110,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const role = (user?.user_metadata?.role as string) || 'user';
   const isAdmin = role === 'admin' || role === 'super_admin';
 
-  async function signIn(username: string, password: string) {
-    const normalizedUsername = normalizeUsername(username);
-    const validationError = validateUsername(normalizedUsername);
+  async function signIn(identifier: string, password: string, method?: AuthMethod) {
+    if (!identifier.trim()) return { error: 'Enter your username or phone number.' };
+    const resolvedMethod = inferAuthMethod(identifier, method);
+    const normalizedIdentifier =
+      resolvedMethod === 'phone' ? normalizePhone(identifier) : normalizeUsername(identifier);
+    const validationError =
+      resolvedMethod === 'phone' ? validatePhone(normalizedIdentifier) : validateUsername(normalizedIdentifier);
     if (validationError) return { error: validationError };
 
     try {
       const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
         '/api/auth/signin',
-        { method: 'POST', body: { username: normalizedUsername, password } },
+        {
+          method: 'POST',
+          body:
+            resolvedMethod === 'phone'
+              ? { phone: normalizedIdentifier, password }
+              : { username: normalizedIdentifier, password },
+        },
       );
       if (!nextSession?.access_token || !nextSession.user) {
         throw new Error('Sign in did not return an account session.');
@@ -101,15 +141,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function signUp(username: string, password: string, fullName: string) {
-    const normalizedUsername = normalizeUsername(username);
-    const validationError = validateUsername(normalizedUsername);
+  async function signUp(
+    identifier: string,
+    password: string,
+    fullName: string,
+    method?: AuthMethod,
+    phoneNumber?: string,
+  ) {
+    const resolvedMethod = inferAuthMethod(identifier, method);
+    const normalizedIdentifier =
+      resolvedMethod === 'phone' ? normalizePhone(identifier) : normalizeUsername(identifier);
+    const normalizedPhone = phoneNumber ? normalizePhone(phoneNumber) : '';
+    const validationError =
+      (resolvedMethod === 'phone' ? validatePhone(normalizedIdentifier) : validateUsername(normalizedIdentifier)) ||
+      (phoneNumber !== undefined ? validatePhone(normalizedPhone) : undefined);
     if (validationError) return { error: validationError };
 
     try {
       const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
         '/api/auth/signup',
-        { method: 'POST', body: { username: normalizedUsername, password, fullName } },
+        {
+          method: 'POST',
+          body:
+            resolvedMethod === 'phone'
+              ? { phone: normalizedIdentifier, username: normalizedIdentifier, password, fullName }
+              : {
+                  username: normalizedIdentifier,
+                  phone: normalizedPhone || undefined,
+                  password,
+                  fullName,
+                },
+        },
       );
       if (!nextSession?.access_token || !nextSession.user) {
         throw new Error('Account was not created. Check the backend setup.');

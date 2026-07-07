@@ -204,6 +204,28 @@ export default function ServiceDetail() {
           </Card>
         ) : null}
 
+        <View style={styles.secondaryActions}>
+          <Button
+            label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
+            icon={
+              <Feather name="star" size={20} color={isFav ? colors.accent : colors.primaryDark} />
+            }
+            variant="secondary"
+            onPress={() => id && toggleFavorite(id)}
+          />
+          {service.source_url ? (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={t('services.viewSource')}
+              onPress={() => Linking.openURL(service.source_url!)}
+              style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressedFade]}
+            >
+              <Feather name="external-link" size={20} color={colors.accent} />
+              <Text style={styles.ghostBtnText}>{t('services.viewSource')}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
         <Card>
           <H2>{t('services.trustChecklist')}</H2>
           <View style={styles.checkList}>
@@ -247,28 +269,6 @@ export default function ServiceDetail() {
             <Text style={styles.calloutText}>{t('services.unverified')}</Text>
           </View>
         ) : null}
-
-        <View style={styles.secondaryActions}>
-          <Button
-            label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
-            icon={
-              <Feather name="star" size={20} color={isFav ? colors.accent : colors.primaryDark} />
-            }
-            variant="secondary"
-            onPress={() => id && toggleFavorite(id)}
-          />
-          {service.source_url ? (
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={t('services.viewSource')}
-              onPress={() => Linking.openURL(service.source_url!)}
-              style={({ pressed }) => [styles.ghostBtn, pressed && styles.pressedFade]}
-            >
-              <Feather name="external-link" size={20} color={colors.accent} />
-              <Text style={styles.ghostBtnText}>{t('services.viewSource')}</Text>
-            </Pressable>
-          ) : null}
-        </View>
       </ScrollView>
 
       {/* Fixed bottom CTA bar — Uber confirm pattern */}
@@ -314,39 +314,44 @@ export default function ServiceDetail() {
                 </Pressable>
               ) : null}
 
-              {service.map_url ? (
-                service.phone ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t('common.directions')}
-                    onPress={() => Linking.openURL(service.map_url!)}
-                    style={({ pressed }) => [
-                      styles.ctaSquare,
-                      { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
-                      pressed && styles.ctaPressed,
-                    ]}
-                  >
-                    <Feather name="navigation" size={24} color={colors.text} />
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t('common.directions')}
-                    onPress={() => Linking.openURL(service.map_url!)}
-                    style={({ pressed }) => [
-                      styles.ctaPill,
-                      styles.ctaFlex,
-                      { backgroundColor: pressed ? colors.primaryDark : colors.primary },
-                      pressed && styles.ctaPressed,
-                    ]}
-                  >
-                    <Feather name="navigation" size={20} color={colors.primaryFg} />
-                    <Text style={[styles.ctaText, { color: colors.primaryFg }]}>
-                      {t('common.directions')}
-                    </Text>
-                  </Pressable>
-                )
+              {service.map_url && !service.phone ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.directions')}
+                  onPress={() => Linking.openURL(service.map_url!)}
+                  style={({ pressed }) => [
+                    styles.ctaPill,
+                    styles.ctaFlex,
+                    { backgroundColor: pressed ? colors.primaryDark : colors.primary },
+                    pressed && styles.ctaPressed,
+                  ]}
+                >
+                  <Feather name="navigation" size={20} color={colors.primaryFg} />
+                  <Text style={[styles.ctaText, { color: colors.primaryFg }]}>
+                    {t('common.directions')}
+                  </Text>
+                </Pressable>
               ) : null}
+            </View>
+          ) : null}
+
+          {service.map_url && service.phone ? (
+            <View style={styles.directionsSection}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('common.directions')}
+                onPress={() => Linking.openURL(service.map_url!)}
+                style={({ pressed }) => [
+                  styles.directionsButton,
+                  { backgroundColor: pressed ? colors.cardStrong : colors.surfaceTint },
+                  pressed && styles.ctaPressed,
+                ]}
+              >
+                <Feather name="navigation" size={22} color={colors.text} />
+                <Text style={[styles.ctaText, { color: colors.text }]}>
+                  {t('common.directions')}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -543,6 +548,23 @@ function makeStyles(colors: AppColors, isDark: boolean) {
       letterSpacing: 1,
     },
     footerActions: { flexDirection: 'row', gap: 12 },
+    directionsSection: {
+      paddingTop: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    directionsButton: {
+      minHeight: TAP + 4,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.sm,
+      paddingHorizontal: space.lg,
+      ...(isDark ? null : shadow.sm),
+    },
     ctaPill: {
       minHeight: TAP,
       borderRadius: radius.pill,
@@ -557,9 +579,9 @@ function makeStyles(colors: AppColors, isDark: boolean) {
     ctaPressed: { transform: [{ scale: 0.98 }] },
     ctaText: { fontSize: font.md, fontFamily: family.bold },
     ctaSquare: {
-      width: TAP,
-      height: TAP,
-      borderRadius: radius.md,
+      width: TAP + 12,
+      height: TAP + 6,
+      borderRadius: radius.lg,
       alignItems: 'center',
       justifyContent: 'center',
     },

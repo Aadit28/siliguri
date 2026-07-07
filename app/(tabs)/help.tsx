@@ -3,6 +3,7 @@ import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-na
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
+import SiteFooter from '../../src/components/SiteFooter';
 import { Body, Button, Card, H1, H2, Muted } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAP, tracking } from '../../src/lib/theme';
 import { HELPLINE_NUMBER, HELPLINE_DISPLAY } from '../../src/lib/config';
@@ -121,6 +122,7 @@ export default function Help() {
             </Card>
           )}
         </View>
+        <SiteFooter />
       </ScrollView>
     </View>
   );
@@ -131,8 +133,9 @@ function makeStyles(colors: AppColors) {
     scroll: {
       padding: space.md,
       paddingTop: space.sm,
-      paddingBottom: space.xxl,
+      paddingBottom: 0,
       gap: space.lg,
+      flexGrow: 1,
     },
     kicker: {
       flexDirection: 'row',
