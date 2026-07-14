@@ -1,46 +1,26 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useMemo } from 'react';
+import { useWindowDimensions } from 'react-native';
+import { automaticDisplayMode, DisplayMode } from '../lib/display-mode';
 
-const STORAGE_KEY = 'saathi.displayMode';
-
-export type DisplayMode = 'phone' | 'computer';
+export type { DisplayMode } from '../lib/display-mode';
 
 type DisplayModeContextValue = {
   displayMode: DisplayMode;
   isComputerMode: boolean;
-  setDisplayMode: (mode: DisplayMode) => void;
-  toggleDisplayMode: () => void;
 };
 
 const DisplayModeContext = createContext<DisplayModeContextValue | null>(null);
 
 export function DisplayModeProvider({ children }: { children: React.ReactNode }) {
-  const [displayMode, setMode] = useState<DisplayMode>('phone');
-
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
-      if (!mounted) return;
-      if (stored === 'phone' || stored === 'computer') {
-        setMode(stored);
-      }
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  function setDisplayMode(nextMode: DisplayMode) {
-    setMode(nextMode);
-    AsyncStorage.setItem(STORAGE_KEY, nextMode).catch(() => undefined);
-  }
+  const { width } = useWindowDimensions();
+  const userAgent = process.env.EXPO_OS === 'web' && typeof navigator !== 'undefined' ? navigator.userAgent : undefined;
+  const maxTouchPoints = process.env.EXPO_OS === 'web' && typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0;
+  const displayMode = automaticDisplayMode({ width, userAgent, maxTouchPoints, runtimeOS: process.env.EXPO_OS });
 
   const value = useMemo<DisplayModeContextValue>(
     () => ({
       displayMode,
       isComputerMode: displayMode === 'computer',
-      setDisplayMode,
-      toggleDisplayMode: () => setDisplayMode(displayMode === 'computer' ? 'phone' : 'computer'),
     }),
     [displayMode],
   );
