@@ -20,6 +20,7 @@ const routes = {
   '/api/auth/me': '../api/auth/me.js',
   '/api/auth/signout': '../api/auth/signout.js',
   '/api/assistant/plan': '../api/assistant/plan.js',
+  '/api/callback/request': '../api/callback/request.js',
   '/api/community/post': '../api/community/post.js',
   '/api/community/reply': '../api/community/reply.js',
   '/api/community/like': '../api/community/like.js',

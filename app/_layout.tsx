@@ -91,6 +91,7 @@ function RootStack() {
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ presentation: 'modal', title: '' }} />
+            <Stack.Screen name="privacy" options={{ title: '' }} />
             <Stack.Screen name="new-post" options={{ presentation: 'modal', title: '' }} />
             <Stack.Screen name="service/[id]" options={{ title: '' }} />
             <Stack.Screen name="post/[id]" options={{ title: '' }} />

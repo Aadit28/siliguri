@@ -1,57 +1,69 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
-  Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
-import SiteFooter from '../../src/components/SiteFooter';
-import { Badge, Body, Card, H1, Muted, Stars } from '../../src/components/ui';
-import {
-  AppColors,
-  family,
-  font,
-  radius,
-  ROW_MIN_HEIGHT,
-  space,
-  TAP,
-} from '../../src/lib/theme';
-import { SERVICE_CATEGORIES, serviceEmoji } from '../../src/lib/categories';
+import ServiceGlyph from '../../src/components/ServiceGlyph';
+import { Body, H1, Muted } from '../../src/components/ui';
+import { AppColors, font, radius, shadow, space } from '../../src/lib/theme';
+import { SERVICE_CATEGORIES, categoryColor, serviceSearchAliases } from '../../src/lib/categories';
 import { fetchServices } from '../../src/lib/api';
 import { Service, ServiceCategory } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useTheme } from '../../src/context/ThemeContext';
+import { canUseWhatsApp, openWhatsAppCall, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
+
+const SERVICE_QUERY_ALIASES: Record<string, string[]> = {
+  'medical store': ['medical shop', 'pharmacy'],
+  'medicine store': ['medical shop', 'pharmacy'],
+  chemist: ['medical shop', 'pharmacy'],
+  'wheel chair': ['wheelchair'],
+  pluber: ['plumber'],
+  plummer: ['plumber'],
+  plumbers: ['plumber'],
+  electricians: ['electrician', 'electrical'],
+  electricans: ['electrician', 'electrical'],
+  electrican: ['electrician', 'electrical'],
+  electroicoams: ['electrician', 'electrical'],
+  electronician: ['electrician', 'electrical'],
+  'civil help': ['civic help', 'daily service'],
+  'civil services': ['civic help', 'daily service'],
+};
 
 export default function Services() {
   const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; view?: string }>();
-  const { favoriteIds, favoriteSet, recentIds, toggleFavorite } = useServicePreferences();
-  const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  const serviceColumnCount = width >= 1060 ? 3 : width >= 720 ? 2 : 1;
-  const styles = makeStyles(colors, serviceColumnCount);
+  const { favoriteSet, recentIds, toggleFavorite } = useServicePreferences();
+  const { colors, isDark } = useTheme();
+  const { height, width } = useWindowDimensions();
+  const isWide = width >= 920;
+  const resultsMaxHeight = Math.max(isWide ? 560 : 440, Math.round(height * (isWide ? 0.78 : 0.62)));
+  const styles = makeStyles(colors, isDark, isWide, resultsMaxHeight);
 
   const [all, setAll] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState<DirectoryView>((params.category as ServiceCategory) || 'all');
   const pageScrollRef = useRef<ScrollView>(null);
+  const resultsScrollRef = useRef<ScrollView>(null);
 
   const resetDirectoryScroll = useCallback(() => {
     requestAnimationFrame(() => {
       pageScrollRef.current?.scrollTo({ y: 0, animated: false });
+      resultsScrollRef.current?.scrollTo({ y: 0, animated: false });
     });
   }, []);
 
@@ -79,6 +91,7 @@ export default function Services() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const queryTerms = expandServiceQuery(q);
     const recentOrder = new Map(recentIds.map((id, index) => [id, index]));
     const matching = all.filter((s) => {
       const matchCat =
@@ -86,11 +99,19 @@ export default function Services() {
         (cat === 'favorites' && favoriteSet.has(s.id)) ||
         (cat === 'recent' && recentOrder.has(s.id)) ||
         s.category === cat;
-      const matchQ =
-        !q ||
-        s.name.toLowerCase().includes(q) ||
-        (s.description ?? '').toLowerCase().includes(q) ||
-        (s.address ?? '').toLowerCase().includes(q);
+      const searchText = [
+        s.name,
+        s.description,
+        s.address,
+        s.town,
+        s.service_area,
+        t(`categories.${s.category}`),
+        ...serviceSearchAliases(s.category),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const matchQ = !q || queryTerms.some((term) => searchText.includes(term));
       return matchCat && matchQ;
     });
     return cat === 'recent'
@@ -100,50 +121,46 @@ export default function Services() {
             (recentOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER),
         )
       : matching;
-  }, [all, query, cat, favoriteSet, recentIds]);
+  }, [all, query, cat, favoriteSet, recentIds, t]);
 
-  const categoryCounts = useMemo(
-    () =>
-      all.reduce<Partial<Record<ServiceCategory, number>>>((counts, service) => {
-        counts[service.category] = (counts[service.category] ?? 0) + 1;
-        return counts;
-      }, {}),
-    [all],
-  );
-  const verifiedCount = useMemo(() => all.filter((service) => service.verified).length, [all]);
-  const callableCount = useMemo(() => all.filter((service) => Boolean(service.phone)).length, [all]);
-  const statTiles = [
-    { label: t('common.all'), value: all.length },
-    { label: t('common.verified'), value: verifiedCount },
-    { label: t('common.call'), value: callableCount },
-  ];
-  const categoryTiles = [
-    { key: 'all' as const, emoji: '', label: t('common.all'), count: all.length },
+  const trustedCount = useMemo(() => filtered.filter((service) => service.verified).length, [filtered]);
+  const phoneCount = useMemo(() => filtered.filter((service) => service.phone_confirmed).length, [filtered]);
+
+  const activeLabel =
+    cat === 'all'
+      ? t('common.all')
+      : cat === 'favorites'
+        ? t('services.favorites')
+        : cat === 'recent'
+          ? t('services.recentlyViewed')
+          : t(`categories.${cat}`);
+
+  const directoryViews: Array<{ key: DirectoryView; label: string; count?: number }> = [
+    { key: 'all', label: t('common.all'), count: all.length },
+    { key: 'favorites', label: t('services.favorites'), count: favoriteSet.size },
+    { key: 'recent', label: t('services.recentlyViewed'), count: recentIds.length },
     ...SERVICE_CATEGORIES.map((item) => ({
-      key: item.key,
-      emoji: item.emoji,
+      key: item.key as DirectoryView,
       label: t(`categories.${item.key}`),
-      count: categoryCounts[item.key] ?? 0,
+      count: all.filter((service) => service.category === item.key).length,
     })),
   ];
 
-  const libraryRows = [
-    {
-      key: 'favorites' as const,
-      icon: 'star' as const,
-      label: t('services.favorites'),
-      count: favoriteIds.length,
-    },
-    {
-      key: 'recent' as const,
-      icon: 'clock' as const,
-      label: t('services.recentlyViewed'),
-      count: recentIds.length,
-    },
-  ];
+  const chooseView = (nextCategory: DirectoryView) => {
+    setCat(nextCategory);
+    setQuery('');
+    router.setParams({
+      category:
+        nextCategory === 'all' || nextCategory === 'favorites' || nextCategory === 'recent'
+          ? undefined
+          : nextCategory,
+      view: nextCategory === 'favorites' || nextCategory === 'recent' ? nextCategory : undefined,
+    });
+  };
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.bg }]}>
+      <View style={styles.stageGlow} />
       <AppHeader title={t('services.title')} />
 
       <ScrollView
@@ -152,604 +169,550 @@ export default function Services() {
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.catalogHero}>
+        <View style={styles.directoryHero}>
           <View style={styles.heroCopy}>
-            <Text style={styles.kicker}>{t('services.directoryKicker')}</Text>
+            <Text style={styles.kickerOnDark}>{t('services.directoryKicker')}</Text>
             <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
             <Body style={styles.heroBody}>{t('services.directoryBody')}</Body>
           </View>
-          <View style={styles.statGrid}>
-            {statTiles.map((item) => (
-              <View key={item.label} style={styles.statTile}>
-                <Text style={styles.statValue}>{item.value}</Text>
-                <Text style={styles.statLabel} numberOfLines={1}>
-                  {item.label}
-                </Text>
-              </View>
-            ))}
+          <View style={styles.searchPanel}>
+            <Text style={styles.searchLabel}>{t('common.search')}</Text>
+            <TextInput
+              style={styles.search}
+              placeholder={`${t('common.search')} ${t('tabs.services').toLowerCase()}`}
+              placeholderTextColor={colors.textSubtle}
+              value={query}
+              onChangeText={setQuery}
+            />
+            <Text style={styles.searchScope}>{t('services.searchScope')}</Text>
           </View>
         </View>
 
-        <View style={styles.searchPill}>
-          <Feather name="search" size={22} color={colors.text} />
-          <TextInput
-            style={[styles.searchInput, { fontFamily: query ? family.regular : family.semibold }]}
-            placeholder={t('services.searchPlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            value={query}
-            onChangeText={setQuery}
-          />
-          {query.length > 0 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-              onPress={() => setQuery('')}
-              hitSlop={space.sm}
-              style={({ pressed }) => [styles.searchClear, pressed && styles.searchClearPressed]}
-            >
-              <Feather name="x" size={20} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.quickGrid}>
-          {libraryRows.map((item, index) => {
-            const active = cat === item.key;
-            return (
-              <Pressable
-                key={item.key}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                onPress={() => {
-                  setCat(item.key);
-                  setQuery('');
-                  router.setParams({ category: undefined, view: item.key });
-                }}
-                style={({ pressed }) => [
-                  styles.quickCard,
-                  active && styles.quickCardActive,
-                  pressed && !active && { backgroundColor: colors.overlay },
-                ]}
-              >
-                <View style={styles.quickIcon}>
-                  <Feather name={item.icon} size={20} color={colors.text} />
-                </View>
-                <View style={styles.quickTextBlock}>
-                  <Text style={styles.quickTitle}>{item.label}</Text>
-                  <Text style={styles.quickSubtitle}>
-                    {t('services.savedCount', { count: item.count })}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={22} color={colors.textSubtle} />
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.categorySection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t('home.browseCategories')}</Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryPillScroller}
-          >
-            {categoryTiles.map((item) => {
-              const active = cat === item.key;
-              return (
-                <Pressable
-                  key={item.key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => {
-                    const nextCategory = item.key as ServiceCategory | 'all';
-                    setCat(nextCategory);
-                    setQuery('');
-                    router.setParams({
-                      category: nextCategory === 'all' ? undefined : nextCategory,
-                      view: undefined,
-                    });
-                  }}
-                  style={({ pressed }) => [
-                    styles.categoryPill,
-                    active && styles.categoryPillActive,
-                    pressed && !active && { backgroundColor: colors.overlay },
-                  ]}
-                >
-                  {item.emoji ? <Text style={styles.categoryPillEmoji}>{item.emoji}</Text> : null}
-                  <Text style={styles.categoryPillText} numberOfLines={1}>
-                    {item.label}
-                  </Text>
-                  <View style={styles.categoryPillCountBadge}>
-                    <Text style={styles.categoryPillCount}>{item.count}</Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator style={styles.loadingIndicator} color={colors.primary} size="large" />
-        ) : filtered.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyDisc}>
-              <Feather name="search" size={28} color={colors.textMuted} />
+        <View style={styles.directoryShell}>
+          <View style={styles.filterRail}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.kicker}>{t('services.trustChecklist')}</Text>
+              <Text style={styles.filterTitle}>{activeLabel}</Text>
             </View>
-            <Muted style={styles.emptyText}>{t('common.noResults')}</Muted>
+            <View style={styles.filterList}>
+              {directoryViews.map((item) => {
+                const active = cat === item.key;
+                const tone =
+                  item.key === 'favorites' || item.key === 'recent' || item.key === 'all'
+                    ? colors.primary
+                    : categoryColor(item.key as ServiceCategory).fg;
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[styles.filterButton, active && styles.filterButtonActive]}
+                    onPress={() => chooseView(item.key)}
+                    activeOpacity={0.82}
+                  >
+                    <View style={[styles.filterSignal, { backgroundColor: active ? '#fff' : tone }]} />
+                    <Text style={[styles.filterText, active && styles.filterTextActive]} numberOfLines={2}>
+                      {item.label}
+                    </Text>
+                    {typeof item.count === 'number' ? (
+                      <Text style={[styles.filterCount, active && styles.filterCountActive]}>{item.count}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-        ) : (
-          <View style={styles.list}>
-            {filtered.map((item) => {
-              const isFavorite = favoriteSet.has(item.id);
-              const meta = [t(`categories.${item.category}`), item.address]
-                .filter(Boolean)
-                .join(' · ');
-              return (
-                <View
-                  key={`${cat}-${item.id}`}
-                  style={styles.resultPressable}
-                >
-                  <Card style={styles.resultCard}>
-                    <View style={styles.profileHead}>
-                      <View style={styles.leadingBlock}>
-                        <Text style={styles.leadingEmoji}>{serviceEmoji(item.category)}</Text>
-                      </View>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isFavorite }}
-                        accessibilityLabel={
-                          isFavorite
-                            ? t('services.unstarService', { name: item.name })
-                            : t('services.starService', { name: item.name })
-                        }
-                        onPress={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          toggleFavorite(item.id);
-                        }}
-                        style={({ pressed }) => [
-                          styles.favoriteBtn,
-                          pressed && { backgroundColor: colors.overlay },
-                        ]}
-                      >
-                        <Feather
-                          name="star"
-                          size={20}
-                          color={isFavorite ? colors.accent : colors.textSubtle}
-                        />
-                      </Pressable>
-                    </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={item.name}
-                      onPress={() => router.push({ pathname: '/service/[id]', params: { id: item.id } })}
-                      style={({ pressed }) => [
-                        styles.serviceInfoPressable,
-                        pressed && { backgroundColor: colors.overlay },
-                      ]}
-                    >
-                      <Text style={styles.serviceName} numberOfLines={2}>
-                        {item.name}
-                      </Text>
-                      <Text style={styles.serviceMeta} numberOfLines={2}>
-                        {meta}
-                      </Text>
-                      <View style={styles.ratingRow}>
-                        <Stars rating={item.rating} />
-                        {item.verified && <Badge label={t('common.verified')} />}
-                      </View>
-                    </Pressable>
-                    <View style={styles.profileSpacer} />
-                    <View style={styles.ctaRow}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`${t('services.about')} ${item.name}`}
-                        onPress={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          router.push({ pathname: '/service/[id]', params: { id: item.id } });
-                        }}
-                        style={({ pressed }) => [
-                          styles.aboutPill,
-                          {
-                            backgroundColor: pressed ? colors.overlay : colors.surfaceTint,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                      >
-                        <Feather name="info" size={17} color={colors.text} />
-                        <Text style={styles.aboutLabel}>{t('services.about')}</Text>
-                      </Pressable>
-                      {item.phone ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`${t('common.call')} ${item.name}`}
-                          onPress={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            Linking.openURL(`tel:${item.phone}`);
-                          }}
-                          style={({ pressed }) => [
-                            styles.callPill,
-                            {
-                              backgroundColor: pressed ? colors.primaryDark : colors.primary,
-                              borderColor: pressed ? colors.primaryDark : colors.primary,
-                            },
-                          ]}
-                        >
-                          <Feather name="phone" size={18} color={colors.primaryFg} />
-                          <Text style={styles.callLabel}>{t('common.call')}</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  </Card>
+
+          <View style={styles.resultDeck}>
+            {!loading ? (
+              <View style={styles.resultBar}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.resultCount}>
+                    {filtered.length} {filtered.length === 1 ? 'service' : 'services'}
+                  </Text>
+                  <Muted numberOfLines={1} style={styles.resultScope}>
+                    {trustedCount} {t('common.verified').toLowerCase()} - {phoneCount} {t('services.trustPhone').toLowerCase()}
+                  </Muted>
                 </View>
-              );
-            })}
+                <View style={styles.resultBadge}>
+                  <Text style={styles.resultBadgeText}>{activeLabel}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {loading ? (
+              <ActivityIndicator style={styles.loadingIndicator} color={colors.primary} size="large" />
+            ) : filtered.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>{t('common.noResults')}</Text>
+                <Muted>{t('services.searchScope')}</Muted>
+              </View>
+            ) : (
+              <ScrollView
+                ref={resultsScrollRef}
+                style={styles.resultsScroller}
+                contentContainerStyle={styles.list}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+              >
+                {filtered.map((item) => (
+                  <ServiceTicket
+                    key={item.id}
+                    item={item}
+                    isSaved={favoriteSet.has(item.id)}
+                    onToggleSaved={() => toggleFavorite(item.id)}
+                    onOpen={() => router.push({ pathname: '/service/[id]', params: { id: item.id } })}
+                    colors={colors}
+                    isDark={isDark}
+                    styles={styles}
+                    t={t}
+                  />
+                ))}
+              </ScrollView>
+            )}
           </View>
-        )}
-        <SiteFooter services={all} />
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-function makeStyles(colors: AppColors, serviceColumnCount: number) {
-  const isThreeColumn = serviceColumnCount === 3;
-  const isSingleColumn = serviceColumnCount === 1;
-  const serviceCardWidth = isThreeColumn ? '32.55%' : isSingleColumn ? '100%' : '47.2%';
+function ServiceTicket({
+  item,
+  isSaved,
+  onToggleSaved,
+  onOpen,
+  colors,
+  isDark,
+  styles,
+  t,
+}: {
+  item: Service;
+  isSaved: boolean;
+  onToggleSaved: () => void;
+  onOpen: () => void;
+  colors: AppColors;
+  isDark: boolean;
+  styles: ReturnType<typeof makeStyles>;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const tone = categoryColor(item.category);
+  const showWhatsApp = canUseWhatsApp(item.phone);
+  const showContactActions = Boolean(item.phone_confirmed && showWhatsApp);
+  const whatsappUrl = whatsappChatUrl(item.phone);
+  const onPrimary = isDark ? colors.textOnDark : '#fff';
 
+  return (
+    <TouchableOpacity activeOpacity={0.86} onPress={onOpen}>
+      <View style={styles.ticket}>
+        <View style={[styles.ticketStripe, { backgroundColor: tone.fg }]} />
+        <View style={styles.ticketTop}>
+          <View style={[styles.ticketIcon, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+            <ServiceGlyph category={item.category} color={tone.fg} size={22} />
+          </View>
+          <View style={styles.ticketCopy}>
+            <Text
+              style={[
+                styles.categoryTag,
+                {
+                  backgroundColor: tone.bg,
+                  borderColor: tone.border,
+                  color: tone.fg,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {t(`categories.${item.category}`)}
+            </Text>
+            <Text style={styles.ticketName} numberOfLines={2}>
+              {item.name}
+            </Text>
+            <Muted numberOfLines={1} style={styles.ticketAddress}>
+              {item.town ? `${item.town} - ` : ''}
+              {item.address}
+            </Muted>
+          </View>
+        </View>
+
+        <View style={styles.trustRow}>
+          <Text style={styles.trustPill}>
+            {item.verified ? t(`services.verificationStatus.${item.verification_status ?? 'source_linked'}`) : t('services.unverified')}
+          </Text>
+          {item.phone_confirmed ? <Text style={styles.trustPill}>{t('services.trustPhone')}</Text> : null}
+        </View>
+
+        <View style={styles.ticketActions}>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isSaved ? t('services.unstarService', { name: item.name }) : t('services.starService', { name: item.name })
+            }
+            onPress={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleSaved();
+            }}
+          >
+            <Text style={[styles.saveText, isSaved && { color: colors.star }]}>
+              {isSaved ? t('common.saved') : t('common.save')}
+            </Text>
+          </TouchableOpacity>
+
+          {showContactActions && whatsappUrl ? (
+            Platform.OS === 'web' ? (
+              <Link
+                href={whatsappUrl as never}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={styles.whatsappLinkBtn}
+                accessibilityRole="link"
+                accessibilityLabel={`WhatsApp ${item.name}`}
+                onPress={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                WhatsApp
+              </Link>
+            ) : (
+              <TouchableOpacity
+                style={styles.whatsappBtn}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`WhatsApp ${item.name}`}
+                onPress={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openWhatsAppChat(item.phone);
+                }}
+              >
+                <Text numberOfLines={1} style={styles.whatsappLabel}>
+                  WhatsApp
+                </Text>
+              </TouchableOpacity>
+            )
+          ) : null}
+
+          {showContactActions ? (
+            <TouchableOpacity
+              style={styles.callBtn}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${t('common.call')} ${item.name} on WhatsApp`}
+              onPress={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openWhatsAppCall(item.phone);
+              }}
+            >
+              <Text style={[styles.callLabel, { color: onPrimary }]}>{t('common.call')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.detailBtn}>
+              <Text style={styles.detailLabel}>{t('services.about')}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function expandServiceQuery(query: string) {
+  if (!query) return [];
+  return Array.from(new Set([query, ...(SERVICE_QUERY_ALIASES[query] ?? [])]));
+}
+
+function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean, resultsMaxHeight: number) {
   return StyleSheet.create({
-    screen: { flex: 1, backgroundColor: colors.bg },
+    screen: { flex: 1 },
+    stageGlow: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 360,
+      backgroundColor: isDark ? colors.frame : colors.surfaceTint,
+    },
     pageScroll: {
-      flexGrow: 1,
-      paddingBottom: 0,
+      width: '100%',
+      maxWidth: 1240,
+      alignSelf: 'center',
+      paddingHorizontal: isWide ? space.xl : space.md,
+      paddingTop: isWide ? space.xl : space.md,
+      paddingBottom: isWide ? space.xl * 2 : 118,
+      gap: space.lg,
     },
-
-    catalogHero: {
-      paddingHorizontal: space.md,
-      paddingTop: space.lg,
-      paddingBottom: space.md,
-      flexDirection: isThreeColumn ? 'row' : 'column',
-      alignItems: isThreeColumn ? 'flex-end' : 'stretch',
-      justifyContent: 'space-between',
-      gap: space.md,
-      backgroundColor: colors.bg,
+    directoryHero: {
+      minHeight: isWide ? 276 : undefined,
+      flexDirection: isWide ? 'row' : 'column',
+      gap: space.lg,
+      borderRadius: radius.xl,
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: isWide ? space.xl : space.lg,
+      ...shadow.md,
     },
-    heroCopy: {
-      flex: 1,
-      minWidth: 0,
-      maxWidth: 760,
-    },
-    kicker: {
-      color: colors.textMuted,
+    heroCopy: { flex: 1.1, justifyContent: 'center', gap: space.sm },
+    kickerOnDark: {
+      color: colors.primary,
       fontSize: font.xs,
-      fontFamily: family.semibold,
-      letterSpacing: 0.5,
+      fontWeight: '800',
       textTransform: 'uppercase',
-      lineHeight: Math.round(font.xs * 1.4),
     },
-    heroTitle: { marginTop: space.xs },
-    heroBody: { marginTop: space.sm, color: colors.textMuted },
-    statGrid: {
-      flexDirection: 'row',
+    heroTitle: {
+      color: colors.text,
+      fontSize: isWide ? 42 : 32,
+      lineHeight: isWide ? 49 : 39,
+    },
+    heroBody: { color: colors.textMuted, maxWidth: 650 },
+    searchPanel: {
+      flex: isWide ? 0.85 : undefined,
+      minHeight: 168,
+      borderRadius: radius.lg,
+      backgroundColor: colors.bgAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.lg,
+      justifyContent: 'center',
       gap: space.sm,
-      width: isThreeColumn ? 360 : '100%',
     },
-    statTile: {
+    searchLabel: { color: colors.primaryDark, fontSize: font.xs, fontWeight: '800', textTransform: 'uppercase' },
+    search: {
+      minHeight: 58,
+      borderRadius: radius.lg,
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: space.md,
+      color: colors.text,
+      fontSize: isWide ? font.md : font.sm,
+      fontWeight: '700',
+    },
+    searchScope: { color: colors.textMuted, fontSize: font.xs, lineHeight: 19, fontWeight: '600' },
+    directoryShell: {
+      flexDirection: isWide ? 'row' : 'column',
+      gap: space.lg,
+      alignItems: 'flex-start',
+    },
+    filterRail: {
+      width: isWide ? 312 : '100%',
+      borderRadius: 14,
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.md,
+      gap: space.md,
+      ...shadow.sm,
+    },
+    filterHeader: { gap: 4 },
+    kicker: {
+      color: colors.accentDark,
+      fontSize: font.xs,
+      fontWeight: '900',
+      textTransform: 'uppercase',
+    },
+    filterTitle: { color: colors.text, fontSize: font.lg, lineHeight: 26, fontWeight: '800' },
+    filterList: {
+      flexDirection: isWide ? 'column' : 'row',
+      flexWrap: isWide ? 'nowrap' : 'wrap',
+      gap: 8,
+    },
+    filterButton: {
+      minHeight: 50,
+      flexBasis: isWide ? undefined : '47%',
+      flexGrow: isWide ? 0 : 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.chipBg,
+      paddingHorizontal: space.sm,
+      paddingVertical: 8,
+    },
+    filterButtonActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    filterSignal: {
+      width: 9,
+      height: 9,
+      borderRadius: 4,
+    },
+    filterText: { flex: 1, minWidth: 0, color: colors.text, fontSize: font.sm, lineHeight: 19, fontWeight: '700' },
+    filterTextActive: { color: '#fff' },
+    filterCount: { color: colors.textMuted, fontSize: font.xs, fontWeight: '900' },
+    filterCountActive: { color: 'rgba(255,255,255,0.78)' },
+    resultDeck: {
       flex: 1,
+      width: isWide ? undefined : '100%',
+      borderRadius: 14,
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      ...shadow.sm,
+    },
+    resultBar: {
       minHeight: 76,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      padding: space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.bgAlt,
+    },
+    resultCount: { color: colors.text, fontSize: font.lg, lineHeight: 26, fontWeight: '900' },
+    resultScope: { fontSize: font.xs, marginTop: 2 },
+    resultBadge: {
+      maxWidth: isWide ? 220 : 132,
+      minHeight: 42,
       borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.card,
+      backgroundColor: colors.chipBg,
       justifyContent: 'center',
       paddingHorizontal: space.sm,
-      paddingVertical: space.sm,
     },
-    statValue: {
-      color: colors.text,
-      fontSize: font.xl,
-      fontFamily: family.bold,
-      lineHeight: Math.round(font.xl * 1.1),
-      textAlign: 'center',
-    },
-    statLabel: {
-      marginTop: 2,
-      color: colors.textMuted,
-      fontSize: font.xs,
-      fontFamily: family.semibold,
-      lineHeight: Math.round(font.xs * 1.35),
-      textAlign: 'center',
-    },
-
-    searchPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      height: TAP,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceTint,
-      paddingHorizontal: 20,
-      marginHorizontal: space.md,
-      marginTop: space.lg,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: font.md,
-      color: colors.text,
-      paddingVertical: 0,
-    },
-    searchClear: {
-      width: 44,
-      height: 44,
-      marginRight: -space.md,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    searchClearPressed: { backgroundColor: colors.overlay },
-    quickGrid: {
-      flexDirection: 'row',
-      gap: 12,
-      paddingHorizontal: space.md,
-      marginTop: space.md,
-      flexWrap: isThreeColumn ? 'nowrap' : 'wrap',
-    },
-    quickCard: {
-      flex: isThreeColumn ? 1 : undefined,
-      width: isThreeColumn ? undefined : '100%',
-      minHeight: ROW_MIN_HEIGHT,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: space.md,
-    },
-    quickCardActive: {
-      borderColor: colors.accent,
-      backgroundColor: colors.accentSoft,
-    },
-    quickIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceTint,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    quickTextBlock: { flex: 1, minWidth: 0 },
-    quickTitle: {
-      color: colors.text,
-      fontSize: font.md,
-      fontFamily: family.semibold,
-      lineHeight: Math.round(font.md * 1.5),
-    },
-    quickSubtitle: {
-      marginTop: 2,
-      color: colors.textMuted,
-      fontSize: font.sm,
-      fontFamily: family.regular,
-      lineHeight: Math.round(font.sm * 1.45),
-    },
-
-    categorySection: {
-      marginHorizontal: space.md,
-      marginTop: space.lg,
-    },
-    sectionHeader: {
-      minHeight: 32,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-      gap: space.md,
-    },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: font.lg,
-      fontFamily: family.bold,
-      lineHeight: Math.round(font.lg * 1.25),
-    },
-    sectionCount: {
-      color: colors.textMuted,
-      fontSize: font.xs,
-      fontFamily: family.semibold,
-      lineHeight: Math.round(font.xs * 1.35),
-    },
-    categoryPillScroller: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingTop: space.xs,
-      paddingBottom: space.sm,
-    },
-    categoryPill: {
-      minHeight: 48,
-      maxWidth: 270,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 9,
-      paddingHorizontal: space.md,
-      paddingVertical: 9,
-    },
-    categoryPillActive: {
-      borderColor: colors.accent,
-      backgroundColor: colors.accentSoft,
-    },
-    categoryPillEmoji: {
-      width: 24,
-      fontSize: 18,
-      lineHeight: 22,
-      textAlign: 'center',
-    },
-    categoryPillText: {
-      flexShrink: 1,
-      color: colors.text,
-      fontSize: font.sm,
-      fontFamily: family.semibold,
-      lineHeight: Math.round(font.sm * 1.3),
-    },
-    categoryPillCountBadge: {
-      minWidth: 28,
-      height: 24,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceTint,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 8,
-    },
-    categoryPillCount: {
-      color: colors.textMuted,
-      fontSize: font.xs,
-      fontFamily: family.bold,
-      lineHeight: Math.round(font.xs * 1.1),
-      textAlign: 'center',
-    },
-
-    loadingIndicator: { marginTop: space.xl, marginBottom: space.xl },
-
-    emptyState: {
-      alignItems: 'center',
-      gap: space.md,
-      marginTop: space.xl,
-      marginBottom: space.xl,
-      paddingHorizontal: space.md,
-    },
-    emptyDisc: {
-      width: 64,
-      height: 64,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceTint,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    emptyText: { textAlign: 'center' },
-
+    resultBadgeText: { color: colors.primaryDark, fontSize: font.xs, fontWeight: '900' },
+    loadingIndicator: { marginVertical: space.xl },
+    emptyState: { padding: space.xl, gap: space.sm },
+    emptyTitle: { color: colors.text, fontSize: font.lg, fontWeight: '900' },
+    resultsScroller: { maxHeight: resultsMaxHeight },
     list: {
-      paddingHorizontal: space.md,
-      paddingTop: space.sm,
-      paddingBottom: space.xl,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
+      padding: space.md,
+      gap: space.md,
     },
-    resultPressable: {
-      width: serviceCardWidth,
-      minWidth: 0,
+    ticket: {
+      position: 'relative',
+      overflow: 'hidden',
+      borderRadius: 12,
+      backgroundColor: colors.cardStrong,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.md,
+      gap: space.sm,
+      ...shadow.sm,
     },
-    resultCard: {
-      minHeight: isSingleColumn ? 0 : isThreeColumn ? 218 : 210,
-      height: isSingleColumn ? undefined : '100%',
-      padding: isThreeColumn ? space.sm : 12,
+    ticketStripe: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: 7,
     },
-    serviceInfoPressable: {
-      borderRadius: radius.md,
-      marginHorizontal: -space.xs,
-      marginTop: space.sm,
-      paddingHorizontal: space.xs,
-      paddingBottom: space.xs,
-    },
-
-    profileHead: {
+    ticketTop: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 12,
-    },
-    leadingBlock: {
-      width: isSingleColumn ? 58 : isThreeColumn ? 48 : 50,
-      height: isSingleColumn ? 58 : isThreeColumn ? 48 : 50,
-      borderRadius: radius.lg,
-      backgroundColor: colors.surfaceTint,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    leadingEmoji: { fontSize: isSingleColumn ? 30 : isThreeColumn ? 26 : 27 },
-    serviceName: {
-      color: colors.text,
-      fontSize: isThreeColumn ? font.sm : font.sm,
-      fontFamily: family.semibold,
-      lineHeight: Math.round(font.sm * 1.3),
-    },
-    serviceMeta: {
-      marginTop: 4,
-      color: colors.textMuted,
-      fontSize: font.xs,
-      fontFamily: family.regular,
-      lineHeight: Math.round(font.xs * 1.45),
-    },
-    ratingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
       gap: space.sm,
-      marginTop: 8,
-      minHeight: 26,
+      paddingLeft: 4,
     },
-    profileSpacer: { flex: 1, minHeight: 8 },
-    favoriteBtn: {
-      width: 34,
-      height: 34,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: -space.xs,
-      marginRight: -space.xs,
-    },
-
-    ctaRow: {
-      flexDirection: isSingleColumn ? 'column' : 'row',
-      alignItems: 'stretch',
-      gap: isSingleColumn ? 8 : 8,
-      marginTop: isSingleColumn ? 12 : 10,
-    },
-    aboutPill: {
-      flex: 1,
-      minWidth: 0,
-      width: isSingleColumn ? '100%' : undefined,
-      minHeight: isSingleColumn ? 38 : 36,
-      borderRadius: radius.pill,
+    ticketIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: radius.lg,
       borderWidth: 1,
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 7,
-      paddingHorizontal: 10,
-      paddingVertical: 7,
     },
-    aboutLabel: {
-      color: colors.text,
-      fontSize: font.xs,
-      fontFamily: family.semibold,
-    },
-    callPill: {
-      flex: 1,
-      minWidth: 0,
-      width: isSingleColumn ? '100%' : undefined,
-      minHeight: isSingleColumn ? 42 : 36,
-      borderRadius: radius.pill,
+    ticketCopy: { flex: 1, minWidth: 0, gap: 5 },
+    categoryTag: {
+      alignSelf: 'flex-start',
+      borderRadius: radius.md,
       borderWidth: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      fontSize: font.xs,
+      fontWeight: '900',
+      overflow: 'hidden',
+    },
+    ticketName: { color: colors.text, fontSize: font.lg, lineHeight: 27, fontWeight: '800' },
+    ticketAddress: { fontSize: font.xs, lineHeight: 18 },
+    trustRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingLeft: 4,
+    },
+    trustPill: {
+      borderRadius: radius.md,
+      backgroundColor: colors.chipBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.primaryDark,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      fontSize: font.xs,
+      fontWeight: '900',
+      overflow: 'hidden',
+    },
+    ticketActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingLeft: 4,
+    },
+    saveBtn: {
+      minWidth: 78,
+      minHeight: 42,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.chipBg,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 7,
-      paddingHorizontal: 10,
-      paddingVertical: 7,
+      paddingHorizontal: space.sm,
     },
-    callLabel: {
-      color: colors.primaryFg,
+    saveText: { color: colors.primaryDark, fontSize: font.xs, fontWeight: '900' },
+    whatsappBtn: {
+      minWidth: 104,
+      minHeight: 42,
+      borderRadius: radius.md,
+      backgroundColor: colors.whatsapp,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: space.sm,
+    },
+    whatsappLinkBtn: {
+      minWidth: 104,
+      height: 42,
+      lineHeight: 42,
+      borderRadius: radius.md,
+      backgroundColor: colors.whatsapp,
+      color: colors.whatsappText,
       fontSize: font.xs,
-      fontFamily: family.bold,
+      fontWeight: '900',
+      textAlign: 'center',
+      paddingHorizontal: space.sm,
+      overflow: 'hidden',
+      flexShrink: 0,
     },
+    whatsappLabel: { color: colors.whatsappText, fontSize: font.xs, fontWeight: '900' },
+    callBtn: {
+      minWidth: 82,
+      minHeight: 42,
+      borderRadius: radius.md,
+      backgroundColor: colors.success,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: space.sm,
+    },
+    callLabel: { fontSize: font.xs, fontWeight: '900' },
+    detailBtn: {
+      minWidth: 86,
+      minHeight: 42,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.cardStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: space.sm,
+    },
+    detailLabel: { color: colors.primaryDark, fontSize: font.xs, fontWeight: '900' },
   });
 }

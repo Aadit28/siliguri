@@ -17,15 +17,21 @@ module.exports = async function handler(req, res) {
     const category = CATEGORIES.has(body.category) ? body.category : 'general';
     if (!title || !postBody) return send(res, 400, { error: 'Add a title and message.' });
 
-    const { error } = await auth.supabase.from('community_posts').insert({
+    const insertPayload = {
       title,
       body: postBody,
       category,
       author_id: auth.user.id,
       author_name: auth.user.full_name || auth.user.username,
-    });
+      status: 'pending',
+    };
+    let { error } = await auth.supabase.from('community_posts').insert(insertPayload);
+    if (error && /status/i.test(error.message || '')) {
+      const { status, ...legacyPayload } = insertPayload;
+      ({ error } = await auth.supabase.from('community_posts').insert(legacyPayload));
+    }
     if (error) throw error;
-    return send(res, 200, { ok: true });
+    return send(res, 200, { ok: true, status: 'pending' });
   } catch (error) {
     return send(res, 500, { error: error.message || 'Could not post.' });
   }

@@ -1,23 +1,15 @@
 import {
-  FONT_REGULAR,
-  FONT_MEDIUM,
-  FONT_SEMIBOLD,
   FONT_BOLD,
   FONT_EXTRABOLD,
+  FONT_MEDIUM,
+  FONT_REGULAR,
+  FONT_SEMIBOLD,
 } from './fonts';
 
-export {
-  FONT_REGULAR,
-  FONT_MEDIUM,
-  FONT_SEMIBOLD,
-  FONT_BOLD,
-  FONT_EXTRABOLD,
-} from './fonts';
+export { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from './fonts';
 
 export type ThemeMode = 'light' | 'dark';
 
-// One family: DM Sans. When fontFamily is set, NEVER also set fontWeight
-// (Android synthesizes fake bold). Weight is chosen only via family.*.
 export const family = {
   regular: FONT_REGULAR,
   medium: FONT_MEDIUM,
@@ -27,103 +19,117 @@ export const family = {
 } as const;
 
 export const lightColors = {
-  bg: '#F6F6F4',            // page (Kroger #F5F6F6 warmed)
-  bgAlt: '#FFFFFF',         // sheets, forms, CTA bar (Uber white sheet)
-  card: '#FFFFFF',          // standard card (flat, no blur)
-  cardSolid: '#FFFFFF',     // sheet/dialog surface
-  cardStrong: '#EFEFED',    // selected/pressed surface (Uber selected-row gray)
-  nav: 'rgba(255,255,255,0.96)', // tab bar
-  frame: '#E9E9E5',
+  bg: '#F4F2EC',
+  bgAlt: '#FBFAF7',
+  card: 'rgba(255,255,255,0.96)',
+  cardSolid: '#FFFFFF',
+  cardStrong: '#FFFFFF',
+  nav: '#123C38',
+  frame: '#E7E3D9',
 
-  primary: '#000000',       // Uber black CTA
-  primaryDark: '#262626',   // pressed state of primary
-  primarySoft: '#EBEBE9',
-  primaryTint: 'rgba(0,0,0,0.06)',   // press wash
-  primaryFg: '#FFFFFF',     // text/icon on primary fill
+  primary: '#176B63',
+  primaryDark: '#0B4D47',
+  primarySoft: '#DCEEEA',
+  primaryTint: 'rgba(23,107,99,0.10)',
+  primaryFg: '#FFFFFF',
 
-  accent: '#1E5FC9',        // the one blue (AA on off-white)
-  accentDark: '#16489C',    // pressed accent
-  accentSoft: 'rgba(30,95,201,0.10)',
+  accent: '#E06A4E',
+  accentDark: '#9F3A28',
+  accentSoft: 'rgba(224,106,78,0.14)',
   accentFg: '#FFFFFF',
+  info: '#6157D8',
+  infoDark: '#3329A8',
+  infoSoft: 'rgba(97,87,216,0.13)',
 
-  success: '#0E7C3F',
-  successSoft: 'rgba(14,124,63,0.12)',
+  success: '#26734D',
+  successSoft: 'rgba(38,115,77,0.13)',
   successFg: '#FFFFFF',
 
-  danger: '#C9200F',
-  dangerDark: '#A81A0C',    // pressed danger
-  dangerSoft: 'rgba(201,32,15,0.10)',
+  danger: '#B42318',
+  dangerDark: '#7A1C14',
+  dangerSoft: 'rgba(180,35,24,0.12)',
   dangerFg: '#FFFFFF',
+  emergency: '#D92D20',
+  emergencyDark: '#A61E16',
+  emergencySoft: 'rgba(217,45,32,0.12)',
 
-  warningBg: '#FBF3E4',
-  warningText: '#7A4D0B',
+  warningBg: '#FFF0C2',
+  warningText: '#5D3B00',
 
-  text: '#121316',
-  textMuted: '#5B5B57',
-  textSubtle: '#686863',
+  text: '#1C2826',
+  textMuted: '#586764',
+  textSubtle: '#788480',
   textOnDark: '#FFFFFF',
 
-  border: 'rgba(0,0,0,0.10)',       // hairlines, card borders
-  glassBorder: 'rgba(0,0,0,0.16)',  // strong border: secondary-button outline, focus rings
-  chipBg: '#ECECEA',
-  star: '#121316',                  // monochrome rating, never gold
-  surfaceTint: '#F1F1EF',           // tile/disc/search-pill fill
+  border: 'rgba(28,40,38,0.12)',
+  glassBorder: 'rgba(255,255,255,0.74)',
+  chipBg: '#EFF5F2',
+  star: '#E06A4E',
+  surfaceTint: '#E6EFEB',
 
-  overlay: 'rgba(0,0,0,0.04)',       // hover/press wash on surfaces
-  overlayStrong: 'rgba(0,0,0,0.08)',
-  scrim: 'rgba(0,0,0,0.45)',         // modal backdrop
-  whatsapp: '#0E7C3F',               // = success; pair with successFg
-  handle: '#E2E2E1',                 // sheet drag handle
+  overlay: 'rgba(255,255,255,0.28)',
+  overlayStrong: 'rgba(255,255,255,0.42)',
+  scrim: 'rgba(23,76,79,0.08)',
+  whatsapp: '#128C7E',
+  whatsappText: '#FFFFFF',
+  handle: '#C9D1CE',
 };
 
 export const darkColors: typeof lightColors = {
-  bg: '#1F2023',
-  bgAlt: '#26272A',
-  card: '#2A2B2E',
-  cardSolid: '#2A2B2E',
-  cardStrong: '#313236',    // sunk/hover
-  nav: 'rgba(31,32,35,0.96)',
-  frame: '#141517',
+  bg: '#07110F',
+  bgAlt: '#0B1916',
+  card: 'rgba(255,255,255,0.075)',
+  cardSolid: '#0F1E1B',
+  cardStrong: '#132521',
+  nav: '#07110F',
+  frame: '#06100F',
 
-  primary: '#EDEDEB',       // inverted near-white CTA
-  primaryDark: '#FFFFFF',   // pressed
-  primarySoft: '#313236',
-  primaryTint: 'rgba(255,255,255,0.10)',
-  primaryFg: '#17181A',
+  primary: '#A4E5D1',
+  primaryDark: '#D9FFF3',
+  primarySoft: '#193B34',
+  primaryTint: 'rgba(164,229,209,0.14)',
+  primaryFg: '#06100F',
 
-  accent: '#639AF5',
-  accentDark: '#8AB4F8',    // pressed (lighter in dark)
-  accentSoft: 'rgba(99,154,245,0.16)',
-  accentFg: '#101114',
+  accent: '#FFB59F',
+  accentDark: '#FFE0D6',
+  accentSoft: 'rgba(255,177,152,0.13)',
+  accentFg: '#24100B',
+  info: '#B9B1FF',
+  infoDark: '#E1DDFF',
+  infoSoft: 'rgba(185,177,255,0.14)',
 
-  success: '#4CC38A',
-  successSoft: 'rgba(76,195,138,0.16)',
-  successFg: '#0B2013',
+  success: '#8BD8A8',
+  successSoft: 'rgba(139,216,168,0.14)',
+  successFg: '#061A10',
 
-  danger: '#F2695C',
-  dangerDark: '#F58E84',    // pressed
-  dangerSoft: 'rgba(242,105,92,0.16)',
+  danger: '#FFB4AB',
+  dangerDark: '#FFDAD6',
+  dangerSoft: 'rgba(255,180,171,0.14)',
   dangerFg: '#2A0E08',
+  emergency: '#D92D20',
+  emergencyDark: '#FFB4AB',
+  emergencySoft: 'rgba(217,45,32,0.22)',
 
-  warningBg: '#2E2617',
-  warningText: '#E8C87E',
+  warningBg: '#2C2110',
+  warningText: '#FFE2A5',
 
-  text: '#E8E9EA',
-  textMuted: '#B3B4B6',
-  textSubtle: '#96979A',
-  textOnDark: '#17181A',    // text on the light (inverted) fills
+  text: '#F7FAF4',
+  textMuted: '#B9C8C2',
+  textSubtle: '#83948E',
+  textOnDark: '#06100F',
 
-  border: 'rgba(255,255,255,0.12)',
-  glassBorder: 'rgba(255,255,255,0.18)',
-  chipBg: '#2A2B2E',
-  star: '#E8E9EA',
-  surfaceTint: '#2E2F33',
+  border: 'rgba(255,255,255,0.16)',
+  glassBorder: 'rgba(255,255,255,0.16)',
+  chipBg: 'rgba(255,255,255,0.09)',
+  star: '#FFB198',
+  surfaceTint: '#0D2421',
 
-  overlay: 'rgba(255,255,255,0.06)',
-  overlayStrong: 'rgba(255,255,255,0.10)',
-  scrim: 'rgba(0,0,0,0.60)',
-  whatsapp: '#4CC38A',      // = success; pair with successFg
-  handle: '#494A4F',
+  overlay: 'rgba(255,255,255,0.10)',
+  overlayStrong: 'rgba(255,255,255,0.18)',
+  scrim: 'rgba(0,0,0,0.24)',
+  whatsapp: '#25D366',
+  whatsappText: '#062315',
+  handle: '#49615A',
 };
 
 export type AppColors = typeof lightColors;
@@ -135,20 +141,17 @@ export function paletteForMode(mode: ThemeMode) {
 // Legacy default for files that have not yet been made theme-aware.
 export const colors = lightColors;
 
-// Deliberately large for older users. md 18 is the body floor.
 export const font = {
-  xs: 14,      // captions, badges, tab labels, timestamps
-  sm: 16,      // subtitles, meta, chip labels
-  md: 18,      // body base
-  lg: 22,      // H2/section headers, sheet/dialog titles
-  xl: 28,      // large headings, key figures
-  xxl: 34,     // H1 screen titles
-  display: 40, // hero numerals/greeting only
+  xs: 13,
+  sm: 15,
+  md: 17,
+  lg: 22,
+  xl: 28,
+  xxl: 36,
 };
 
-// Letter-spacing (px) per size step; md and below stay 0.
 export const tracking = {
-  display: -1.0,
+  display: -1,
   xxl: -0.6,
   xl: -0.4,
   lg: -0.2,
@@ -157,40 +160,27 @@ export const tracking = {
   xs: 0,
 } as const;
 
-export const space = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };
+export const space = {
+  xs: 6,
+  sm: 10,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+};
 
-export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 };
+export const radius = { sm: 10, md: 14, lg: 18, xl: 24, pill: 999 };
 
 // Minimum touch target for accessibility.
 export const TAP = 56;
 
-// Uber row anatomy: rows grow with 2-line text but never shrink below this.
 export const ROW_MIN_HEIGHT = 64;
 
-// Bottom-sheet top-corner radius (= radius.xl).
-export const SHEET_RADIUS = 24;
-
-// Whisper shadows; borders carry structure. Same strings ship in dark mode
-// (invisible on near-black is correct — glassBorder borders separate there).
 export const shadow = {
-  sm: { boxShadow: '0 1px 2px rgba(0,0,0,0.06)' },              // cards
-  md: { boxShadow: '0 2px 10px -2px rgba(0,0,0,0.12)' },        // dialogs, popped elements
-  sheet: { boxShadow: '0 -8px 32px rgba(0,0,0,0.16)' },         // bottom sheets (light mode)
-} as const;
-
-// Use with Reanimated: Easing.bezier(...motion.easeOutQuint).
-export const motion = {
-  easeOutQuint: [0.23, 1, 0.32, 1] as const,        // entrances, sheets
-  easeOutQuart: [0.22, 1, 0.36, 1] as const,        // generic state changes
-  easeInQuint: [0.755, 0.05, 0.855, 0.06] as const, // exits
-  pop: [0.34, 1.56, 0.64, 1] as const,              // press-release overshoot
-  dur: {
-    press: 120,
-    fast: 160,
-    base: 200,
-    sheetIn: 280,
-    sheetOut: 220,
-    dialogIn: 200,
-    dialogOut: 140,
+  sm: {
+    boxShadow: '0 4px 14px rgba(18, 34, 31, 0.07)',
   },
-};
+  md: {
+    boxShadow: '0 12px 36px rgba(18, 34, 31, 0.10)',
+  },
+} as const;

@@ -17,8 +17,8 @@ Universal app — runs on **iOS, Android, and the Web** from one codebase
   can use OpenAI from the server when `OPENAI_API_KEY` is configured.
 - **Community Connect** — ask questions, reply in threads, like posts, and share
   best practices, organised by category (health, travel, daily life…).
-- **24/7 Helpline** — quick-dial button in every screen header + a callback
-  request form.
+- **Help Desk + callback requests** — quick-dial access plus a callback request
+  form. Do not market this as 24/7 unless staffing and escalation SLAs are real.
 - **Bilingual** — Hindi (default) and English, toggle in the header. Large fonts
   and big tap targets for older users.
 

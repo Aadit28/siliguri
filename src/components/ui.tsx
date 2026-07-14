@@ -1,31 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
-  AccessibilityInfo,
+  Text,
+  TextProps,
+  TouchableOpacity,
+  View,
+  ViewProps,
+  StyleSheet,
   ActivityIndicator,
   Modal as RNModal,
   Pressable,
-  StyleSheet,
-  Text,
-  TextProps,
   useWindowDimensions,
-  View,
-  ViewProps,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  Easing,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-import { family, font, motion, radius, shadow, space, TAP, tracking } from '../lib/theme';
+import { font, radius, space, shadow, TAP } from '../lib/theme';
 import { useTheme } from '../context/ThemeContext';
-
-const EASE_OUT_QUINT = Easing.bezier(...motion.easeOutQuint);
-const EASE_OUT_QUART = Easing.bezier(...motion.easeOutQuart);
-const EASE_IN_QUINT = Easing.bezier(...motion.easeInQuint);
 
 export function Card({ style, ...props }: ViewProps) {
   const { colors } = useTheme();
@@ -33,7 +20,10 @@ export function Card({ style, ...props }: ViewProps) {
     <View
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        {
+          backgroundColor: colors.cardStrong,
+          borderColor: colors.border,
+        },
         style,
       ]}
       {...props}
@@ -76,50 +66,32 @@ export function Button({
   disabled?: boolean;
   icon?: React.ReactNode;
 }) {
-  const { colors, mode } = useTheme();
+  const { colors, isDark } = useTheme();
   const isSecondary = variant === 'secondary';
-  const fill =
+  const filled =
     variant === 'primary'
       ? colors.primary
-      : variant === 'accent'
-        ? colors.accent
-        : variant === 'danger'
-          ? colors.danger
-          : 'transparent';
-  const pressedFill =
-    variant === 'primary'
-      ? colors.primaryDark
-      : variant === 'accent'
-        ? colors.accentDark
-        : variant === 'danger'
-          ? colors.dangerDark
-          : colors.overlay;
-  const fg =
-    variant === 'primary'
-      ? colors.primaryFg
-      : variant === 'accent'
-        ? colors.accentFg
-        : variant === 'danger'
-          ? colors.dangerFg
-          : colors.primaryDark;
+      : variant === 'danger'
+        ? colors.emergency
+        : variant === 'accent'
+          ? colors.accent
+          : colors.cardStrong;
+  const fg = isSecondary ? colors.primaryDark : variant === 'danger' ? '#fff' : isDark ? colors.textOnDark : '#fff';
 
   return (
-    <Pressable
+    <TouchableOpacity
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={disabled || loading}
       onPress={onPress}
-      style={({ pressed }) => [
+      activeOpacity={0.85}
+      style={[
         styles.btn,
-        isSecondary
-          ? [styles.btnSecondary, { borderColor: colors.glassBorder }]
-          : mode === 'light'
-            ? shadow.sm
-            : null,
+        isSecondary ? styles.btnSecondary : shadow.sm,
         {
-          backgroundColor: pressed ? pressedFill : fill,
+          backgroundColor: filled,
+          borderColor: isSecondary ? colors.border : filled,
           opacity: disabled ? 0.45 : 1,
-          transform: [{ scale: pressed && !isSecondary ? 0.98 : 1 }],
         },
       ]}
     >
@@ -127,13 +99,11 @@ export function Button({
         <ActivityIndicator color={fg} />
       ) : (
         <View style={styles.btnContent}>
-          {icon}
-          <Text style={[isSecondary ? styles.btnTextSecondary : styles.btnText, { color: fg }]}>
-            {label}
-          </Text>
+          {typeof icon === 'string' ? <Text style={[styles.btnText, { color: fg }]}>{icon}</Text> : icon}
+          <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
         </View>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -148,34 +118,33 @@ export function Chip({
   active?: boolean;
   onPress: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   return (
-    <Pressable
+    <TouchableOpacity
       accessibilityRole="button"
-      accessibilityState={{ selected: !!active }}
       onPress={onPress}
-      style={({ pressed }) => [
+      activeOpacity={0.8}
+      style={[
         styles.chip,
         {
-          backgroundColor: active ? colors.accent : pressed ? colors.cardStrong : colors.chipBg,
-          borderColor: active ? colors.accent : colors.border,
+          backgroundColor: active ? colors.primary : colors.cardStrong,
+          borderColor: active ? colors.primary : colors.border,
         },
       ]}
     >
-      <Text style={[styles.chipText, { color: active ? colors.accentFg : colors.text }]}>
+      <Text style={[styles.chipText, { color: active ? (isDark ? colors.textOnDark : '#fff') : colors.primaryDark }]}>
         {emoji ? `${emoji} ` : ''}
         {label}
       </Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
 export function Badge({ label, color }: { label: string; color?: string }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.badge, { backgroundColor: color ?? colors.success }]}>
-      <Feather name="check" size={14} color={colors.successFg} />
-      <Text style={[styles.badgeText, { color: colors.successFg }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: color ?? colors.successSoft, borderColor: colors.border }]}>
+      <Text style={[styles.badgeText, { color: color ? '#fff' : colors.success }]}>{label}</Text>
     </View>
   );
 }
@@ -184,66 +153,20 @@ export function Stars({ rating }: { rating: number | null }) {
   const { colors } = useTheme();
   if (!rating) return null;
   return (
-    <View style={styles.starsRow}>
-      <Feather name="star" size={16} color={colors.star} />
-      <Text style={{ color: colors.star, fontSize: font.sm, fontFamily: family.bold }}>
-        {rating.toFixed(1)}
-      </Text>
-    </View>
+    <Text style={{ color: colors.star, fontSize: font.sm, fontWeight: '800' }}>
+      {rating.toFixed(1)}/5
+    </Text>
   );
 }
 
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) setReduced(enabled);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-  return reduced;
-}
-
-// Drives enter/exit for modals: progress 0..1, keeps the RN Modal mounted
-// until the exit animation finishes. Reduced motion collapses to a 120ms fade.
-function useModalTransition(
-  visible: boolean,
-  durIn: number,
-  durOut: number,
-  easeIn: ReturnType<typeof Easing.bezier>,
-  easeOut: ReturnType<typeof Easing.bezier>,
-) {
-  const reduced = useReducedMotion();
-  const [rendered, setRendered] = useState(visible);
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) {
-      setRendered(true);
-      progress.value = withTiming(1, {
-        duration: reduced ? motion.dur.press : durIn,
-        easing: reduced ? Easing.linear : easeIn,
-      });
-    } else {
-      progress.value = withTiming(
-        0,
-        {
-          duration: reduced ? motion.dur.press : durOut,
-          easing: reduced ? Easing.linear : easeOut,
-        },
-        (finished) => {
-          if (finished) runOnJS(setRendered)(false);
-        },
-      );
-    }
-  }, [visible, reduced, durIn, durOut, easeIn, easeOut, progress]);
-
-  return { reduced, rendered, progress };
+function ModalHeading({ title }: { title?: React.ReactNode }) {
+  const { colors } = useTheme();
+  if (!title) return null;
+  return typeof title === 'string' ? (
+    <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text>
+  ) : (
+    <View style={styles.modalTitleNode}>{title}</View>
+  );
 }
 
 export function Sheet({
@@ -254,68 +177,20 @@ export function Sheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  title?: string;
+  title?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const { colors, mode } = useTheme();
-  const insets = useSafeAreaInsets();
-  const { height: screenHeight } = useWindowDimensions();
-  const { reduced, rendered, progress } = useModalTransition(
-    visible,
-    motion.dur.sheetIn,
-    motion.dur.sheetOut,
-    EASE_OUT_QUINT,
-    EASE_IN_QUINT,
-  );
-  const panelHeight = useSharedValue(screenHeight);
-
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
-  const panelStyle = useAnimatedStyle(() => {
-    if (reduced) {
-      return { opacity: progress.value, transform: [{ translateY: 0 }] };
-    }
-    return {
-      opacity: 1,
-      transform: [{ translateY: (1 - progress.value) * panelHeight.value }],
-    };
-  });
-
-  if (!rendered) return null;
-
+  const { colors } = useTheme();
+  const { height } = useWindowDimensions();
   return (
-    <RNModal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.sheetRoot}>
-        <Animated.View
-          style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }, backdropStyle]}
-        >
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={onClose}
-          />
-        </Animated.View>
-        <Animated.View
-          onLayout={(e) => {
-            panelHeight.value = e.nativeEvent.layout.height;
-          }}
-          style={[
-            styles.sheetPanel,
-            {
-              backgroundColor: colors.cardSolid,
-              maxHeight: screenHeight * 0.88,
-              paddingBottom: space.lg + insets.bottom,
-            },
-            mode === 'light'
-              ? shadow.sheet
-              : { borderWidth: 1, borderBottomWidth: 0, borderColor: colors.glassBorder },
-            panelStyle,
-          ]}
-        >
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalScrim} />
+        <View style={[styles.sheetPanel, { backgroundColor: colors.cardSolid, borderColor: colors.border, maxHeight: height * 0.88 }]}>
           <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
-          {title ? <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text> : null}
+          <ModalHeading title={title} />
           {children}
-        </Animated.View>
+        </View>
       </View>
     </RNModal>
   );
@@ -329,71 +204,19 @@ export function Dialog({
 }: {
   visible: boolean;
   onClose: () => void;
-  title?: string;
+  title?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const { colors, mode } = useTheme();
-  const { width: screenWidth } = useWindowDimensions();
-  const { reduced, rendered, progress } = useModalTransition(
-    visible,
-    motion.dur.dialogIn,
-    motion.dur.dialogOut,
-    EASE_OUT_QUART,
-    EASE_IN_QUINT,
-  );
-
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
-  const panelStyle = useAnimatedStyle(() => {
-    if (reduced) {
-      return { opacity: progress.value, transform: [{ translateY: 0 }, { scale: 1 }] };
-    }
-    return {
-      opacity: progress.value,
-      transform: [
-        { translateY: (1 - progress.value) * 6 },
-        { scale: 0.97 + progress.value * 0.03 },
-      ],
-    };
-  });
-
-  if (!rendered) return null;
-
+  const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   return (
-    <RNModal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.dialogRoot}>
-        <Animated.View
-          style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }, backdropStyle]}
-        >
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={onClose}
-          />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.dialogPanel,
-            { backgroundColor: colors.cardSolid, width: Math.min(screenWidth - 48, 400) },
-            mode === 'light' ? shadow.md : { borderWidth: 1, borderColor: colors.glassBorder },
-            panelStyle,
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={onClose}
-            style={styles.dialogClose}
-          >
-            <Feather name="x" size={24} color={colors.textMuted} />
-          </Pressable>
-          {title ? (
-            <Text style={[styles.modalTitle, styles.dialogTitle, { color: colors.text }]}>
-              {title}
-            </Text>
-          ) : null}
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalScrim} />
+        <View style={[styles.dialogPanel, { backgroundColor: colors.cardSolid, borderColor: colors.border, width: Math.min(width - 32, 440) }]}>
+          <ModalHeading title={title} />
           {children}
-        </Animated.View>
+        </View>
       </View>
     </RNModal>
   );
@@ -402,103 +225,60 @@ export function Dialog({
 const styles = StyleSheet.create({
   card: {
     borderRadius: radius.lg,
-    padding: space.md,
+    padding: space.lg,
     borderWidth: 1,
     overflow: 'hidden',
     ...shadow.sm,
   },
-  h1: {
-    fontSize: font.xxl,
-    fontFamily: family.bold,
-    letterSpacing: tracking.xxl,
-    lineHeight: Math.round(font.xxl * 1.2),
-  },
-  h2: {
-    fontSize: font.lg,
-    fontFamily: family.bold,
-    letterSpacing: tracking.lg,
-    lineHeight: Math.round(font.lg * 1.3),
-  },
-  body: {
-    fontSize: font.md,
-    fontFamily: family.regular,
-    lineHeight: Math.round(font.md * 1.5),
-  },
-  muted: {
-    fontSize: font.sm,
-    fontFamily: family.regular,
-    lineHeight: Math.round(font.sm * 1.45),
-  },
+  h1: { fontSize: font.xxl, fontWeight: '800', lineHeight: font.xxl * 1.13, letterSpacing: -0.5 },
+  h2: { fontSize: font.lg, fontWeight: '800', lineHeight: font.lg * 1.2 },
+  body: { fontSize: font.md, lineHeight: font.md * 1.5 },
+  muted: { fontSize: font.sm, lineHeight: font.sm * 1.5 },
   btn: {
     minHeight: TAP,
-    borderRadius: radius.pill,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: space.lg,
+    borderWidth: 1,
   },
   btnSecondary: {
-    borderWidth: 1.5,
+    borderWidth: 1,
+    ...shadow.sm,
   },
-  btnContent: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  btnText: { fontSize: font.md, fontFamily: family.bold },
-  btnTextSecondary: { fontSize: font.md, fontFamily: family.semibold },
+  btnText: { fontSize: font.md, fontWeight: '700' },
+  btnContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
   chip: {
-    minHeight: 44,
+    minHeight: 48,
     paddingHorizontal: space.md,
-    borderRadius: radius.pill,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: space.sm,
     flexShrink: 0,
     borderWidth: 1,
   },
-  chipText: { fontSize: font.sm, fontFamily: family.semibold },
+  chipText: { fontSize: font.sm, fontWeight: '700' },
   badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: 10,
-    paddingVertical: space.xs,
-    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    borderWidth: 1,
     alignSelf: 'flex-start',
   },
-  badgeText: { fontSize: font.xs, fontFamily: family.bold },
-  starsRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  badgeText: { fontSize: font.xs, fontWeight: '800' },
+  modalScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.52)' },
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
   sheetPanel: {
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
+    borderWidth: 1,
     paddingHorizontal: space.lg,
+    paddingBottom: space.xl,
   },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    marginTop: space.sm,
-    marginBottom: space.md,
-  },
-  modalTitle: {
-    fontSize: font.lg,
-    fontFamily: family.bold,
-    letterSpacing: tracking.lg,
-    lineHeight: Math.round(font.lg * 1.3),
-    marginBottom: space.sm,
-  },
-  dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  dialogPanel: {
-    borderRadius: radius.lg,
-    padding: space.lg,
-  },
-  dialogClose: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  dialogTitle: { paddingRight: 44 },
+  sheetHandle: { width: 42, height: 5, borderRadius: 999, alignSelf: 'center', marginTop: space.sm, marginBottom: space.md },
+  dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
+  dialogPanel: { borderRadius: radius.xl, borderWidth: 1, padding: space.lg, ...shadow.md },
+  modalTitle: { fontSize: font.lg, lineHeight: 28, fontWeight: '800', marginBottom: space.md },
+  modalTitleNode: { marginBottom: space.md },
 });

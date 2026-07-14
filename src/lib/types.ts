@@ -4,7 +4,21 @@ export type ServiceCategory =
   | 'hospital'
   | 'medical_shop'
   | 'travel_agent'
+  | 'home_service'
   | 'daily_service';
+
+export type ServiceVerificationStatus =
+  | 'unverified'
+  | 'source_linked'
+  | 'phone_confirmed'
+  | 'claimed'
+  | 'recently_reverified';
+
+export type ServiceClaimStatus =
+  | 'unclaimed'
+  | 'claim_started'
+  | 'claimed'
+  | 'rejected';
 
 export interface Service {
   id: string;
@@ -20,6 +34,15 @@ export interface Service {
   verified: boolean;
   town: string | null;
   source_url: string | null;
+  verification_status?: ServiceVerificationStatus | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  verification_note?: string | null;
+  phone_confirmed?: boolean | null;
+  claim_status?: ServiceClaimStatus | null;
+  service_area?: string | null;
+  languages?: string[] | null;
+  hours_confidence?: 'unknown' | 'source' | 'phone_confirmed' | null;
   created_at?: string;
   upi_id?: string | null;
   city_id?: string | null;
@@ -88,4 +111,13 @@ export interface CommunityReply {
   body: string;
   created_at: string;
   author_name?: string | null;
+}
+
+export interface CallbackRequestInput {
+  name: string;
+  phone: string;
+  issue: string;
+  source?: 'help' | 'assistant' | 'service';
+  serviceId?: string | null;
+  token?: string | null;
 }

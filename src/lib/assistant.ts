@@ -73,9 +73,41 @@ type AssistantLang = 'en' | 'hi';
 const CATEGORY_KEYWORDS: Record<ServiceCategory, string[]> = {
   doctor: ['doctor', 'appointment', 'opd', 'physician', 'cardio', 'heart', 'ortho', 'bone', 'medicine', 'specialist', 'clinic'],
   hospital: ['hospital', 'emergency', 'ambulance', 'admit', 'chest pain', 'stroke', 'accident', 'icu'],
-  medical_shop: ['medicine', 'medicines', 'pharmacy', 'prescription', 'tablet', 'delivery', 'drug'],
+  medical_shop: [
+    'medical shop',
+    'medicine shop',
+    'medicine',
+    'medicines',
+    'pharmacy',
+    'prescription',
+    'tablet',
+    'delivery',
+    'drug',
+    'wheelchair',
+    'wheel chair',
+    'medical equipment',
+    'oxygen',
+  ],
   travel_agent: ['travel', 'ticket', 'train', 'flight', 'bus', 'taxi', 'ride', 'airport', 'station'],
   elder_home: ['elder', 'old age', 'care home', 'attendant', 'nursing', 'parent', 'senior'],
+  home_service: [
+    'home service',
+    'handyman',
+    'plumber',
+    'plumbing',
+    'tap',
+    'leak',
+    'electrician',
+    'electrical',
+    'wiring',
+    'fan',
+    'appliance',
+    'ac repair',
+    'carpenter',
+    'painter',
+    'repair',
+    'technician',
+  ],
   daily_service: ['water', 'electricity', 'post office', 'gas', 'lpg', 'municipal', 'garbage', 'civic'],
 };
 
@@ -162,7 +194,7 @@ const COPY = {
     routeNextSteps: ['Open live directions for the current ETA.', 'Share pickup and expected arrival time with family.'],
     liveDirections: 'Open live directions',
     safety:
-      'Saathi can prepare the next step, but medical bookings are confirmed only after the provider or emergency service accepts them.',
+      'Saathi is a coordination tool, not a medical device or doctor. It does not diagnose, treat, cure or prevent any condition. For symptoms or urgent concerns, call a qualified professional or emergency service.',
   },
   hi: {
     urgentSummary: 'यह तुरंत ध्यान देने वाली बात हो सकती है। कृपया अभी आपातकालीन मदद या नजदीकी अस्पताल को कॉल करें।',
@@ -196,7 +228,7 @@ const COPY = {
     calendarReminder: (title: string, day: string, time: string | null) =>
       `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
     safety:
-      'साथी अगला कदम तैयार कर सकता है, लेकिन मेडिकल बुकिंग तभी पक्की है जब प्रदाता या आपातकालीन सेवा पुष्टि करे।',
+      'साथी समन्वय में मदद करता है; यह डॉक्टर या मेडिकल डिवाइस नहीं है। यह निदान, इलाज या दवा की सलाह नहीं देता। लक्षण या आपात चिंता हो तो डॉक्टर, अस्पताल या आपातकालीन सेवा को कॉल करें।',
   },
 } as const;
 
@@ -250,7 +282,7 @@ export function buildLocalAssistantPlan(
     return buildRouteTimePlan(route);
   }
   const intent = detectIntent(normalized, urgent);
-  const category = categoryForIntent(intent, urgent);
+  const category = categoryForIntent(intent, urgent, normalized);
   const when = extractWhen(message);
   const suggestedServices = rankServices(services, category, normalized).slice(0, 3);
   const primary = suggestedServices[0] ?? null;
@@ -327,6 +359,7 @@ function detectIntent(normalized: string, urgent: boolean): AssistantIntent {
   if (matchesAny(normalized, CATEGORY_KEYWORDS.medical_shop)) return 'medicine_delivery';
   if (matchesAny(normalized, CATEGORY_KEYWORDS.travel_agent)) return 'transport';
   if (matchesAny(normalized, CATEGORY_KEYWORDS.elder_home)) return 'elder_care';
+  if (matchesAny(normalized, CATEGORY_KEYWORDS.home_service)) return 'daily_help';
   if (matchesAny(normalized, CATEGORY_KEYWORDS.daily_service)) return 'daily_help';
   if (matchesAny(normalized, CATEGORY_KEYWORDS.doctor) || matchesAny(normalized, CATEGORY_KEYWORDS.hospital)) {
     return 'medical_appointment';
@@ -334,12 +367,13 @@ function detectIntent(normalized: string, urgent: boolean): AssistantIntent {
   return 'general';
 }
 
-function categoryForIntent(intent: AssistantIntent, urgent: boolean): ServiceCategory | null {
+function categoryForIntent(intent: AssistantIntent, urgent: boolean, normalized = ''): ServiceCategory | null {
   if (urgent) return 'hospital';
   if (intent === 'medical_appointment') return 'doctor';
   if (intent === 'medicine_delivery') return 'medical_shop';
   if (intent === 'transport') return 'travel_agent';
   if (intent === 'elder_care') return 'elder_home';
+  if (intent === 'daily_help' && matchesAny(normalized, CATEGORY_KEYWORDS.home_service)) return 'home_service';
   if (intent === 'daily_help') return 'daily_service';
   return null;
 }
@@ -618,6 +652,11 @@ function compactService(service: Service): Service {
     verified: service.verified,
     town: service.town,
     source_url: service.source_url,
+    verification_status: service.verification_status,
+    verified_at: service.verified_at,
+    phone_confirmed: service.phone_confirmed,
+    claim_status: service.claim_status,
+    service_area: service.service_area,
     created_at: service.created_at,
     upi_id: service.upi_id ?? null,
     city_id: service.city_id ?? null,

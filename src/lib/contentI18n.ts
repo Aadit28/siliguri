@@ -31,7 +31,7 @@ const HI: Record<string, string> = {
 };
 
 /** Translate seeded content to Hindi; falls back to the original text. */
-export function tContent(text: string | null | undefined, lang: 'en' | 'hi'): string {
+export function tContent(text: string | null | undefined, lang: string): string {
   if (!text) return text ?? '';
   if (lang !== 'hi') return text;
   return HI[text.trim()] ?? text;

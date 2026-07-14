@@ -1,37 +1,28 @@
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Feather } from '@expo/vector-icons';
-import { H1, Muted, Button } from '../src/components/ui';
-import { AppColors, family, font, radius, space, TAP, tracking } from '../src/lib/theme';
+import { Button, H1, H2, Muted } from '../src/components/ui';
+import { AppColors, font, radius, shadow, space } from '../src/lib/theme';
 import { useAuth } from '../src/context/AuthContext';
+import { supabaseConfigured } from '../src/lib/supabase';
 import { useTheme } from '../src/context/ThemeContext';
-import { consumeLoginIntent } from '../src/lib/authNavigation';
-
-type FieldId = 'name' | 'username' | 'phone' | 'password';
 
 export default function Login() {
   const { t } = useTranslation();
   const router = useRouter();
   const { signIn, signUp } = useAuth();
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 900;
+  const styles = makeStyles(colors, isDark, isWide);
 
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [username, setUsername] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [focused, setFocused] = useState<FieldId | null>(null);
-
-  useEffect(() => {
-    if (!consumeLoginIntent()) {
-      router.replace('/');
-    }
-  }, [router]);
 
   function goHome() {
     router.replace('/');
@@ -41,13 +32,16 @@ export default function Login() {
     setMsg(null);
     setMode(nextMode);
     setUsername('');
-    setPhone('');
     setPassword('');
     setFullName('');
   }
 
   async function submit() {
     setMsg(null);
+    if (!supabaseConfigured) {
+      setMsg('Backend not configured. Add Supabase keys to .env.');
+      return;
+    }
     setBusy(true);
     if (mode === 'in') {
       const { error } = await signIn(username, password);
@@ -57,7 +51,7 @@ export default function Login() {
       return;
     }
 
-    const { error } = await signUp(username, password, fullName.trim(), 'username', phone);
+    const { error } = await signUp(username, password, fullName.trim());
     setBusy(false);
     if (error) setMsg(error);
     else goHome();
@@ -65,245 +59,161 @@ export default function Login() {
 
   const isSignIn = mode === 'in';
   const formKey = `auth-form-${mode}`;
-  const visibleMsg =
-    msg === 'Backend not configured. Add Supabase keys to .env.' ? null : msg;
-
-  function inputStyle(id: FieldId) {
-    return [styles.input, focused === id ? styles.inputFocused : null];
-  }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={styles.scroll}
-      keyboardShouldPersistTaps="handled"
-    >
+    <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.page}>
       <Stack.Screen options={{ title: '' }} />
-
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.wordmark} accessibilityRole="header">
-            Saathi
-          </Text>
-          <H1 style={styles.title}>{t('auth.welcome')}</H1>
-          <Muted style={styles.subtitle}>
-            {isSignIn ? t('auth.signInOnly') : t('auth.createAccountOnly')}
+      <View style={styles.authShell}>
+        <View style={styles.identityPanel}>
+          <View style={styles.brandMark}>
+            <Text style={styles.brandMarkTop}>SA</Text>
+            <Text style={styles.brandMarkBottom}>112</Text>
+          </View>
+          <Text style={styles.kicker}>Saathi access</Text>
+          <H1 style={styles.heroTitle}>{t('auth.welcome')}</H1>
+          <Muted style={styles.heroBody}>
+            {mode === 'in' ? t('auth.signInOnly') : t('auth.createAccountOnly')}
           </Muted>
+          <View style={styles.promiseStack}>
+            <Text style={styles.promise}>Username first</Text>
+            <Text style={styles.promise}>Family-safe care records</Text>
+            <Text style={styles.promise}>Siliguri service directory</Text>
+          </View>
         </View>
 
-        <View key={formKey} style={styles.form}>
-          {!isSignIn ? (
-            <View style={styles.field}>
-              <Text nativeID="label-name" style={styles.label}>
-                {t('auth.fullName')}
-              </Text>
+        <View key={formKey} style={styles.formPanel}>
+          <Text style={styles.kickerLight}>{isSignIn ? t('common.signIn') : t('auth.createAccount')}</Text>
+          <H2>{isSignIn ? t('common.signIn') : t('auth.createAccount')}</H2>
+          <View style={styles.formStack}>
+            {!isSignIn ? (
               <TextInput
-                style={inputStyle('name')}
-                accessibilityLabel={t('auth.fullName')}
-                accessibilityLabelledBy="label-name"
+                style={styles.input}
+                placeholder={t('auth.fullName')}
+                placeholderTextColor={colors.textMuted}
                 autoComplete="off"
                 value={fullName}
                 onChangeText={setFullName}
-                onFocus={() => setFocused('name')}
-                onBlur={() => setFocused(null)}
-                selectionColor={colors.accent}
                 textContentType="none"
                 importantForAutofill="no"
               />
-            </View>
-          ) : null}
-          <View style={styles.field}>
-            <Text nativeID="label-username" style={styles.label}>
-              {isSignIn ? t('auth.identifier') : t('common.username')}
-            </Text>
+            ) : null}
             <TextInput
-              style={inputStyle('username')}
-              accessibilityLabel={isSignIn ? t('auth.identifier') : t('common.username')}
-              accessibilityLabelledBy="label-username"
+              style={styles.input}
+              placeholder={t('common.username')}
+              placeholderTextColor={colors.textMuted}
               autoComplete="username"
               autoCapitalize="none"
               keyboardType="default"
               textContentType="username"
               importantForAutofill="yes"
-              placeholder={isSignIn ? t('auth.identifierPlaceholder') : undefined}
-              placeholderTextColor={colors.textSubtle}
               value={username}
               onChangeText={setUsername}
-              onFocus={() => setFocused('username')}
-              onBlur={() => setFocused(null)}
-              selectionColor={colors.accent}
             />
-          </View>
-          {!isSignIn ? (
-            <View style={styles.field}>
-              <Text nativeID="label-phone" style={styles.label}>
-                {t('auth.phoneNumber')}
-              </Text>
-              <TextInput
-                style={inputStyle('phone')}
-                accessibilityLabel={t('auth.phoneNumber')}
-                accessibilityLabelledBy="label-phone"
-                autoComplete="tel"
-                keyboardType="phone-pad"
-                textContentType="telephoneNumber"
-                importantForAutofill="yes"
-                placeholder={t('auth.phonePlaceholder')}
-                placeholderTextColor={colors.textSubtle}
-                value={phone}
-                onChangeText={setPhone}
-                onFocus={() => setFocused('phone')}
-                onBlur={() => setFocused(null)}
-                selectionColor={colors.accent}
-              />
-            </View>
-          ) : null}
-          <View style={styles.field}>
-            <Text nativeID="label-password" style={styles.label}>
-              {t('common.password')}
-            </Text>
             <TextInput
-              style={inputStyle('password')}
-              accessibilityLabel={t('common.password')}
-              accessibilityLabelledBy="label-password"
+              style={styles.input}
+              placeholder={t('common.password')}
+              placeholderTextColor={colors.textMuted}
               autoComplete={isSignIn ? 'password' : 'new-password'}
               textContentType={isSignIn ? 'password' : 'newPassword'}
               importantForAutofill={isSignIn ? 'yes' : 'no'}
               secureTextEntry
               value={password}
               onChangeText={setPassword}
-              onFocus={() => setFocused('password')}
-              onBlur={() => setFocused(null)}
-              selectionColor={colors.accent}
             />
           </View>
-        </View>
 
-        {visibleMsg ? (
-          <View style={styles.errorBox} accessibilityRole="alert">
-            <Feather name="alert-circle" size={20} color={colors.danger} />
-            <Text style={styles.errorText}>{visibleMsg}</Text>
+          {msg ? <Muted style={styles.message}>{msg}</Muted> : null}
+
+          <View style={styles.actions}>
+            <Button label={isSignIn ? t('common.signIn') : t('auth.createAccount')} onPress={submit} loading={busy} />
+            <Button
+              label={isSignIn ? t('auth.needAccount') : t('auth.haveAccount')}
+              variant="secondary"
+              onPress={() => switchMode(isSignIn ? 'up' : 'in')}
+            />
           </View>
-        ) : null}
-
-        <View style={styles.actions}>
-          <Button
-            label={isSignIn ? t('common.signIn') : t('auth.createAccount')}
-            onPress={submit}
-            loading={busy}
-          />
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => switchMode(isSignIn ? 'up' : 'in')}
-            style={({ pressed }) => [styles.ghostBtn, { opacity: pressed ? 0.7 : 1 }]}
-          >
-            <Text style={styles.ghostText}>
-              {isSignIn ? t('auth.needAccount') : t('auth.haveAccount')}
-            </Text>
-          </Pressable>
         </View>
       </View>
     </ScrollView>
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
   return StyleSheet.create({
-    scroll: {
-      flexGrow: 1,
-      justifyContent: 'center',
-      paddingHorizontal: space.lg,
-      paddingVertical: space.xxl,
+    page: {
+      minHeight: '100%',
+      justifyContent: isWide ? 'center' : 'flex-start',
+      padding: isWide ? space.xl : space.md,
+      paddingTop: isWide ? space.xl : space.lg,
     },
-    container: {
+    authShell: {
       width: '100%',
-      maxWidth: 440,
+      maxWidth: 1060,
       alignSelf: 'center',
-    },
-    header: {
-      alignItems: 'center',
-    },
-    wordmark: {
-      fontSize: font.display,
-      fontFamily: family.bold,
-      letterSpacing: tracking.display,
-      lineHeight: Math.round(font.display * 1.12),
-      color: colors.text,
-      textAlign: 'center',
-    },
-    title: {
-      textAlign: 'center',
-      marginTop: space.md,
-    },
-    subtitle: {
-      textAlign: 'center',
-      marginTop: space.sm,
-      fontSize: font.md,
-      lineHeight: Math.round(font.md * 1.5),
-    },
-    form: {
-      marginTop: space.lg,
-      gap: space.md,
-    },
-    field: {
-      gap: space.sm,
-    },
-    label: {
-      fontSize: font.sm,
-      fontFamily: family.medium,
-      lineHeight: Math.round(font.sm * 1.45),
-      color: colors.text,
-    },
-    fieldHint: {
-      marginTop: 0,
-      fontSize: font.xs,
-      lineHeight: Math.round(font.xs * 1.4),
-    },
-    input: {
-      backgroundColor: colors.surfaceTint,
+      flexDirection: isWide ? 'row' : 'column',
+      overflow: 'hidden',
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: radius.md,
-      paddingHorizontal: space.md,
-      fontSize: font.md,
-      fontFamily: family.regular,
-      color: colors.text,
-      minHeight: TAP,
+      backgroundColor: colors.cardStrong,
+      ...shadow.md,
     },
-    inputFocused: {
-      borderColor: colors.glassBorder,
-      backgroundColor: colors.bgAlt,
-    },
-    errorBox: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: space.sm,
-      backgroundColor: colors.dangerSoft,
-      borderRadius: radius.md,
-      padding: space.md,
-      marginTop: space.lg,
-    },
-    errorText: {
+    identityPanel: {
       flex: 1,
-      fontSize: font.sm,
-      fontFamily: family.medium,
-      lineHeight: Math.round(font.sm * 1.45),
-      color: colors.danger,
+      minHeight: isWide ? 620 : 360,
+      backgroundColor: colors.nav,
+      padding: isWide ? 44 : space.xl,
+      justifyContent: 'center',
+      gap: space.md,
     },
-    actions: {
-      marginTop: space.lg,
-      gap: space.sm,
-    },
-    ghostBtn: {
-      minHeight: 48,
-      borderRadius: radius.pill,
+    brandMark: {
+      width: 76,
+      height: 76,
+      borderRadius: radius.lg,
+      backgroundColor: isDark ? colors.primarySoft : colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: space.lg,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.16)',
     },
-    ghostText: {
+    brandMarkTop: { color: isDark ? colors.primaryDark : '#fff', fontSize: font.lg, lineHeight: 25, fontWeight: '900' },
+    brandMarkBottom: { color: isDark ? colors.primaryDark : '#fff', fontSize: font.xs, lineHeight: 17, fontWeight: '900', opacity: 0.78 },
+    kicker: { color: 'rgba(255,255,255,0.70)', fontSize: font.xs, fontWeight: '900', textTransform: 'uppercase' },
+    heroTitle: { color: '#fff', fontSize: isWide ? 48 : 36, lineHeight: isWide ? 54 : 42 },
+    heroBody: { color: 'rgba(255,255,255,0.78)', fontSize: font.md, lineHeight: 26 },
+    promiseStack: { gap: 8, marginTop: space.sm },
+    promise: {
+      alignSelf: 'flex-start',
+      borderRadius: radius.md,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.10)',
+      color: 'rgba(255,255,255,0.84)',
+      paddingHorizontal: space.sm,
+      paddingVertical: 8,
+      fontSize: font.xs,
+      fontWeight: '900',
+      overflow: 'hidden',
+    },
+    formPanel: {
+      flex: 1,
+      padding: isWide ? 44 : space.lg,
+      justifyContent: 'center',
+      gap: space.md,
+    },
+    kickerLight: { color: colors.accentDark, fontSize: font.xs, fontWeight: '900', textTransform: 'uppercase' },
+    formStack: { gap: space.sm },
+    input: {
+      backgroundColor: colors.bgAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      paddingHorizontal: space.md,
       fontSize: font.md,
-      fontFamily: family.semibold,
-      color: colors.accent,
+      color: colors.text,
+      minHeight: 60,
     },
+    message: { color: colors.danger, fontWeight: '900' },
+    actions: { gap: space.sm, marginTop: space.sm },
   });
 }

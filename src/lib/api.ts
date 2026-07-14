@@ -1,5 +1,5 @@
 import { supabase, supabaseConfigured } from './supabase';
-import { Service, CommunityPost, CommunityReply, PostCategory, Announcement } from './types';
+import { Service, CommunityPost, CommunityReply, PostCategory, CallbackRequestInput } from './types';
 import { MOCK_SERVICES, MOCK_POSTS } from '../data/mockData';
 import { backendRequest } from './backend';
 
@@ -9,7 +9,7 @@ import { backendRequest } from './backend';
 export const usingMockFlag = { value: !supabaseConfigured };
 
 export async function fetchServices(): Promise<Service[]> {
-  if (!supabaseConfigured) return MOCK_SERVICES;
+  if (!supabaseConfigured) return localCatalogServices();
   try {
     const { data, error } = await supabase
       .from('services')
@@ -17,30 +17,13 @@ export async function fetchServices(): Promise<Service[]> {
       .order('verified', { ascending: false })
       .order('rating', { ascending: false });
     if (error) throw error;
-    if (!data || data.length === 0) return MOCK_SERVICES;
+    if (!data || data.length === 0) return localCatalogServices();
     usingMockFlag.value = false;
-    return data as Service[];
+    return mergeServiceCatalog(data as Service[]);
   } catch (e) {
     console.warn('[Saathi] services fell back to mock:', (e as Error).message);
     usingMockFlag.value = true;
-    return MOCK_SERVICES;
-  }
-}
-
-export async function fetchAnnouncements(): Promise<Announcement[]> {
-  if (!supabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('active', true)
-      .order('created_at', { ascending: false })
-      .limit(5);
-    if (error) throw error;
-    return (data as Announcement[]) ?? [];
-  } catch (e) {
-    console.warn('[Saathi] announcements failed:', (e as Error).message);
-    return [];
+    return localCatalogServices();
   }
 }
 
@@ -55,10 +38,10 @@ export async function fetchService(id: string): Promise<Service | null> {
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
-    return (data as Service | null) ?? null;
+    return data ? normalizeServiceTrust(data as Service) : null;
   } catch (e) {
     console.warn('[Saathi] service detail failed:', (e as Error).message);
-    return mock;
+    return mock ? normalizeServiceTrust(mock) : null;
   }
 }
 
@@ -138,7 +121,30 @@ export async function createPost(input: {
 }): Promise<{ ok: boolean; error?: string }> {
   if (!supabaseConfigured) return { ok: false, error: 'Backend not configured' };
   try {
-    await backendRequest('/api/community/post', { method: 'POST', token: input.token, body: input });
+    await backendRequest('/api/community/post', {
+      method: 'POST',
+      token: input.token,
+      body: { ...input, status: 'pending' },
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: (error as Error).message };
+  }
+}
+
+export async function createCallbackRequest(input: CallbackRequestInput): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await backendRequest('/api/callback/request', {
+      method: 'POST',
+      token: input.token,
+      body: {
+        name: input.name,
+        phone: input.phone,
+        issue: input.issue,
+        source: input.source ?? 'help',
+        serviceId: input.serviceId ?? null,
+      },
+    });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: (error as Error).message };
@@ -198,4 +204,44 @@ function countBy<T extends Record<string, any>>(rows: T[], key: keyof T): Record
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+}
+
+function normalizeServiceTrust(service: Service): Service {
+  const verified = Boolean(service.verified);
+  return {
+    ...service,
+    verified,
+    verification_status:
+      service.verification_status ??
+      (verified && service.phone_confirmed ? 'phone_confirmed' : verified && service.source_url ? 'source_linked' : 'unverified'),
+    claim_status: service.claim_status ?? 'unclaimed',
+    hours_confidence: service.hours_confidence ?? (service.hours ? 'source' : 'unknown'),
+    service_area: service.service_area ?? service.town ?? null,
+    languages: Array.isArray(service.languages) ? service.languages : null,
+  };
+}
+
+function localCatalogServices() {
+  return MOCK_SERVICES.map(normalizeServiceTrust);
+}
+
+function mergeServiceCatalog(remoteServices: Service[]) {
+  const normalizedRemote = remoteServices.map(normalizeServiceTrust);
+  const known = new Set(normalizedRemote.map(serviceIdentity));
+  const localAdditions = localCatalogServices().filter((service) => {
+    const key = serviceIdentity(service);
+    if (known.has(key)) return false;
+    known.add(key);
+    return true;
+  });
+
+  return [...normalizedRemote, ...localAdditions];
+}
+
+function serviceIdentity(service: Service) {
+  return [service.name, service.town ?? service.address ?? '']
+    .join('|')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
