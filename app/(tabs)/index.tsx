@@ -46,9 +46,12 @@ export default function Home() {
   const { lang } = useLocale();
   const { width } = useWindowDimensions();
   const isWide = width >= 820;
+  // Two-column hero only when the copy column has genuine room. Below this the
+  // 40px display heading gets narrower than a single word and breaks mid-word.
+  const heroTwoCol = width >= 1024;
   const isTranslatedLayout = lang !== 'en';
   const showHeroProof = width >= 1160;
-  const styles = makeStyles(colors, isWide, isTranslatedLayout);
+  const styles = makeStyles(colors, isWide, isTranslatedLayout, heroTwoCol);
   const homeScrollRef = useRef<ScrollView>(null);
   const [featured, setFeatured] = useState<Service[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -628,7 +631,7 @@ export default function Home() {
   );
 }
 
-function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: boolean) {
+function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: boolean, heroTwoCol: boolean) {
   const heroTitleSize = isTranslatedLayout ? (isWide ? 32 : 25) : isWide ? font.display : font.xl;
   const heroTitleLine = isTranslatedLayout ? Math.round(heroTitleSize * 1.52) : Math.round(heroTitleSize * 1.18);
   const bodyLine = isTranslatedLayout ? Math.round(font.sm * 1.65) : Math.round(font.md * 1.5);
@@ -724,13 +727,14 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
 
     // Hero (wide)
     heroCardWide: {
-      flexDirection: 'row',
+      // Stack (photo band on top, copy below) until there is room for two columns.
+      flexDirection: heroTwoCol ? 'row' : 'column-reverse',
       alignItems: 'stretch',
       borderRadius: radius.xl,
       padding: 0,
     },
     heroCopyWide: {
-      flex: 1.05,
+      flex: heroTwoCol ? 1.05 : undefined,
       padding: isTranslatedLayout ? space.lg : space.xl,
       gap: isTranslatedLayout ? space.sm : space.md,
     },
@@ -746,7 +750,9 @@ function makeStyles(colors: AppColors, isWide: boolean, isTranslatedLayout: bool
       maxWidth: 560,
     },
     heroActionItem: { flex: 1 },
-    heroMediaWide: { flex: isTranslatedLayout ? 0.92 : 1, minHeight: isTranslatedLayout ? 520 : 460 },
+    heroMediaWide: heroTwoCol
+      ? { flex: isTranslatedLayout ? 0.92 : 1, minHeight: isTranslatedLayout ? 520 : 460 }
+      : { width: '100%', height: 240 },
     heroPhotoWide: { width: '100%', height: '100%' },
     signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
     signalPill: {
