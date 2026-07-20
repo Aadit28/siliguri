@@ -3,11 +3,20 @@ import * as Linking from 'expo-linking';
 const INDIA_COUNTRY_CODE = '91';
 
 export function normalizeWhatsAppPhone(phone?: string | null) {
-  const digits = String(phone ?? '').replace(/\D/g, '');
+  const raw = String(phone ?? '').trim();
+  const explicitIntl = raw.startsWith('+');
+  let digits = raw.replace(/\D/g, '');
   if (!digits) return null;
 
-  const intl = digits.length === 10 ? `${INDIA_COUNTRY_CODE}${digits}` : digits;
-  return intl.length >= 10 && intl.length <= 15 ? intl : null;
+  if (explicitIntl) {
+    return digits.length >= 10 && digits.length <= 15 ? digits : null;
+  }
+
+  // Domestic Indian dialing: strip STD/mobile trunk "0" prefix before checks
+  // so landlines like 0353-2545555 become 91 + 10 digits, not a bogus intl number.
+  digits = digits.replace(/^0+/, '');
+  if (digits.length === 10) return `${INDIA_COUNTRY_CODE}${digits}`;
+  return digits.length >= 11 && digits.length <= 15 ? digits : null;
 }
 
 export function canUseWhatsApp(phone?: string | null) {
@@ -26,7 +35,7 @@ export function whatsappCallUrl(phone?: string | null) {
 
 export function whatsappCallWebUrl(phone?: string | null) {
   const intl = normalizeWhatsAppPhone(phone);
-  return intl ? `https://wa.me/call/${intl}` : null;
+  return intl ? `https://wa.me/${intl}` : null;
 }
 
 async function openExternalUrl(url: string) {
