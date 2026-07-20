@@ -19,7 +19,12 @@ module.exports = async function handler(req, res) {
       if (!id) return send(res, 400, { error: 'Announcement id is required.' });
 
       let query = auth.supabase.from('announcements').update({ active: false }).eq('id', id);
-      if (auth.user.role !== 'super_admin') query = query.eq('city_id', auth.user.city_id);
+      if (auth.user.role !== 'super_admin') {
+        query =
+          auth.user.city_id == null
+            ? query.is('city_id', null)
+            : query.eq('city_id', auth.user.city_id);
+      }
       const { error } = await query;
       if (error) throw error;
       return send(res, 200, { ok: true });
@@ -31,6 +36,9 @@ module.exports = async function handler(req, res) {
 
     const cityId =
       body.cityId && auth.user.role === 'super_admin' ? body.cityId : auth.user.city_id;
+    if (!cityId && auth.user.role !== 'super_admin') {
+      return send(res, 400, { error: 'Your admin account has no city assigned.' });
+    }
 
     const { data: announcement, error } = await auth.supabase
       .from('announcements')
