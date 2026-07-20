@@ -3,13 +3,20 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fro
 import { Stack, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
-import { Body, Button, Card, Dialog, H1, H2, Muted, Sheet } from '../src/components/ui';
+import { Body, Button, Card, Chip, Dialog, H1, H2, Muted, Sheet } from '../src/components/ui';
 import { AppColors, family, font, radius, space, TAP, tracking } from '../src/lib/theme';
 import { useTheme } from '../src/context/ThemeContext';
-import { addEvent, googleCalendarUrl, listEvents, removeEvent } from '../src/lib/calendar';
-import { CalendarEvent } from '../src/lib/types';
+import {
+  addEvent,
+  googleCalendarUrl,
+  isValidISODate,
+  listEvents,
+  normalizeTimeInput,
+  removeEvent,
+} from '../src/lib/calendar';
+import { CalendarEvent, ReminderRepeat } from '../src/lib/types';
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const REPEATS: ReminderRepeat[] = ['once', 'daily', 'weekly'];
 
 function toISO(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -54,9 +61,12 @@ export default function CalendarScreen() {
   const [dateISO, setDateISO] = useState(tomorrowISO());
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
+  const [repeat, setRepeat] = useState<ReminderRepeat>('once');
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
   const [dateError, setDateError] = useState(false);
+  const [timeError, setTimeError] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   const now = new Date();
   const todayISO = toISO(now.getFullYear(), now.getMonth(), now.getDate());
@@ -90,26 +100,41 @@ export default function CalendarScreen() {
   }
 
   async function handleSave() {
-    if (!title.trim() || !DATE_RE.test(dateISO)) {
-      setDateError(!DATE_RE.test(dateISO));
+    if (!title.trim() || !isValidISODate(dateISO)) {
+      setDateError(!isValidISODate(dateISO));
+      return;
+    }
+    const trimmedTime = time.trim();
+    const normalizedTime = trimmedTime ? normalizeTimeInput(trimmedTime) : null;
+    if (trimmedTime && !normalizedTime) {
+      setTimeError(true);
       return;
     }
     setDateError(false);
+    setTimeError(false);
+    setSaveError(false);
     setSaving(true);
-    await addEvent({
-      title: title.trim(),
-      dateISO,
-      time: time.trim() || null,
-      note: note.trim() || null,
-    });
-    setSaving(false);
-    setTitle('');
-    setDateISO(tomorrowISO());
-    setTime('');
-    setNote('');
-    setSavedMessage(true);
-    load();
-    setTimeout(() => setSavedMessage(false), 2500);
+    try {
+      await addEvent({
+        title: title.trim(),
+        dateISO,
+        time: normalizedTime,
+        note: note.trim() || null,
+        repeat,
+      });
+      setTitle('');
+      setDateISO(tomorrowISO());
+      setTime('');
+      setNote('');
+      setRepeat('once');
+      setSavedMessage(true);
+      load();
+      setTimeout(() => setSavedMessage(false), 2500);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setSaving(false);
+    }
   }
 
   const weeks = useMemo(() => monthMatrix(cursor.year, cursor.month), [cursor]);
@@ -121,7 +146,30 @@ export default function CalendarScreen() {
       ),
     [],
   );
-  const eventDates = useMemo(() => new Set(events.map((event) => event.dateISO)), [events]);
+  // Marks include computed occurrences of daily/weekly reminders across the
+  // visible month, not just each event's stored start date.
+  const eventDates = useMemo(() => {
+    const marks = new Set<string>();
+    const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
+    for (const event of events) {
+      const repeat = event.repeat ?? 'once';
+      if (repeat === 'once') {
+        marks.add(event.dateISO);
+        continue;
+      }
+      const [ey, em, ed] = event.dateISO.split('-').map(Number);
+      if (!ey || !em || !ed) continue;
+      const start = new Date(ey, em - 1, ed);
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = new Date(cursor.year, cursor.month, day);
+        if (cell.getTime() < start.getTime()) continue;
+        if (repeat === 'daily' || (repeat === 'weekly' && cell.getDay() === start.getDay())) {
+          marks.add(toISO(cursor.year, cursor.month, day));
+        }
+      }
+    }
+    return marks;
+  }, [events, cursor]);
 
   function goMonth(delta: number) {
     setCursor(({ year, month }) => {
@@ -290,6 +338,9 @@ export default function CalendarScreen() {
                   <Text style={[styles.eventMeta, { color: colors.textMuted }]} numberOfLines={1}>
                     {formatReadableDate(event.dateISO)}
                     {event.time ? ` · ${event.time}` : ''}
+                    {event.repeat && event.repeat !== 'once'
+                      ? ` · ${t(`reminders.repeat.${event.repeat}`)}`
+                      : ''}
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={22} color={colors.textSubtle} />
@@ -330,13 +381,26 @@ export default function CalendarScreen() {
           />
         </View>
         <View style={styles.field}>
-          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{t('calendar.time')}</Text>
+          <Text style={[styles.fieldLabel, { color: timeError ? colors.danger : colors.textMuted }]}>
+            {t('calendar.time')}
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              timeError ? { borderColor: colors.danger, borderWidth: 1.5 } : null,
+            ]}
             value={time}
-            onChangeText={setTime}
+            onChangeText={(value) => {
+              setTime(value);
+              setTimeError(false);
+            }}
             accessibilityLabel={t('calendar.time')}
           />
+          {timeError ? (
+            <Text style={[styles.savedText, { color: colors.danger }]}>
+              {t('reminders.badTime')}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.field}>
           <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{t('calendar.note')}</Text>
@@ -349,6 +413,22 @@ export default function CalendarScreen() {
           />
         </View>
 
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
+            {t('reminders.repeatLabel')}
+          </Text>
+          <View style={styles.repeatRow}>
+            {REPEATS.map((option) => (
+              <Chip
+                key={option}
+                label={t(`reminders.repeat.${option}`)}
+                active={repeat === option}
+                onPress={() => setRepeat(option)}
+              />
+            ))}
+          </View>
+        </View>
+
         <Button
           label={t('calendar.save')}
           onPress={handleSave}
@@ -359,6 +439,14 @@ export default function CalendarScreen() {
           <View style={styles.savedRow}>
             <Feather name="check-circle" size={16} color={colors.success} />
             <Text style={[styles.savedText, { color: colors.success }]}>{t('calendar.added')}</Text>
+          </View>
+        ) : null}
+        {saveError ? (
+          <View style={styles.savedRow}>
+            <Feather name="alert-circle" size={16} color={colors.danger} />
+            <Text style={[styles.savedText, { color: colors.danger }]}>
+              {t('reminders.saveFailed')}
+            </Text>
           </View>
         ) : null}
       </Card>
@@ -548,6 +636,7 @@ function makeStyles(colors: AppColors) {
       minHeight: TAP,
     },
     noteInput: { minHeight: 96, textAlignVertical: 'top' },
+    repeatRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.xs },
     savedRow: {
       flexDirection: 'row',
       alignItems: 'center',
