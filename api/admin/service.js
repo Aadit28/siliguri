@@ -1,6 +1,6 @@
 const { authenticate, readBody, requireCityStaff, send, withCors } = require('../_lib/auth');
 
-const CATEGORIES = new Set(['doctor', 'hospital', 'medical_shop', 'travel_agent', 'elder_home', 'daily_service']);
+const CATEGORIES = new Set(['doctor', 'hospital', 'medical_shop', 'travel_agent', 'elder_home', 'home_service', 'daily_service']);
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -63,12 +63,22 @@ module.exports = async function handler(req, res) {
       return send(res, 200, { service });
     }
 
+    let town = 'Siliguri';
+    if (auth.user.city_id) {
+      const { data: city } = await auth.supabase
+        .from('cities')
+        .select('name')
+        .eq('id', auth.user.city_id)
+        .maybeSingle();
+      if (city && city.name) town = city.name;
+    }
+
     const { data: service, error } = await auth.supabase
       .from('services')
       .insert({
         ...fields,
         city_id: auth.user.city_id,
-        town: 'Siliguri',
+        town,
       })
       .select()
       .single();
