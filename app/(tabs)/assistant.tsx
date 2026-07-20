@@ -12,18 +12,21 @@ import {
   View,
 } from 'react-native';
 import * as Linking from 'expo-linking';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Chip, Muted } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan } from '../../src/lib/assistant';
+import { addEvent, parseWhenToDate } from '../../src/lib/calendar';
 import { fetchServices } from '../../src/lib/api';
 import { categoryColor } from '../../src/lib/categories';
-import { family, font, radius, space, shadow, TAP } from '../../src/lib/theme';
+import { family, font, radius, space, shadow, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
 import { openWhatsAppCall } from '../../src/lib/whatsapp';
 
@@ -32,6 +35,15 @@ const MAX_IMAGE_ATTACHMENTS = 3;
 const MAX_CHAT_SESSIONS = 12;
 const CHAT_STORAGE_KEY = 'saathi-assistant-chats-v1';
 const MAX_STORED_MESSAGES_PER_CHAT = 40;
+
+// Targets for the planner's open_screen action payloads (see src/lib/assistant.ts).
+const SCREEN_ROUTES: Record<string, string> = {
+  calendar: '/calendar',
+  services: '/services',
+  community: '/community',
+  help: '/help',
+  connectors: '/connectors',
+};
 
 type ComposerKeyPressEvent = TextInputKeyPressEvent & {
   key?: string;
@@ -62,6 +74,7 @@ export default function AssistantScreen() {
   const { lang } = useLocale();
   const { session } = useAuth();
   const { colors } = useTheme();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const initialChatState = getInitialChatState(t);
   const [services, setServices] = useState<Service[]>([]);
@@ -77,6 +90,7 @@ export default function AssistantScreen() {
   const activeSession = sessions.find((sessionItem) => sessionItem.id === activeSessionId) ?? sessions[0];
   const messages = activeSession.messages;
   const showSideHistory = width >= 900;
+  const { isComputerMode } = useDisplayMode();
 
   useEffect(() => {
     let mounted = true;
@@ -188,6 +202,13 @@ export default function AssistantScreen() {
     updateMessagesForSession(activeSessionId, updater);
   }
 
+  function appendAssistantNote(text: string) {
+    updateActiveMessages((current) => [
+      ...current,
+      { id: `note-${Date.now()}`, role: 'assistant', text },
+    ]);
+  }
+
   function startNewChat() {
     if (loading) return;
     const nextSession = newChatSession(t);
@@ -245,6 +266,15 @@ export default function AssistantScreen() {
           plan,
         },
       ]);
+    } catch {
+      updateMessagesForSession(targetSessionId, (current) => [
+        ...current,
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: t('common.errorLoading'),
+        },
+      ]);
     } finally {
       submitInFlightRef.current = false;
       setLoading(false);
@@ -269,6 +299,57 @@ export default function AssistantScreen() {
       Linking.openURL(action.value);
       return;
     }
+    if (action.kind === 'add_calendar' && action.value) {
+      const payload = parseActionPayload(action.value);
+      const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+      if (title) {
+        const { dateISO, time } = parseWhenToDate(typeof payload?.when === 'string' ? payload.when : '');
+        const service = plan?.suggestedServices.find((item) => item.id === action.serviceId) ?? null;
+        addEvent({
+          title,
+          dateISO,
+          time,
+          serviceId: action.serviceId ?? null,
+          serviceName: service?.name ?? null,
+          servicePhone: service?.phone ?? null,
+        })
+          .then(() => appendAssistantNote(t('assistant.addedToCalendar')))
+          .catch(() => appendAssistantNote(t('common.errorLoading')));
+        return;
+      }
+    }
+    if (action.kind === 'pay' && action.value) {
+      const upiId = action.value;
+      const payee = plan?.suggestedServices.find((item) => item.id === action.serviceId)?.name;
+      const params = new URLSearchParams({ pa: upiId });
+      if (payee) params.set('pn', payee);
+      Linking.openURL(`upi://pay?${params.toString()}`).catch(() =>
+        appendAssistantNote(`${t('pay.payUpi')}: ${upiId}`),
+      );
+      return;
+    }
+    if (action.kind === 'book_ride') {
+      const payload = parseActionPayload(action.value);
+      const rideUrl =
+        typeof payload?.url === 'string' && /^https?:\/\//i.test(payload.url)
+          ? payload.url
+          : action.value && /^https?:\/\//i.test(action.value)
+            ? action.value
+            : null;
+      if (rideUrl) {
+        Linking.openURL(rideUrl);
+        return;
+      }
+      // No bookable link in the payload yet; fall through to the composer prompt.
+    }
+    if (action.kind === 'open_screen') {
+      const payload = parseActionPayload(action.value);
+      const target = SCREEN_ROUTES[String(payload?.screen ?? '')];
+      if (target) {
+        router.push(target);
+        return;
+      }
+    }
     if (action.kind === 'family_update' && plan) {
       setInput(`${t('assistant.familyMessagePrefix')}\n${plan.summary}`);
       return;
@@ -282,7 +363,13 @@ export default function AssistantScreen() {
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       <AppHeader title={t('assistant.title')} />
 
-      <View style={[styles.assistantLayout, !showSideHistory ? styles.assistantLayoutStacked : null]}>
+      <View
+        style={[
+          styles.assistantLayout,
+          !showSideHistory ? styles.assistantLayoutStacked : null,
+          !isComputerMode ? styles.assistantLayoutPhone : null,
+        ]}
+      >
         <View
           style={[
             styles.historyPanel,
@@ -651,8 +738,12 @@ function loadChatState(t: (key: string) => string): ChatState {
 }
 
 function saveChatState(state: ChatState) {
+  if (!state.sessions.length) return;
+  // Keep the module cache current so a remount re-initializes from the latest
+  // state instead of the snapshot taken on first mount.
+  cachedInitialChatState = state;
   const storage = getWebStorage();
-  if (!storage || !state.sessions.length) return;
+  if (!storage) return;
 
   const storedState = {
     activeSessionId: state.activeSessionId,
@@ -706,11 +797,30 @@ function sanitizeStoredMessages(value: unknown): AssistantMessage[] {
         role,
         text,
         attachments: sanitizeStoredAttachments(message?.attachments),
-        plan: message?.plan && typeof message.plan === 'object' ? message.plan : undefined,
+        plan: isRenderableStoredPlan(message?.plan) ? message.plan : undefined,
       } as AssistantMessage;
     })
     .filter(Boolean)
     .slice(-MAX_STORED_MESSAGES_PER_CHAT) as AssistantMessage[];
+}
+
+function isRenderableStoredPlan(plan: any): boolean {
+  // Old-schema plans without these arrays would crash the message renderer.
+  return Boolean(
+    plan &&
+      typeof plan === 'object' &&
+      Array.isArray(plan.suggestedServices) &&
+      Array.isArray(plan.actions),
+  );
+}
+
+function parseActionPayload(value?: string | null): any | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function sanitizeStoredAttachments(value: unknown): AssistantAttachment[] | undefined {
@@ -842,6 +952,10 @@ const styles = StyleSheet.create({
   },
   assistantLayoutStacked: {
     flexDirection: 'column',
+  },
+  // Floating glass tab bar covers the bottom edge; keep the composer above it.
+  assistantLayoutPhone: {
+    paddingBottom: TAB_BAR_CLEARANCE - space.lg,
   },
   historyPanel: {
     width: 286,
