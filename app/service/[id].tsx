@@ -16,9 +16,10 @@ import { Feather } from '@expo/vector-icons';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Body, Button, Card, H1, H2, Muted, Badge, Stars } from '../../src/components/ui';
 import { AppColors, family, font, radius, space } from '../../src/lib/theme';
-import { fetchService } from '../../src/lib/api';
+import { fetchService, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
+import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppCall, openWhatsAppChat } from '../../src/lib/whatsapp';
 
@@ -36,6 +37,7 @@ export default function ServiceDetail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { favoriteSet, toggleFavorite, recordViewed } = useServicePreferences();
+  const { user } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
@@ -44,6 +46,19 @@ export default function ServiceDetail() {
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const isFav = id ? favoriteSet.has(id) : false;
+
+  // localStorage is the offline source of truth; when signed in, mirror the
+  // toggle to Supabase so the Home "saved" stat matches, reverting on failure.
+  function handleToggleFavorite(serviceId: string) {
+    const wasFav = favoriteSet.has(serviceId);
+    toggleFavorite(serviceId);
+    if (user) {
+      toggleFavoriteRemote(serviceId, user.id, wasFav).catch((error) => {
+        console.warn('[Saathi] favorite sync failed:', (error as Error).message);
+        toggleFavorite(serviceId);
+      });
+    }
+  }
 
   function leaveDetail() {
     if (router.canGoBack()) {
@@ -252,7 +267,7 @@ export default function ServiceDetail() {
           <Button
             label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
             variant="secondary"
-            onPress={() => id && toggleFavorite(id)}
+            onPress={() => id && handleToggleFavorite(id)}
           />
           {service.source_url ? (
             <Button
