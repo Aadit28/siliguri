@@ -227,6 +227,12 @@ const COPY = {
     greeting: (name: string) => `नमस्ते ${name} जी।`,
     calendarReminder: (title: string, day: string, time: string | null) =>
       `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
+    routeSummary: (origin: string, destination: string, estimate: string) =>
+      `कार से ${origin} से ${destination} तक सामान्य सिलीगुड़ी ट्रैफिक में लगभग ${estimate} लगते हैं। ट्रैफिक बदल सकता है, इसलिए निकलने से पहले लाइव दिशा-निर्देश खोलें।`,
+    routeSafety: 'पीक आवर, सड़क के काम और बारिश से ट्रैफिक अनुमान बदल सकते हैं। निकलने से पहले लाइव दिशा-निर्देश देखें।',
+    routeChecklist: ['पिकअप स्थान', 'गंतव्य', 'यात्री का फोन नंबर', 'निकलने का पसंदीदा समय'],
+    routeNextSteps: ['मौजूदा समय के अनुमान के लिए लाइव दिशा-निर्देश खोलें।', 'पिकअप और पहुंचने का अनुमानित समय परिवार के साथ साझा करें।'],
+    liveDirections: 'लाइव दिशा-निर्देश खोलें',
     safety:
       'साथी समन्वय में मदद करता है; यह डॉक्टर या मेडिकल डिवाइस नहीं है। यह निदान, इलाज या दवा की सलाह नहीं देता। लक्षण या आपात चिंता हो तो डॉक्टर, अस्पताल या आपातकालीन सेवा को कॉल करें।',
   },
@@ -279,7 +285,7 @@ export function buildLocalAssistantPlan(
   const urgent = URGENT_WORDS.some((word) => normalized.includes(word));
   const route = urgent ? null : extractRouteTimeRequest(message, services);
   if (route) {
-    return buildRouteTimePlan(route);
+    return buildRouteTimePlan(route, lang);
   }
   const intent = detectIntent(normalized, urgent);
   const category = categoryForIntent(intent, urgent, normalized);
@@ -380,15 +386,16 @@ function categoryForIntent(intent: AssistantIntent, urgent: boolean, normalized 
 
 function rankServices(services: Service[], preferred: ServiceCategory | null, normalized: string): Service[] {
   return [...services]
-    .map((service) => ({
-      service,
-      score:
+    .map((service) => {
+      const relevance =
         (preferred && service.category === preferred ? 50 : 0) +
-        (service.verified ? 12 : 0) +
-        (service.phone ? 8 : 0) +
         (normalized.includes(service.name.toLowerCase().split(' ')[0] ?? '') ? 10 : 0) +
-        (service.description ? wordOverlap(normalized, service.description.toLowerCase()) : 0),
-    }))
+        (service.description ? wordOverlap(normalized, service.description.toLowerCase()) : 0);
+      // Verified/phone bonuses only apply to relevant services, so an unrelated
+      // message never surfaces a "ready to call" provider.
+      const score = relevance > 0 ? relevance + (service.verified ? 12 : 0) + (service.phone ? 8 : 0) : 0;
+      return { service, score };
+    })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
     .map((item) => item.service);
@@ -449,8 +456,8 @@ interface RouteRequest {
   directionsUrl: string;
 }
 
-function buildRouteTimePlan(route: RouteRequest): AssistantPlan {
-  const copy = COPY.en;
+function buildRouteTimePlan(route: RouteRequest, lang: AssistantLang): AssistantPlan {
+  const copy = COPY[lang] ?? COPY.en;
   return {
     source: 'local',
     intent: 'transport',
