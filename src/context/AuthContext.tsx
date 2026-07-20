@@ -26,6 +26,8 @@ interface AuthState {
   loading: boolean;
   displayName: string;
   isAdmin: boolean;
+  isCityHelper: boolean;
+  isCityStaff: boolean;
   role: string;
   signIn: (
     identifier: string,
@@ -109,6 +111,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     '';
   const role = (user?.user_metadata?.role as string) || 'user';
   const isAdmin = role === 'admin' || role === 'super_admin';
+  const isCityHelper = role === 'city_helper';
+  const isCityStaff = isAdmin || isCityHelper;
 
   async function signIn(identifier: string, password: string, method?: AuthMethod) {
     if (!identifier.trim()) return { error: 'Enter your username or phone number.' };
@@ -198,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, loading, displayName, isAdmin, role, signIn, signUp, signOut }}
+      value={{ session, user, loading, displayName, isAdmin, isCityHelper, isCityStaff, role, signIn, signUp, signOut }}
     >
       {children}
     </AuthContext.Provider>

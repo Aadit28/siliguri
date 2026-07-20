@@ -328,7 +328,20 @@
     "saved": "Service saved.",
     "notAdmin": "This area is for city admins only.",
     "signInFirst": "Sign in with an admin account to continue.",
-    "error": "Could not save. Try again."
+    "error": "Could not save. Try again.",
+    "helperTitle": "City Helper",
+    "helperSubtitle": "Add places and services, and send announcements for your city",
+    "helpers": "City helpers",
+    "addHelper": "Add a city helper",
+    "helperHint": "Helpers can add places, services and announcements for this city.",
+    "helperUsername": "Username",
+    "helperAdd": "Add helper",
+    "helperAdded": "City helper added.",
+    "helperRemove": "Remove",
+    "helpersEmpty": "No city helpers yet.",
+    "portalTitle": "City helper portal",
+    "portalBody": "You can add places, services and announcements for your city.",
+    "openPortal": "Open the portal"
   },
   "calendar": {
     "title": "My Calendar",

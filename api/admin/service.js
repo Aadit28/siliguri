@@ -1,4 +1,4 @@
-const { authenticate, readBody, requireAdmin, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireCityStaff, send, withCors } = require('../_lib/auth');
 
 const CATEGORIES = new Set(['doctor', 'hospital', 'medical_shop', 'travel_agent', 'elder_home', 'daily_service']);
 
@@ -10,8 +10,9 @@ module.exports = async function handler(req, res) {
   try {
     const auth = await authenticate(req);
     if (auth.error) return send(res, 401, { error: auth.error });
-    const adminError = requireAdmin(auth);
-    if (adminError) return send(res, 403, adminError);
+    const staffError = requireCityStaff(auth);
+    if (staffError) return send(res, 403, staffError);
+    const isHelper = auth.user.role === 'city_helper';
 
     const body = await readBody(req);
     const name = String(body.name || '').trim();
@@ -28,7 +29,7 @@ module.exports = async function handler(req, res) {
       map_url: body.map_url ? String(body.map_url).trim() : null,
       hours: body.hours ? String(body.hours).trim() : null,
       upi_id: body.upi_id ? String(body.upi_id).trim() : null,
-      verified: Boolean(body.verified),
+      verified: isHelper ? false : Boolean(body.verified),
     };
 
     const id = body.id ? String(body.id) : null;
@@ -42,8 +43,14 @@ module.exports = async function handler(req, res) {
       if (auth.user.role !== 'super_admin' && existing.city_id && existing.city_id !== auth.user.city_id) {
         return send(res, 403, { error: 'Admin access required.' });
       }
+      // Admins may claim legacy ownerless services; helpers may not.
+      if (isHelper && !existing.city_id) {
+        return send(res, 403, { error: 'Admin access required.' });
+      }
 
       const updateFields = { ...fields };
+      // Verification is an admin trust signal; helpers keep whatever it was.
+      if (isHelper) delete updateFields.verified;
       if (!existing.city_id) updateFields.city_id = auth.user.city_id;
 
       const { data: service, error } = await auth.supabase

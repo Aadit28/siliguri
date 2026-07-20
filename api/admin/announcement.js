@@ -1,4 +1,4 @@
-const { authenticate, readBody, requireAdmin, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireCityStaff, send, withCors } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -8,8 +8,8 @@ module.exports = async function handler(req, res) {
   try {
     const auth = await authenticate(req);
     if (auth.error) return send(res, 401, { error: auth.error });
-    const adminError = requireAdmin(auth);
-    if (adminError) return send(res, 403, adminError);
+    const staffError = requireCityStaff(auth);
+    if (staffError) return send(res, 403, staffError);
 
     const body = await readBody(req);
     const action = body.action === 'deactivate' ? 'deactivate' : 'create';

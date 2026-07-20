@@ -156,6 +156,15 @@ function requireAdmin(auth) {
   return undefined;
 }
 
+const CITY_STAFF_ROLES = new Set(['city_helper', 'admin', 'super_admin']);
+
+function requireCityStaff(auth) {
+  if (!auth.user || !CITY_STAFF_ROLES.has(auth.user.role)) {
+    return { error: 'City helper access required.' };
+  }
+  return undefined;
+}
+
 module.exports = {
   adminClient,
   authenticate,
@@ -167,6 +176,7 @@ module.exports = {
   publicUser,
   readBody,
   requireAdmin,
+  requireCityStaff,
   saveLocalPhoneAuth,
   send,
   tokenHash,
