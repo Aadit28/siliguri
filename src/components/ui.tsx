@@ -11,8 +11,30 @@ import {
   Pressable,
   useWindowDimensions,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  ReduceMotion,
+  SlideInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { family, font, radius, space, shadow, TAP, tracking } from '../lib/theme';
 import { useTheme } from '../context/ThemeContext';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// Shared entrance timings: ease-out, state-conveying, honors reduced motion.
+const scrimIn = FadeIn.duration(160).reduceMotion(ReduceMotion.System);
+const sheetIn = SlideInDown.duration(320)
+  .easing(Easing.out(Easing.exp))
+  .reduceMotion(ReduceMotion.System);
+const dialogIn = FadeInDown.duration(200)
+  .easing(Easing.out(Easing.cubic))
+  .reduceMotion(ReduceMotion.System);
 
 // Quiet surface tile (Uber pattern): gray fill, no border, no shadow.
 export function Card({ style, ...props }: ViewProps) {
@@ -116,22 +138,34 @@ export function Button({
 export function Chip({
   label,
   emoji,
+  count,
   active,
   onPress,
 }: {
   label: string;
   emoji?: string;
+  count?: number;
   active?: boolean;
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       accessibilityRole="button"
+      accessibilityState={{ selected: Boolean(active) }}
       onPress={onPress}
-      activeOpacity={0.8}
+      onPressIn={() => {
+        scale.value = withSpring(0.95, { damping: 20, stiffness: 300, reduceMotion: ReduceMotion.System });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 20, stiffness: 300, reduceMotion: ReduceMotion.System });
+      }}
       style={[
         styles.chip,
+        pressStyle,
         {
           backgroundColor: active ? colors.primary : colors.cardStrong,
           borderColor: active ? colors.primary : colors.border,
@@ -142,15 +176,36 @@ export function Chip({
         {emoji ? `${emoji} ` : ''}
         {label}
       </Text>
-    </TouchableOpacity>
+      {typeof count === 'number' ? (
+        <Text
+          style={[
+            styles.chipCount,
+            { color: active ? colors.primaryFg : colors.textMuted, opacity: active ? 0.75 : 1 },
+          ]}
+        >
+          {count}
+        </Text>
+      ) : null}
+    </AnimatedPressable>
   );
+}
+
+function contrastText(background: string) {
+  const hex = background.startsWith('#') ? background.slice(1) : null;
+  if (!hex || (hex.length !== 3 && hex.length !== 6)) return '#fff';
+  const full = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luminance > 150 ? '#111' : '#fff';
 }
 
 export function Badge({ label, color }: { label: string; color?: string }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.badge, { backgroundColor: color ?? colors.successSoft, borderColor: colors.border }]}>
-      <Text style={[styles.badgeText, { color: color ? '#fff' : colors.success }]}>{label}</Text>
+      <Text style={[styles.badgeText, { color: color ? contrastText(color) : colors.success }]}>{label}</Text>
     </View>
   );
 }
@@ -186,17 +241,26 @@ export function Sheet({
   title?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const { height } = useWindowDimensions();
   return (
-    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.sheetRoot}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalScrim} />
-        <View style={[styles.sheetPanel, { backgroundColor: colors.cardSolid, borderColor: colors.border, maxHeight: height * 0.88 }]}>
-          <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
-          <ModalHeading title={title} />
-          {children}
-        </View>
+        <Animated.View entering={scrimIn} style={styles.modalScrim}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
+        </Animated.View>
+        <Animated.View entering={sheetIn} style={[styles.sheetShell, { borderColor: colors.glassBorder, maxHeight: height * 0.88 }]}>
+          <BlurView
+            intensity={44}
+            tint={mode}
+            experimentalBlurMethod="dimezisBlurView"
+            style={[styles.sheetPanel, { backgroundColor: colors.panelGlass }]}
+          >
+            <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
+            <ModalHeading title={title} />
+            {children}
+          </BlurView>
+        </Animated.View>
       </View>
     </RNModal>
   );
@@ -213,16 +277,28 @@ export function Dialog({
   title?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const { width } = useWindowDimensions();
   return (
-    <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.dialogRoot}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalScrim} />
-        <View style={[styles.dialogPanel, { backgroundColor: colors.cardSolid, borderColor: colors.border, width: Math.min(width - 32, 440) }]}>
-          <ModalHeading title={title} />
-          {children}
-        </View>
+        <Animated.View entering={scrimIn} style={styles.modalScrim}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
+        </Animated.View>
+        <Animated.View
+          entering={dialogIn}
+          style={[styles.dialogShell, { borderColor: colors.glassBorder, width: Math.min(width - 32, 440) }]}
+        >
+          <BlurView
+            intensity={44}
+            tint={mode}
+            experimentalBlurMethod="dimezisBlurView"
+            style={[styles.dialogPanel, { backgroundColor: colors.panelGlass }]}
+          >
+            <ModalHeading title={title} />
+            {children}
+          </BlurView>
+        </Animated.View>
       </View>
     </RNModal>
   );
@@ -256,14 +332,17 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 48,
     paddingHorizontal: space.md,
-    borderRadius: radius.lg,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: space.xs,
     marginRight: space.sm,
     flexShrink: 0,
     borderWidth: 1,
   },
   chipText: { fontFamily: family.medium, fontSize: font.sm },
+  chipCount: { fontFamily: family.regular, fontSize: font.xs },
   badge: {
     paddingHorizontal: space.sm,
     paddingVertical: 5,
@@ -274,16 +353,28 @@ const styles = StyleSheet.create({
   badgeText: { fontFamily: family.medium, fontSize: font.xs },
   modalScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.52)' },
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
-  sheetPanel: {
+  // Shell clips the blur to the radius; panel carries the translucent fill.
+  sheetShell: {
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderWidth: 1,
+    overflow: 'hidden',
+    ...shadow.md,
+  },
+  sheetPanel: {
+    flexShrink: 1,
     paddingHorizontal: space.lg,
     paddingBottom: space.xl,
   },
   sheetHandle: { width: 42, height: 5, borderRadius: 999, alignSelf: 'center', marginTop: space.sm, marginBottom: space.md },
   dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
-  dialogPanel: { borderRadius: radius.xl, borderWidth: 1, padding: space.lg, ...shadow.md },
+  dialogShell: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...shadow.md,
+  },
+  dialogPanel: { padding: space.lg },
   modalTitle: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: 28, marginBottom: space.md },
   modalTitleNode: { marginBottom: space.md },
 });
