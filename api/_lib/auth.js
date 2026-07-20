@@ -97,12 +97,19 @@ function localPhoneUserId(phone) {
 }
 
 function saveLocalPhoneAuth(phone, userId) {
-  const map = readLocalPhoneAuth();
-  fs.mkdirSync(path.dirname(LOCAL_PHONE_AUTH_PATH), { recursive: true });
-  fs.writeFileSync(
-    LOCAL_PHONE_AUTH_PATH,
-    `${JSON.stringify({ ...map, [phone]: userId }, null, 2)}\n`,
-  );
+  // Dev-only fallback map. Vercel's filesystem is read-only, and this must
+  // never fail a request after the account has been created.
+  if (process.env.VERCEL) return;
+  try {
+    const map = readLocalPhoneAuth();
+    fs.mkdirSync(path.dirname(LOCAL_PHONE_AUTH_PATH), { recursive: true });
+    fs.writeFileSync(
+      LOCAL_PHONE_AUTH_PATH,
+      `${JSON.stringify({ ...map, [phone]: userId }, null, 2)}\n`,
+    );
+  } catch {
+    // Best effort only.
+  }
 }
 
 function publicUser(row) {
@@ -165,6 +172,24 @@ function requireCityStaff(auth) {
   return undefined;
 }
 
+// The parent themselves, or a guardian with an active link to that parent, may
+// touch the parent's reminders / care team / favorites. Returns undefined when
+// allowed, an { error } object otherwise (throws only on a DB failure).
+async function requireFamilyLink(auth, parentId) {
+  if (!auth.user || !parentId) return { error: 'Not allowed.' };
+  if (auth.user.id === parentId) return undefined;
+  const { data, error } = await auth.supabase
+    .from('family_links')
+    .select('id')
+    .eq('guardian_id', auth.user.id)
+    .eq('parent_id', parentId)
+    .eq('status', 'active')
+    .limit(1);
+  if (error) throw error;
+  if (!data || data.length === 0) return { error: 'Not allowed.' };
+  return undefined;
+}
+
 module.exports = {
   adminClient,
   authenticate,
@@ -177,6 +202,7 @@ module.exports = {
   readBody,
   requireAdmin,
   requireCityStaff,
+  requireFamilyLink,
   saveLocalPhoneAuth,
   send,
   tokenHash,
