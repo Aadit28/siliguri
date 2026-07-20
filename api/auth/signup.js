@@ -69,9 +69,14 @@ module.exports = async function handler(req, res) {
           return send(res, 200, { session: { ...session, user: publicUser({ ...user, phone_number: phone }) } });
         }
       }
-      if (String(error.message || '').toLowerCase().includes('duplicate')) {
+      const message = String(error.message || '').toLowerCase();
+      if (message.includes('duplicate')) {
+        // Postgres names the violated constraint (user_accounts_username_key /
+        // user_accounts_phone_number_key) — blame the right field.
         return send(res, 409, {
-          error: phone ? 'That phone number is already registered.' : 'That username is already taken.',
+          error: message.includes('phone')
+            ? 'That phone number is already registered.'
+            : 'That username is already taken.',
         });
       }
       throw error;
