@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
-import { Body, Button, Card, H1, H2, Muted } from '../../src/components/ui';
-import { AppColors, family, font, radius, space, TAP, tracking, ROW_MIN_HEIGHT } from '../../src/lib/theme';
+import { Body, Button, Card, Dialog, H1, H2, Muted } from '../../src/components/ui';
+import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP, tracking, ROW_MIN_HEIGHT } from '../../src/lib/theme';
 import {
   EMERGENCY_LINES,
   EMERGENCY_PRIMARY_DISPLAY,
@@ -14,6 +14,8 @@ import {
   HELPLINE_NUMBER,
 } from '../../src/lib/config';
 import { createCallbackRequest } from '../../src/lib/api';
+import { listFamilyLinks, revokeFamilyLink } from '../../src/lib/family';
+import { FamilyLink } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/context/ThemeContext';
 
@@ -29,7 +31,43 @@ export default function Help() {
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [guardians, setGuardians] = useState<FamilyLink[]>([]);
+  const [revokeTarget, setRevokeTarget] = useState<FamilyLink | null>(null);
+  const [revoking, setRevoking] = useState(false);
   const callNumber = (number: string) => Linking.openURL(`tel:${number}`);
+
+  // Trust surface: the parent must always be able to see, and remove, every
+  // family member who can manage their account.
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) {
+      setGuardians([]);
+      return;
+    }
+    let active = true;
+    listFamilyLinks(token)
+      .then((r) => {
+        if (active) setGuardians(r.asParent.filter((link) => link.status !== 'revoked'));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [session?.access_token]);
+
+  async function confirmRevoke() {
+    const token = session?.access_token;
+    if (!revokeTarget || !token || revoking) return;
+    setRevoking(true);
+    try {
+      await revokeFamilyLink(token, revokeTarget.id);
+      setGuardians((prev) => prev.filter((link) => link.id !== revokeTarget.id));
+    } catch {
+      // Leave the row in place so the user can retry.
+    }
+    setRevoking(false);
+    setRevokeTarget(null);
+  }
 
   // Guard against a malformed/empty config so the list still renders instead
   // of throwing during the map below.
@@ -155,6 +193,46 @@ export default function Help() {
           )}
         </Card>
 
+        {session ? (
+          <>
+            <H2 style={styles.sectionHeader}>{t('family.accessTitle')}</H2>
+            <Card style={styles.card}>
+              <Body>{t('family.accessIntro')}</Body>
+              {guardians.length ? (
+                <View style={styles.accessList}>
+                  {guardians.map((link, index) => (
+                    <View key={link.id}>
+                      {index > 0 ? <View style={styles.divider} /> : null}
+                      <View style={styles.accessRow}>
+                        <View style={styles.rowLead}>
+                          <Feather name="user" size={20} color={colors.text} />
+                        </View>
+                        <View style={styles.rowBody}>
+                          <Text style={styles.rowTitle}>{link.guardianName || t('family.guardianLabel')}</Text>
+                          <Text style={styles.rowMeta}>
+                            {link.status === 'active' ? t('family.statusActive') : t('family.statusPending')}
+                          </Text>
+                        </View>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t('family.revoke')}
+                          onPress={() => setRevokeTarget(link)}
+                          style={({ pressed }) => [styles.revokeBtn, pressed ? { opacity: 0.7 } : null]}
+                        >
+                          <Text style={styles.revokeLabel}>{t('family.revoke')}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Muted>{t('family.noAccess')}</Muted>
+              )}
+              <Muted style={styles.accessHint}>{t('family.accessHint')}</Muted>
+            </Card>
+          </>
+        ) : null}
+
         <H2 style={styles.sectionHeader}>{t('help.privacyTitle')}</H2>
         <Card style={styles.card}>
           <Body>{t('help.privacyBody')}</Body>
@@ -175,6 +253,16 @@ export default function Help() {
           </>
         ) : null}
       </ScrollView>
+
+      <Dialog visible={!!revokeTarget} onClose={() => setRevokeTarget(null)} title={t('family.accessTitle')}>
+        <Body style={styles.dialogBody}>
+          {t('family.confirmRevoke', { name: revokeTarget?.guardianName || t('family.guardianLabel') })}
+        </Body>
+        <View style={styles.dialogActions}>
+          <Button label={t('family.cancel')} variant="secondary" onPress={() => setRevokeTarget(null)} />
+          <Button label={t('family.revoke')} variant="danger" onPress={confirmRevoke} loading={revoking} />
+        </View>
+      </Dialog>
     </View>
   );
 }
@@ -187,7 +275,7 @@ function makeStyles(colors: AppColors) {
       alignSelf: 'center',
       padding: space.md,
       paddingTop: space.sm,
-      paddingBottom: space.xxl,
+      paddingBottom: TAB_BAR_CLEARANCE,
       gap: 0,
     },
     subtitle: { marginTop: space.xs, marginBottom: space.lg },
@@ -245,5 +333,12 @@ function makeStyles(colors: AppColors) {
     doneRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
     doneText: { color: colors.success },
     errorText: { color: colors.danger },
+    accessList: { marginTop: space.xs },
+    accessRow: { minHeight: ROW_MIN_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+    revokeBtn: { minHeight: TAP, justifyContent: 'center', paddingHorizontal: space.sm },
+    revokeLabel: { fontSize: font.sm, fontFamily: family.semibold, color: colors.danger },
+    accessHint: { marginTop: space.sm },
+    dialogBody: { marginBottom: space.md },
+    dialogActions: { flexDirection: 'row', gap: space.sm, justifyContent: 'flex-end' },
   });
 }
