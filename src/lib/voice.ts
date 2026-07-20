@@ -10,6 +10,8 @@ export function speechRecognitionSupported(): boolean {
   return Boolean((globalThis as any).webkitSpeechRecognition || (globalThis as any).SpeechRecognition);
 }
 
+let currentRecognition: any = null;
+
 export function startListening(opts: {
   lang: VoiceLang;
   onResult: (text: string) => void;
@@ -17,6 +19,15 @@ export function startListening(opts: {
   onError?: (message: string) => void;
 }): { stop: () => void } | null {
   if (!speechRecognitionSupported()) return null;
+
+  if (currentRecognition) {
+    try {
+      currentRecognition.stop();
+    } catch {
+      // already stopped
+    }
+    currentRecognition = null;
+  }
 
   const RecognitionCtor = (globalThis as any).webkitSpeechRecognition || (globalThis as any).SpeechRecognition;
   const recognition: any = new RecognitionCtor();
@@ -35,22 +46,33 @@ export function startListening(opts: {
     opts.onResult(text.trim());
   };
   recognition.onend = () => {
+    if (currentRecognition === recognition) currentRecognition = null;
     opts.onEnd?.();
   };
   recognition.onerror = (event: any) => {
     opts.onError?.(event?.error ?? 'Speech recognition error');
   };
 
-  recognition.start();
+  try {
+    recognition.start();
+  } catch (error: any) {
+    opts.onError?.(error?.message ?? 'Speech recognition error');
+    return null;
+  }
+  currentRecognition = recognition;
 
   return {
-    stop: () => recognition.stop(),
+    stop: () => {
+      if (currentRecognition === recognition) currentRecognition = null;
+      recognition.stop();
+    },
   };
 }
 
-export function speak(text: string, lang: VoiceLang): void {
+export async function speak(text: string, lang: VoiceLang): Promise<void> {
   if (!text.trim()) return;
-  Speech.stop();
+  // Speech.stop() is async — a pending stop can cancel the new utterance on iOS/Android.
+  await Speech.stop();
   Speech.speak(text, { language: localeFor(lang) });
 }
 
