@@ -19,6 +19,8 @@ const routes = {
   '/api/auth/signin': '../api/auth/signin.js',
   '/api/auth/me': '../api/auth/me.js',
   '/api/auth/signout': '../api/auth/signout.js',
+  '/api/auth/otp-request': '../api/auth/otp-request.js',
+  '/api/auth/otp-verify': '../api/auth/otp-verify.js',
   '/api/assistant/plan': '../api/assistant/plan.js',
   '/api/callback/request': '../api/callback/request.js',
   '/api/community/post': '../api/community/post.js',
@@ -26,6 +28,13 @@ const routes = {
   '/api/community/like': '../api/community/like.js',
   '/api/admin/announcement': '../api/admin/announcement.js',
   '/api/admin/service': '../api/admin/service.js',
+  '/api/admin/helper': '../api/admin/helper.js',
+  '/api/notify/whatsapp': '../api/notify/whatsapp.js',
+  '/api/family/link': '../api/family/link.js',
+  '/api/family/reminders': '../api/family/reminders.js',
+  '/api/family/care-team': '../api/family/care-team.js',
+  '/api/family/favorites': '../api/family/favorites.js',
+  '/api/family/analytics': '../api/family/analytics.js',
 };
 
 function createResponse(res) {
