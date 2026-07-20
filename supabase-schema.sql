@@ -17,6 +17,11 @@ create unique index if not exists user_accounts_phone_number_key
   on public.user_accounts(phone_number)
   where phone_number is not null;
 
+-- Role + city (always selected by api/_lib/auth.js; matches supabase-migration-3.sql,
+-- which additionally adds the cities FK + role check once public.cities exists)
+alter table public.user_accounts add column if not exists role text not null default 'user';
+alter table public.user_accounts add column if not exists city_id uuid;
+
 create table if not exists public.auth_tokens (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.user_accounts(id) on delete cascade,
@@ -287,9 +292,14 @@ create policy "posts_update" on public.community_posts for update using (auth.ui
 drop policy if exists "posts_delete" on public.community_posts;
 create policy "posts_delete" on public.community_posts for delete using (auth.uid() = author_id);
 
--- Replies: anyone reads; authenticated creates; author deletes
+-- Replies: readable only when parent post is approved; authenticated creates; author deletes
 drop policy if exists "replies_read" on public.community_replies;
-create policy "replies_read" on public.community_replies for select using (true);
+create policy "replies_read" on public.community_replies for select using (
+  exists (
+    select 1 from public.community_posts p
+    where p.id = community_replies.post_id and p.status = 'approved'
+  )
+);
 drop policy if exists "replies_insert" on public.community_replies;
 create policy "replies_insert" on public.community_replies for insert with check (auth.uid() = author_id);
 drop policy if exists "replies_delete" on public.community_replies;
