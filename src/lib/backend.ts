@@ -6,6 +6,8 @@ type RequestOptions = {
   body?: Record<string, unknown>;
 };
 
+const REQUEST_TIMEOUT_MS = 10000;
+
 const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined;
 const configuredBase = process.env.EXPO_PUBLIC_API_BASE_URL || extra?.apiBaseUrl || '';
 
@@ -25,7 +27,7 @@ export function apiBaseUrl() {
     if (isIpv6Loopback && (!configuredBase || configuredIsLocal)) {
       return 'http://[::1]:8788';
     }
-    if (isLocalHost || port === '8084') {
+    if ((isLocalHost || port === '8084') && !configuredBase) {
       return 'http://127.0.0.1:8788';
     }
   }
@@ -37,21 +39,30 @@ export async function backendRequest<T>(path: string, options: RequestOptions = 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${apiBaseUrl()}${path}`, {
       method: options.method ?? 'GET',
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
     });
   } catch {
     throw new Error('Could not reach the local auth server. Refresh and try again.');
+  } finally {
+    clearTimeout(timeout);
   }
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     throw new Error('The auth server is not running. Check the API URL and deployment.');
   }
   const data = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(data.error || 'Request failed.');
+  if (!res.ok) {
+    const error = new Error(data.error || 'Request failed.') as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
   return data as T;
 }
