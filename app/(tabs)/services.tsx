@@ -17,11 +17,12 @@ import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Badge, Card, Chip, H1, Muted, Stars } from '../../src/components/ui';
-import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
+import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
 import { SERVICE_CATEGORIES, serviceSearchAliases } from '../../src/lib/categories';
-import { fetchServices } from '../../src/lib/api';
+import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service, ServiceCategory } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
+import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppCall, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
 
@@ -49,6 +50,7 @@ export default function Services() {
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; view?: string }>();
   const { favoriteSet, recentIds, toggleFavorite } = useServicePreferences();
+  const { user } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
@@ -122,6 +124,22 @@ export default function Services() {
       : matching;
   }, [all, query, cat, favoriteSet, recentIds, t]);
 
+  // localStorage is the offline source of truth; when signed in, mirror the
+  // toggle to Supabase so the Home "saved" stat matches, reverting on failure.
+  const handleToggleFavorite = useCallback(
+    (serviceId: string) => {
+      const wasFav = favoriteSet.has(serviceId);
+      toggleFavorite(serviceId);
+      if (user) {
+        toggleFavoriteRemote(serviceId, user.id, wasFav).catch((error) => {
+          console.warn('[Saathi] favorite sync failed:', (error as Error).message);
+          toggleFavorite(serviceId);
+        });
+      }
+    },
+    [favoriteSet, toggleFavorite, user],
+  );
+
   const trustedCount = useMemo(() => filtered.filter((service) => service.verified).length, [filtered]);
   const phoneCount = useMemo(() => filtered.filter((service) => service.phone_confirmed).length, [filtered]);
 
@@ -136,7 +154,11 @@ export default function Services() {
 
   const directoryViews: Array<{ key: DirectoryView; label: string; count?: number }> = [
     { key: 'all', label: t('common.all'), count: all.length },
-    { key: 'favorites', label: t('services.favorites'), count: favoriteSet.size },
+    {
+      key: 'favorites',
+      label: t('services.favorites'),
+      count: all.filter((service) => favoriteSet.has(service.id)).length,
+    },
     { key: 'recent', label: t('services.recentlyViewed'), count: recentIds.length },
     ...SERVICE_CATEGORIES.map((item) => ({
       key: item.key as DirectoryView,
@@ -185,19 +207,22 @@ export default function Services() {
           />
         </View>
 
-        <View style={styles.filterRow}>
-          {directoryViews.map((item) => {
-            const active = cat === item.key;
-            return (
-              <View key={item.key} style={styles.filterChipWrap}>
-                <Chip label={item.label} active={active} onPress={() => chooseView(item.key)} />
-                {typeof item.count === 'number' ? (
-                  <Muted style={styles.filterChipCount}>{item.count}</Muted>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterRail}
+          contentContainerStyle={styles.filterRailContent}
+        >
+          {directoryViews.map((item) => (
+            <Chip
+              key={item.key}
+              label={item.label}
+              count={item.count}
+              active={cat === item.key}
+              onPress={() => chooseView(item.key)}
+            />
+          ))}
+        </ScrollView>
 
         <View style={styles.resultBar}>
           <Text style={styles.resultCount}>
@@ -223,7 +248,7 @@ export default function Services() {
                 key={item.id}
                 item={item}
                 isSaved={favoriteSet.has(item.id)}
-                onToggleSaved={() => toggleFavorite(item.id)}
+                onToggleSaved={() => handleToggleFavorite(item.id)}
                 onOpen={() => router.push({ pathname: '/service/[id]', params: { id: item.id } })}
                 colors={colors}
                 styles={styles}
@@ -379,7 +404,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       alignSelf: 'center',
       paddingHorizontal: isWide ? space.xl : space.md,
       paddingTop: isWide ? space.xl : space.md,
-      paddingBottom: isWide ? space.xl * 2 : 118,
+      paddingBottom: isWide ? space.xl * 2 : TAB_BAR_CLEARANCE,
       gap: space.lg,
     },
     hero: { gap: space.xs },
@@ -400,17 +425,13 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       fontFamily: family.medium,
       fontSize: font.md,
     },
-    filterRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    // Single-line rail bleeding to the screen edge; counts live inside the chips.
+    filterRail: {
+      marginHorizontal: isWide ? -space.xl : -space.md,
     },
-    filterChipWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginRight: space.sm,
-      marginBottom: space.sm,
+    filterRailContent: {
+      paddingHorizontal: isWide ? space.xl : space.md,
     },
-    filterChipCount: { fontFamily: family.regular, fontSize: font.xs },
     resultBar: { gap: 2 },
     resultCount: { color: colors.text, fontFamily: family.semibold, fontSize: font.md },
     resultMeta: { fontFamily: family.regular, fontSize: font.xs },
