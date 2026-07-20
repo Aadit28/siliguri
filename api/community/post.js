@@ -33,6 +33,7 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { ok: true, status: 'pending' });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not post.' });
+    console.error('community/post error:', error);
+    return send(res, 500, { error: 'Could not post. Please try again.' });
   }
 };
