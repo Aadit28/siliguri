@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDisplayMode } from '../context/DisplayModeContext';
 import { useLocale } from '../context/LocaleContext';
 import { useTheme } from '../context/ThemeContext';
-import { EMERGENCY_PRIMARY_NUMBER } from '../lib/config';
+import NotificationBell from './NotificationBell';
 import { family, font, radius, space } from '../lib/theme';
 
 export default function AppHeader({ title }: { title?: string }) {
@@ -31,22 +31,22 @@ export default function AppHeader({ title }: { title?: string }) {
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
 
-  const SosButton = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t('help.callEmergency112')}
-      onPress={() => Linking.openURL(`tel:${EMERGENCY_PRIMARY_NUMBER}`)}
-      style={({ pressed }) => [styles.sosButton, { backgroundColor: colors.emergency }, pressed && styles.pressed]}
-    >
-      {/* White on emergency red is theme-invariant; ui.tsx danger buttons use the same literal. */}
-      <Text style={styles.sosText}>SOS 112</Text>
-    </Pressable>
-  );
+  const confirmSignOut = () => {
+    const question = `${t('common.signOut')}?`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(question)) signOut();
+    } else {
+      Alert.alert(question, undefined, [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.signOut'), style: 'destructive', onPress: () => signOut() },
+      ]);
+    }
+  };
 
   const AccountButton = (
     <Pressable
       accessibilityRole="button"
-      onPress={() => (user ? signOut() : router.push('/login'))}
+      onPress={() => (user ? confirmSignOut() : router.push('/login'))}
       style={({ pressed }) => [styles.accountButton, { borderColor: colors.border }, pressed && styles.pressed]}
     >
       <Text style={[styles.accountText, { color: colors.text }]} numberOfLines={1}>
@@ -73,9 +73,6 @@ export default function AppHeader({ title }: { title?: string }) {
           onPress={() => router.push('/')}
           style={({ pressed }) => [styles.brandButton, pressed && styles.pressed]}
         >
-          <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
-            <Text style={[styles.brandLetter, { color: colors.primaryFg }]}>S</Text>
-          </View>
           <View style={styles.brandCopy}>
             <Text style={[styles.brandName, { color: colors.text }]} numberOfLines={1}>
               {t('appName')}
@@ -138,12 +135,12 @@ export default function AppHeader({ title }: { title?: string }) {
               <Text style={[styles.utilityText, { color: colors.text }]}>{isDark ? 'Light' : 'Dark'}</Text>
             </Pressable>
 
-            {SosButton}
+            <NotificationBell />
             {AccountButton}
           </View>
         ) : (
           <View style={styles.mobileActions}>
-            {SosButton}
+            <NotificationBell />
             {AccountButton}
           </View>
         )}
@@ -183,14 +180,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.sm,
   },
-  brandMark: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandLetter: { fontFamily: family.heavy, fontSize: 23, lineHeight: 27 },
   brandCopy: { minWidth: 0, flexShrink: 1 },
   brandName: { fontFamily: family.bold, fontSize: 20, lineHeight: 24, letterSpacing: -0.3 },
   brandSubtitle: { maxWidth: 210, marginTop: 1, fontFamily: family.medium, fontSize: font.xs, lineHeight: 18 },
@@ -214,18 +203,9 @@ const styles = StyleSheet.create({
   },
   utilityText: { fontFamily: family.semibold, fontSize: font.xs },
   mobileActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0 },
-  sosButton: {
-    minHeight: 48,
-    minWidth: 88,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sosText: { color: '#FFFFFF', fontFamily: family.heavy, fontSize: font.sm },
   accountButton: {
     minHeight: 44,
-    maxWidth: 120,
+    maxWidth: 96,
     borderRadius: radius.pill,
     borderWidth: 1,
     paddingHorizontal: space.md,
