@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, View, TextInput, StyleSheet, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, StyleSheet, Alert, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Chip, H2, Muted, Button } from '../src/components/ui';
@@ -9,6 +9,7 @@ import { createPost } from '../src/lib/api';
 import { PostCategory } from '../src/lib/types';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
+import { markLoginIntent } from '../src/lib/authNavigation';
 
 export default function NewPost() {
   const { t } = useTranslation();
@@ -20,14 +21,17 @@ export default function NewPost() {
   const [body, setBody] = useState('');
   const [category, setCategory] = useState<PostCategory>('general');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit() {
     if (!user) {
-      router.replace('/login');
+      markLoginIntent();
+      router.push('/login');
       return;
     }
     if (!title.trim() || !body.trim()) return;
     setSaving(true);
+    setError(null);
     const res = await createPost({
       title: title.trim(),
       body: body.trim(),
@@ -36,9 +40,18 @@ export default function NewPost() {
     });
     setSaving(false);
     if (res.ok) {
-      Alert.alert(t('community.submittedForReview'), '', [{ text: 'OK', onPress: () => router.back() }]);
+      if (Platform.OS === 'web') {
+        router.back();
+      } else {
+        Alert.alert(t('community.submittedForReview'), '', [{ text: 'OK', onPress: () => router.back() }]);
+      }
     } else {
-      Alert.alert('Error', res.error ?? 'Could not post');
+      const message = res.error ?? 'Could not post';
+      if (Platform.OS === 'web') {
+        setError(message);
+      } else {
+        Alert.alert('Error', message);
+      }
     }
   }
 
@@ -79,6 +92,12 @@ export default function NewPost() {
         multiline
       />
 
+      {error ? (
+        <View style={[styles.errorBanner, { backgroundColor: colors.dangerSoft }]}>
+          <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+        </View>
+      ) : null}
+
       <View style={{ marginTop: space.lg, gap: space.sm }}>
         <Button
           label={t('common.post')}
@@ -95,6 +114,13 @@ export default function NewPost() {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    errorBanner: {
+      marginTop: space.md,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+    },
+    errorText: { fontSize: font.sm, fontFamily: family.medium },
     input: {
       backgroundColor: colors.surfaceTint,
       borderWidth: 1,
