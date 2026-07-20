@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -53,18 +53,24 @@ export default function PostDetail() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
-
-  async function load() {
-    const [p, r] = await Promise.all([fetchPost(id!), fetchReplies(id!)]);
-    setPost(p);
-    setReplies(r);
-    setLiked(Boolean(p?.liked_by_me));
-    setLoading(false);
-  }
+  const likeInFlight = useRef(false);
 
   useEffect(() => {
-    load();
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const [p, r] = await Promise.all([fetchPost(id!), fetchReplies(id!)]);
+      if (cancelled) return;
+      setPost(p);
+      setReplies(r);
+      setLiked(Boolean(p?.liked_by_me));
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   async function onSend() {
@@ -75,22 +81,25 @@ export default function PostDetail() {
     }
     if (!text.trim()) return;
     setSending(true);
+    setSendError(null);
     const res = await createReply({ postId: id!, body: text.trim(), token: session!.access_token });
     setSending(false);
-    if (res.ok) {
-      setText('');
-      setReplies((prev) => [
-        ...prev,
-        {
-          id: `local-${prev.length}`,
-          post_id: id!,
-          author_id: user.id,
-          author_name: displayName || t('common.you'),
-          body: text.trim(),
-          created_at: new Date().toISOString(),
-        },
-      ]);
+    if (!res.ok) {
+      setSendError(res.error ?? t('common.errorLoading'));
+      return;
     }
+    setText('');
+    setReplies((prev) => [
+      ...prev,
+      {
+        id: `local-${prev.length}`,
+        post_id: id!,
+        author_id: user.id,
+        author_name: displayName || t('common.you'),
+        body: text.trim(),
+        created_at: new Date().toISOString(),
+      },
+    ]);
   }
 
   async function onLike() {
@@ -99,9 +108,16 @@ export default function PostDetail() {
       router.push('/login');
       return;
     }
-    setLiked((v) => !v);
-    setPost((p) => (p ? { ...p, like_count: (p.like_count ?? 0) + (liked ? -1 : 1) } : p));
-    await toggleLike(id!, session!.access_token, liked);
+    if (likeInFlight.current) return;
+    likeInFlight.current = true;
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setPost((p) => (p ? { ...p, like_count: (p.like_count ?? 0) + (wasLiked ? -1 : 1) } : p));
+    try {
+      await toggleLike(id!, session!.access_token, wasLiked);
+    } finally {
+      likeInFlight.current = false;
+    }
   }
 
   const renderAvatar = (name?: string | null) => {
@@ -230,6 +246,11 @@ export default function PostDetail() {
         )}
       </ScrollView>
 
+      {sendError ? (
+        <View style={[styles.sendErrorBanner, { backgroundColor: colors.dangerSoft }]}>
+          <Text style={[styles.sendErrorText, { color: colors.danger }]}>{sendError}</Text>
+        </View>
+      ) : null}
       <View style={[styles.composer, { paddingBottom: Math.max(12, insets.bottom) }]}>
         <TextInput
           style={styles.input}
@@ -337,6 +358,11 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
     },
     emptyText: { marginTop: space.sm, textAlign: 'center' },
+    sendErrorBanner: {
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+    },
+    sendErrorText: { fontSize: font.sm, fontFamily: family.medium },
     composer: {
       flexDirection: 'row',
       alignItems: 'flex-end',
