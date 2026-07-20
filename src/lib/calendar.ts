@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CalendarEvent } from './types';
+import { CalendarEvent, ReminderRepeat } from './types';
+import { cancelReminder, scheduleReminder } from './reminderNotifications';
 
 const STORAGE_KEY = 'saathi.calendar.v1';
 
@@ -11,6 +12,47 @@ function pad(value: number) {
 
 export function toLocalISODate(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// True only for a real calendar date: shape check plus a round-trip through
+// Date so rollovers like 2026-02-31 (which JS silently turns into Mar 3) fail.
+export function isValidISODate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+// Normalizes free-text time ("5 pm", "17:00", "5:30pm") to HH:MM 24h form.
+// Returns null when the input cannot be read as a time of day.
+export function normalizeTimeInput(value: string): string | null {
+  const match = value.trim().toLowerCase().match(/^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?$/);
+  if (!match) return null;
+  let hour = parseInt(match[1], 10);
+  const minute = match[2] ? parseInt(match[2], 10) : 0;
+  const meridiem = match[3];
+  if (minute > 59) return null;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    if (meridiem === 'pm' && hour !== 12) hour += 12;
+    if (meridiem === 'am' && hour === 12) hour = 0;
+  } else if (hour > 23) {
+    return null;
+  }
+  return `${pad(hour)}:${pad(minute)}`;
+}
+
+// Serializes every read-modify-write cycle on the AsyncStorage key so
+// concurrent addEvent/removeEvent calls cannot clobber each other's writes.
+let storeQueue: Promise<unknown> = Promise.resolve();
+
+function withStoreLock<T>(task: () => Promise<T>): Promise<T> {
+  const run = storeQueue.then(task, task);
+  storeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 async function readStore(): Promise<CalendarEvent[]> {
@@ -55,27 +97,54 @@ export async function addEvent(input: {
   serviceId?: string | null;
   serviceName?: string | null;
   servicePhone?: string | null;
+  repeat?: ReminderRepeat;
+  // Set when mirroring a parent's family_reminders row so sync can de-dupe.
+  serverId?: string | null;
 }): Promise<CalendarEvent> {
-  const events = await readStore();
-  const event: CalendarEvent = {
-    id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: input.title,
-    dateISO: input.dateISO,
-    time: input.time ?? null,
-    note: input.note ?? null,
-    serviceId: input.serviceId ?? null,
-    serviceName: input.serviceName ?? null,
-    servicePhone: input.servicePhone ?? null,
-    createdAt: Date.now(),
-  };
-  events.push(event);
-  await writeStore(events);
-  return event;
+  return withStoreLock(async () => {
+    const events = await readStore();
+    const event: CalendarEvent = {
+      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: input.title,
+      dateISO: input.dateISO,
+      time: input.time ?? null,
+      note: input.note ?? null,
+      serviceId: input.serviceId ?? null,
+      serviceName: input.serviceName ?? null,
+      servicePhone: input.servicePhone ?? null,
+      createdAt: Date.now(),
+      repeat: input.repeat ?? 'once',
+      notificationId: null,
+      serverId: input.serverId ?? null,
+    };
+    events.push(event);
+    // Persist before scheduling: a failed write after scheduling would orphan
+    // an uncancellable repeating OS notification.
+    await writeStore(events);
+    // Scheduling lives here so every entry point (calendar screen, quick-add
+    // sheet, assistant) gets the OS alert without repeating the wiring.
+    const notificationId = await scheduleReminder(event);
+    if (notificationId) {
+      event.notificationId = notificationId;
+      try {
+        await writeStore(events);
+      } catch {
+        // Could not record the id — cancel so the notification isn't orphaned.
+        await cancelReminder(notificationId);
+        event.notificationId = null;
+      }
+    }
+    return event;
+  });
 }
 
 export async function removeEvent(id: string): Promise<void> {
-  const events = await readStore();
-  await writeStore(events.filter((event) => event.id !== id));
+  return withStoreLock(async () => {
+    const events = await readStore();
+    const doomed = events.find((event) => event.id === id);
+    await cancelReminder(doomed?.notificationId);
+    await writeStore(events.filter((event) => event.id !== id));
+  });
 }
 
 export function parseWhenToDate(when: string): { dateISO: string; time: string | null } {
