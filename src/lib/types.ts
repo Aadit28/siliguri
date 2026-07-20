@@ -69,6 +69,8 @@ export interface Announcement {
   created_at: string;
 }
 
+export type ReminderRepeat = 'once' | 'daily' | 'weekly';
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -79,6 +81,89 @@ export interface CalendarEvent {
   serviceName: string | null;
   servicePhone: string | null;
   createdAt: number;
+  // Absent on events saved before scheduling existed — treat as 'once'/unscheduled.
+  repeat?: ReminderRepeat;
+  notificationId?: string | null;
+  // Set once the reminder is mirrored to a parent's family_reminders row.
+  serverId?: string | null;
+}
+
+// FAMILY / GUARDIAN ----------------------------------------------------------
+
+export type FamilyLinkStatus = 'pending' | 'active' | 'revoked';
+
+export interface FamilyLink {
+  id: string;
+  status: FamilyLinkStatus;
+  // Present on links where the signed-in user is the guardian.
+  parentId?: string | null;
+  parentName?: string | null;
+  parentPhone?: string;
+  relationship?: string | null;
+  // Present on links where the signed-in user is the parent.
+  guardianId?: string | null;
+  guardianName?: string | null;
+  createdAt?: string;
+  verifiedAt?: string | null;
+}
+
+export type FamilyReminderRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
+export type FamilyReminderStatus = 'active' | 'done' | 'cancelled';
+
+export interface FamilyReminder {
+  id: string;
+  parentId: string;
+  createdBy: string;
+  title: string;
+  note: string | null;
+  dateISO: string;
+  time: string | null;
+  repeat: FamilyReminderRepeat;
+  status: FamilyReminderStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CareTeamCategory =
+  | 'doctor'
+  | 'grocery'
+  | 'pharmacy'
+  | 'hospital'
+  | 'helper'
+  | 'other';
+
+export interface CareTeamMember {
+  id: string;
+  parentId: string;
+  category: CareTeamCategory;
+  serviceId: string | null;
+  name: string;
+  phone: string | null;
+  note: string | null;
+  setBy?: string | null;
+  createdAt?: string;
+}
+
+export interface FamilyFavorite {
+  id: string;
+  parentId: string;
+  serviceId: string;
+  name: string;
+  phone: string | null;
+  category: ServiceCategory | null;
+  note: string | null;
+  addedBy?: string | null;
+  createdAt?: string;
+}
+
+export interface ParentAnalytics {
+  lastActiveAt: string | null;
+  assistantEvents7d: number;
+  assistantEvents30d: number;
+  callbacks: { status: string; created_at: string; issue: string | null }[];
+  reminders: { upcoming: number; overdue: number; done7d: number };
+  careTeamCount: number;
+  favoritesCount: number;
 }
 
 export type UserRole = 'user' | 'admin' | 'super_admin';
