@@ -75,6 +75,12 @@ export const lightColors = {
   overlay: 'rgba(255,255,255,0.85)',
   overlayStrong: 'rgba(255,255,255,0.92)',
   scrim: 'rgba(0,0,0,0.04)',
+  navGlass: 'rgba(222,224,229,0.62)',
+  navEdgeHi: 'rgba(255,255,255,0.92)',
+  navEdgeLo: 'rgba(120,126,138,0.35)',
+  navPill: 'rgba(255,255,255,0.66)',
+  navPillEdge: 'rgba(255,255,255,0.95)',
+  panelGlass: 'rgba(255,255,255,0.86)',
   whatsapp: '#128C7E',
   whatsappText: '#FFFFFF',
   handle: '#D6D6D6',
@@ -132,6 +138,12 @@ export const darkColors: typeof lightColors = {
   overlay: 'rgba(0,0,0,0.55)',
   overlayStrong: 'rgba(0,0,0,0.72)',
   scrim: 'rgba(0,0,0,0.30)',
+  navGlass: 'rgba(4,4,6,0.74)',
+  navEdgeHi: 'rgba(255,255,255,0.34)',
+  navEdgeLo: 'rgba(255,255,255,0.05)',
+  navPill: 'rgba(255,255,255,0.10)',
+  navPillEdge: 'rgba(255,255,255,0.22)',
+  panelGlass: 'rgba(20,20,20,0.84)',
   whatsapp: '#25D366',
   whatsappText: '#062315',
   handle: '#3A3A3A',
@@ -180,6 +192,10 @@ export const radius = { sm: 8, md: 10, lg: 12, xl: 16, pill: 999 };
 export const TAP = 56;
 
 export const ROW_MIN_HEIGHT = 64;
+
+// Bottom clearance for scroll content on phone: the tab bar floats (absolute,
+// glass) so screens must pad past it or the last row hides underneath.
+export const TAB_BAR_CLEARANCE = 118;
 
 // Flat surfaces separated by hairline borders; elevation only for floating layers.
 export const shadow = {
