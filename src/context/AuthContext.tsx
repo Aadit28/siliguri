@@ -41,6 +41,8 @@ interface AuthState {
     method?: AuthMethod,
     phoneNumber?: string,
   ) => Promise<{ error?: string }>;
+  requestOtp: (phone: string) => Promise<{ error?: string; devCode?: string }>;
+  verifyOtp: (phone: string, code: string, fullName?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -91,14 +93,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(async (stored) => {
         if (!stored) return;
         const saved = JSON.parse(stored) as SaathiSession;
+        if (saved.expires_at && new Date(saved.expires_at).getTime() <= Date.now()) {
+          await AsyncStorage.removeItem(SESSION_KEY);
+          return;
+        }
         setSession(saved);
-        const { user: freshUser } = await backendRequest<{ user: SaathiUser }>(
-          '/api/auth/me',
-          { token: saved.access_token },
-        );
-        setSession((current) =>
-          current?.access_token === saved.access_token ? { ...saved, user: freshUser } : current,
-        );
+        try {
+          const { user: freshUser } = await backendRequest<{ user: SaathiUser }>(
+            '/api/auth/me',
+            { token: saved.access_token },
+          );
+          setSession((current) =>
+            current?.access_token === saved.access_token ? { ...saved, user: freshUser } : current,
+          );
+        } catch (error) {
+          const status = (error as { status?: number }).status;
+          // Only clear on a definitive auth rejection; keep the session when
+          // the backend is unreachable (offline/timeout) so users stay signed in.
+          if (status === 401 || status === 403) {
+            setSession((current) =>
+              current?.access_token === saved.access_token ? null : current,
+            );
+            await AsyncStorage.removeItem(SESSION_KEY);
+          }
+        }
       })
       .catch(() => undefined)
       .finally(() => setLoading(false));
@@ -155,10 +173,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const resolvedMethod = inferAuthMethod(identifier, method);
     const normalizedIdentifier =
       resolvedMethod === 'phone' ? normalizePhone(identifier) : normalizeUsername(identifier);
-    const normalizedPhone = phoneNumber ? normalizePhone(phoneNumber) : '';
+    const normalizedPhone = phoneNumber?.trim() ? normalizePhone(phoneNumber) : '';
     const validationError =
       (resolvedMethod === 'phone' ? validatePhone(normalizedIdentifier) : validateUsername(normalizedIdentifier)) ||
-      (phoneNumber !== undefined ? validatePhone(normalizedPhone) : undefined);
+      (normalizedPhone ? validatePhone(normalizedPhone) : undefined);
     if (validationError) return { error: validationError };
 
     try {
@@ -188,6 +206,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function requestOtp(phone: string) {
+    const normalized = normalizePhone(phone);
+    const validationError = validatePhone(normalized);
+    if (validationError) return { error: validationError };
+    try {
+      const { devCode } = await backendRequest<{ sent: boolean; devCode?: string }>(
+        '/api/auth/otp-request',
+        { method: 'POST', body: { phone: normalized } },
+      );
+      return { devCode };
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
+  }
+
+  async function verifyOtp(phone: string, code: string, fullName?: string) {
+    const normalized = normalizePhone(phone);
+    const digits = code.replace(/\D/g, '');
+    if (digits.length !== 6) return { error: 'Enter the 6-digit code.' };
+    try {
+      const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
+        '/api/auth/otp-verify',
+        { method: 'POST', body: { phone: normalized, code: digits, fullName: fullName?.trim() || undefined } },
+      );
+      if (!nextSession?.access_token || !nextSession.user) {
+        throw new Error('Sign in did not return an account session.');
+      }
+      setSession(nextSession);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+      return {};
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
+  }
+
   async function signOut() {
     const token = session?.access_token;
     setSession(null);
@@ -202,7 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, loading, displayName, isAdmin, isCityHelper, isCityStaff, role, signIn, signUp, signOut }}
+      value={{ session, user, loading, displayName, isAdmin, isCityHelper, isCityStaff, role, signIn, signUp, requestOtp, verifyOtp, signOut }}
     >
       {children}
     </AuthContext.Provider>
