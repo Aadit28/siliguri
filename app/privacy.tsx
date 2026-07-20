@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { H1, H2, Body, Muted, Card } from '../src/components/ui';
-import { AppColors, radius, space, shadow } from '../src/lib/theme';
+import { AppColors, space } from '../src/lib/theme';
 import { useTheme } from '../src/context/ThemeContext';
 
 export default function PrivacyScreen() {
@@ -30,7 +30,7 @@ export default function PrivacyScreen() {
       </View>
 
       {sections.map((section) => (
-        <Card key={section.title}>
+        <Card key={section.title} style={styles.card}>
           <H2>{section.title}</H2>
           <Muted style={styles.body}>{section.body}</Muted>
         </Card>
@@ -42,24 +42,23 @@ export default function PrivacyScreen() {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     content: {
+      width: '100%',
+      maxWidth: 720,
+      alignSelf: 'center',
       padding: space.md,
       paddingBottom: space.xl,
       gap: space.md,
     },
     hero: {
-      borderRadius: radius.xl,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.glassBorder,
-      padding: space.lg,
-      ...shadow.md,
+      paddingHorizontal: space.xs,
+      gap: space.sm,
     },
+    card: { gap: space.xs },
     intro: {
       color: colors.textMuted,
-      marginTop: space.sm,
     },
     body: {
-      marginTop: space.sm,
+      lineHeight: 26,
     },
   });
 }

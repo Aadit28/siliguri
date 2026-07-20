@@ -114,13 +114,21 @@ const fieldStyles = StyleSheet.create({
   },
 });
 
+type CityHelper = {
+  id: string;
+  username: string;
+  full_name: string | null;
+  created_at: string;
+};
+
 export default function AdminScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { session, user, isAdmin } = useAuth();
+  const { session, user, isAdmin, isCityHelper, isCityStaff } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
+  const screenTitle = isCityHelper ? t('admin.helperTitle') : t('admin.title');
 
   // Announcements form state.
   const [titleEn, setTitleEn] = useState('');
@@ -147,6 +155,15 @@ export default function AdminScreen() {
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [serviceSuccess, setServiceSuccess] = useState(false);
 
+  // City helper management state (admins only).
+  const [helpers, setHelpers] = useState<CityHelper[]>([]);
+  const [loadingHelpers, setLoadingHelpers] = useState(false);
+  const [helperUsername, setHelperUsername] = useState('');
+  const [addingHelper, setAddingHelper] = useState(false);
+  const [helperError, setHelperError] = useState<string | null>(null);
+  const [helperSuccess, setHelperSuccess] = useState(false);
+  const [helperRemoveTarget, setHelperRemoveTarget] = useState<CityHelper | null>(null);
+
   async function loadAnnouncements() {
     if (!supabaseConfigured) {
       setAnnouncements([]);
@@ -163,10 +180,27 @@ export default function AdminScreen() {
     if (!error && data) setAnnouncements(data as Announcement[]);
   }
 
+  async function loadHelpers() {
+    if (!session) return;
+    setLoadingHelpers(true);
+    try {
+      const { helpers: rows } = await backendRequest<{ helpers: CityHelper[] }>(
+        '/api/admin/helper',
+        { method: 'POST', token: session.access_token, body: { action: 'list' } },
+      );
+      setHelpers(rows);
+    } catch {
+      setHelpers([]);
+    } finally {
+      setLoadingHelpers(false);
+    }
+  }
+
   useEffect(() => {
-    if (isAdmin) loadAnnouncements();
+    if (isCityStaff) loadAnnouncements();
+    if (isAdmin) loadHelpers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [isCityStaff, isAdmin]);
 
   if (!session || !user) {
     return (
@@ -195,7 +229,7 @@ export default function AdminScreen() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isCityStaff) {
     return (
       <ScrollView
         style={{ backgroundColor: colors.bg }}
@@ -298,6 +332,49 @@ export default function AdminScreen() {
     deactivate(id);
   }
 
+  async function addHelper() {
+    setHelperError(null);
+    setHelperSuccess(false);
+    if (!helperUsername.trim()) return;
+    setAddingHelper(true);
+    try {
+      await backendRequest('/api/admin/helper', {
+        method: 'POST',
+        token: session!.access_token,
+        body: { action: 'add', username: helperUsername.trim() },
+      });
+      setHelperUsername('');
+      setHelperSuccess(true);
+      await loadHelpers();
+    } catch (error) {
+      setHelperError((error as Error).message);
+    } finally {
+      setAddingHelper(false);
+    }
+  }
+
+  async function removeHelper(id: string) {
+    setHelperError(null);
+    setHelperSuccess(false);
+    try {
+      await backendRequest('/api/admin/helper', {
+        method: 'POST',
+        token: session!.access_token,
+        body: { action: 'remove', id },
+      });
+      await loadHelpers();
+    } catch (error) {
+      setHelperError((error as Error).message);
+    }
+  }
+
+  function confirmRemoveHelper() {
+    if (!helperRemoveTarget) return;
+    const id = helperRemoveTarget.id;
+    setHelperRemoveTarget(null);
+    removeHelper(id);
+  }
+
   return (
     <ScrollView
       style={{ backgroundColor: colors.bg }}
@@ -307,10 +384,12 @@ export default function AdminScreen() {
         paddingBottom: Math.max(insets.bottom, space.lg),
       }}
     >
-      <Stack.Screen options={{ title: t('admin.title') }} />
+      <Stack.Screen options={{ title: screenTitle }} />
 
-      <H1>{t('admin.title')}</H1>
-      <Muted style={styles.screenSubtitle}>{t('admin.subtitle')}</Muted>
+      <H1>{screenTitle}</H1>
+      <Muted style={styles.screenSubtitle}>
+        {isCityHelper ? t('admin.helperSubtitle') : t('admin.subtitle')}
+      </Muted>
 
       {/* Announcements */}
       <H2 style={styles.sectionHeader}>{t('admin.announcements')}</H2>
@@ -396,7 +475,6 @@ export default function AdminScreen() {
               <Chip
                 key={c.key}
                 label={t(`categories.${c.key}`)}
-                emoji={c.emoji}
                 active={category === c.key}
                 onPress={() => setCategory(c.key)}
               />
@@ -425,6 +503,7 @@ export default function AdminScreen() {
           autoCapitalize="none"
         />
 
+        {isAdmin ? (
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ selected: verified }}
@@ -449,6 +528,7 @@ export default function AdminScreen() {
             {t('admin.verified')}
           </Text>
         </Pressable>
+        ) : null}
 
         {serviceError ? <Notice kind="error" message={serviceError} /> : null}
         {serviceSuccess ? <Notice kind="success" message={t('admin.saved')} /> : null}
@@ -462,6 +542,97 @@ export default function AdminScreen() {
           />
         </View>
       </Card>
+
+      {/* City helpers (admins appoint trusted locals) */}
+      {isAdmin ? (
+        <>
+          <H2 style={styles.sectionHeader}>{t('admin.helpers')}</H2>
+
+          <Card>
+            <Text style={styles.cardTitle}>{t('admin.addHelper')}</Text>
+            <Muted style={styles.screenSubtitle}>{t('admin.helperHint')}</Muted>
+            <Field
+              label={t('admin.helperUsername')}
+              value={helperUsername}
+              onChangeText={setHelperUsername}
+              autoCapitalize="none"
+            />
+
+            {helperError ? <Notice kind="error" message={helperError} /> : null}
+            {helperSuccess ? <Notice kind="success" message={t('admin.helperAdded')} /> : null}
+
+            <View style={styles.formAction}>
+              <Button
+                label={t('admin.helperAdd')}
+                onPress={addHelper}
+                loading={addingHelper}
+                disabled={!helperUsername.trim()}
+              />
+            </View>
+          </Card>
+
+          <Card style={styles.listCard}>
+            {loadingHelpers ? (
+              <View style={styles.stateBlock}>
+                <ActivityIndicator color={colors.textMuted} />
+                <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+              </View>
+            ) : helpers.length === 0 ? (
+              <View style={styles.stateBlock}>
+                <Feather name="users" size={20} color={colors.textSubtle} />
+                <Muted style={styles.stateText}>{t('admin.helpersEmpty')}</Muted>
+              </View>
+            ) : (
+              helpers.map((item, index) => (
+                <View key={item.id}>
+                  <View style={styles.listRow}>
+                    <View style={styles.rowDisc}>
+                      <Feather name="user-check" size={20} color={colors.text} />
+                    </View>
+                    <View style={styles.rowBody}>
+                      <Text style={styles.rowTitle}>{item.full_name || item.username}</Text>
+                      <Text style={styles.rowSubtitle}>{item.username}</Text>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t('admin.helperRemove')}
+                      onPress={() => setHelperRemoveTarget(item)}
+                      style={({ pressed }) => [
+                        styles.ghostDanger,
+                        pressed ? { backgroundColor: colors.dangerSoft } : null,
+                      ]}
+                    >
+                      <Text style={styles.ghostDangerText}>{t('admin.helperRemove')}</Text>
+                    </Pressable>
+                  </View>
+                  {index < helpers.length - 1 ? <View style={styles.rowDivider} /> : null}
+                </View>
+              ))
+            )}
+          </Card>
+        </>
+      ) : null}
+
+      {/* Helper removal confirmation */}
+      <Dialog
+        visible={helperRemoveTarget !== null}
+        onClose={() => setHelperRemoveTarget(null)}
+        title={t('admin.helperRemove')}
+      >
+        {helperRemoveTarget ? (
+          <Text style={styles.dialogBody} numberOfLines={2}>
+            {helperRemoveTarget.full_name || helperRemoveTarget.username}
+          </Text>
+        ) : null}
+        <View style={styles.dialogActions}>
+          <Button label={t('admin.helperRemove')} variant="danger" onPress={confirmRemoveHelper} />
+          <Button
+            label={t('common.cancel')}
+            variant="secondary"
+            onPress={() => setHelperRemoveTarget(null)}
+          />
+        </View>
+      </Dialog>
 
       {/* Destructive confirmation */}
       <Dialog

@@ -173,16 +173,16 @@ export default function PostDetail() {
                 styles.likeBtn,
                 {
                   backgroundColor: liked
-                    ? colors.dangerSoft
+                    ? colors.accentSoft
                     : pressed
                       ? colors.overlay
                       : 'transparent',
                 },
               ]}
             >
-              <Feather name="heart" size={20} color={liked ? colors.danger : colors.textMuted} />
+              <Feather name="heart" size={20} color={liked ? colors.accent : colors.textMuted} />
               <Text
-                style={[styles.actionCount, { color: liked ? colors.danger : colors.textMuted }]}
+                style={[styles.actionCount, { color: liked ? colors.accent : colors.textMuted }]}
               >
                 {post.like_count ?? 0}
               </Text>

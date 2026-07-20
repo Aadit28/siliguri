@@ -10,126 +10,131 @@ export { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } f
 
 export type ThemeMode = 'light' | 'dark';
 
+// Weight ceiling is deliberately low (Uber/Kroger register): "bold" renders
+// DM Sans 600, "heavy" 700. 800 is never used — thick display weights read as
+// template noise at this type scale.
 export const family = {
   regular: FONT_REGULAR,
   medium: FONT_MEDIUM,
   semibold: FONT_SEMIBOLD,
-  bold: FONT_BOLD,
-  heavy: FONT_EXTRABOLD,
+  bold: FONT_SEMIBOLD,
+  heavy: FONT_BOLD,
 } as const;
 
+// Monochrome system. White surfaces, near-black ink, one blue reserved for
+// interactive/active states, red reserved for emergency. Nothing else carries color.
 export const lightColors = {
-  bg: '#F4F2EC',
-  bgAlt: '#FBFAF7',
-  card: 'rgba(255,255,255,0.96)',
+  bg: '#FFFFFF',
+  bgAlt: '#F6F6F6',
+  card: '#FFFFFF',
   cardSolid: '#FFFFFF',
   cardStrong: '#FFFFFF',
-  nav: '#123C38',
-  frame: '#E7E3D9',
+  nav: '#FFFFFF',
+  frame: '#F6F6F6',
 
-  primary: '#176B63',
-  primaryDark: '#0B4D47',
-  primarySoft: '#DCEEEA',
-  primaryTint: 'rgba(23,107,99,0.10)',
+  primary: '#0A0A0A',
+  primaryDark: '#000000',
+  primarySoft: '#F3F3F3',
+  primaryTint: 'rgba(10,10,10,0.06)',
   primaryFg: '#FFFFFF',
 
-  accent: '#E06A4E',
-  accentDark: '#9F3A28',
-  accentSoft: 'rgba(224,106,78,0.14)',
+  accent: '#276EF1',
+  accentDark: '#1E54C4',
+  accentSoft: 'rgba(39,110,241,0.10)',
   accentFg: '#FFFFFF',
-  info: '#6157D8',
-  infoDark: '#3329A8',
-  infoSoft: 'rgba(97,87,216,0.13)',
+  info: '#276EF1',
+  infoDark: '#1E54C4',
+  infoSoft: 'rgba(39,110,241,0.10)',
 
-  success: '#26734D',
-  successSoft: 'rgba(38,115,77,0.13)',
+  success: '#166C3B',
+  successSoft: 'rgba(22,108,59,0.10)',
   successFg: '#FFFFFF',
 
-  danger: '#B42318',
-  dangerDark: '#7A1C14',
-  dangerSoft: 'rgba(180,35,24,0.12)',
+  danger: '#BB032A',
+  dangerDark: '#8E0224',
+  dangerSoft: 'rgba(187,3,42,0.08)',
   dangerFg: '#FFFFFF',
-  emergency: '#D92D20',
-  emergencyDark: '#A61E16',
-  emergencySoft: 'rgba(217,45,32,0.12)',
+  emergency: '#E11900',
+  emergencyDark: '#B71500',
+  emergencySoft: 'rgba(225,25,0,0.08)',
 
-  warningBg: '#FFF0C2',
-  warningText: '#5D3B00',
+  warningBg: '#FFF7E0',
+  warningText: '#6B5200',
 
-  text: '#1C2826',
-  textMuted: '#586764',
-  textSubtle: '#788480',
+  text: '#0A0A0A',
+  textMuted: '#5E5E5E',
+  textSubtle: '#8A8A8A',
   textOnDark: '#FFFFFF',
 
-  border: 'rgba(28,40,38,0.12)',
-  glassBorder: 'rgba(255,255,255,0.74)',
-  chipBg: '#EFF5F2',
-  star: '#E06A4E',
-  surfaceTint: '#E6EFEB',
+  border: '#E8E8E8',
+  glassBorder: '#E8E8E8',
+  chipBg: '#F3F3F3',
+  star: '#0A0A0A',
+  surfaceTint: '#F6F6F6',
 
-  overlay: 'rgba(255,255,255,0.28)',
-  overlayStrong: 'rgba(255,255,255,0.42)',
-  scrim: 'rgba(23,76,79,0.08)',
+  overlay: 'rgba(255,255,255,0.85)',
+  overlayStrong: 'rgba(255,255,255,0.92)',
+  scrim: 'rgba(0,0,0,0.04)',
   whatsapp: '#128C7E',
   whatsappText: '#FFFFFF',
-  handle: '#C9D1CE',
+  handle: '#D6D6D6',
 };
 
 export const darkColors: typeof lightColors = {
-  bg: '#07110F',
-  bgAlt: '#0B1916',
-  card: 'rgba(255,255,255,0.075)',
-  cardSolid: '#0F1E1B',
-  cardStrong: '#132521',
-  nav: '#07110F',
-  frame: '#06100F',
+  bg: '#0A0A0A',
+  bgAlt: '#121212',
+  card: '#141414',
+  cardSolid: '#141414',
+  cardStrong: '#1A1A1A',
+  nav: '#0A0A0A',
+  frame: '#050505',
 
-  primary: '#A4E5D1',
-  primaryDark: '#D9FFF3',
-  primarySoft: '#193B34',
-  primaryTint: 'rgba(164,229,209,0.14)',
-  primaryFg: '#06100F',
+  primary: '#FFFFFF',
+  primaryDark: '#F5F5F5',
+  primarySoft: '#1F1F1F',
+  primaryTint: 'rgba(255,255,255,0.08)',
+  primaryFg: '#0A0A0A',
 
-  accent: '#FFB59F',
-  accentDark: '#FFE0D6',
-  accentSoft: 'rgba(255,177,152,0.13)',
-  accentFg: '#24100B',
-  info: '#B9B1FF',
-  infoDark: '#E1DDFF',
-  infoSoft: 'rgba(185,177,255,0.14)',
+  accent: '#6FA1FF',
+  accentDark: '#9DBFFF',
+  accentSoft: 'rgba(111,161,255,0.14)',
+  accentFg: '#0A0A0A',
+  info: '#6FA1FF',
+  infoDark: '#9DBFFF',
+  infoSoft: 'rgba(111,161,255,0.14)',
 
-  success: '#8BD8A8',
-  successSoft: 'rgba(139,216,168,0.14)',
-  successFg: '#061A10',
+  success: '#58C27D',
+  successSoft: 'rgba(88,194,125,0.14)',
+  successFg: '#06180D',
 
-  danger: '#FFB4AB',
-  dangerDark: '#FFDAD6',
-  dangerSoft: 'rgba(255,180,171,0.14)',
-  dangerFg: '#2A0E08',
-  emergency: '#D92D20',
-  emergencyDark: '#FFB4AB',
-  emergencySoft: 'rgba(217,45,32,0.22)',
+  danger: '#FF6B85',
+  dangerDark: '#FF9CAD',
+  dangerSoft: 'rgba(255,107,133,0.14)',
+  dangerFg: '#20040B',
+  emergency: '#E11900',
+  emergencyDark: '#FF4B33',
+  emergencySoft: 'rgba(225,25,0,0.18)',
 
-  warningBg: '#2C2110',
-  warningText: '#FFE2A5',
+  warningBg: '#241C06',
+  warningText: '#F5D77B',
 
-  text: '#F7FAF4',
-  textMuted: '#B9C8C2',
-  textSubtle: '#83948E',
-  textOnDark: '#06100F',
+  text: '#F5F5F5',
+  textMuted: '#A3A3A3',
+  textSubtle: '#6E6E6E',
+  textOnDark: '#0A0A0A',
 
-  border: 'rgba(255,255,255,0.16)',
-  glassBorder: 'rgba(255,255,255,0.16)',
-  chipBg: 'rgba(255,255,255,0.09)',
-  star: '#FFB198',
-  surfaceTint: '#0D2421',
+  border: '#262626',
+  glassBorder: '#262626',
+  chipBg: '#1F1F1F',
+  star: '#F5F5F5',
+  surfaceTint: '#161616',
 
-  overlay: 'rgba(255,255,255,0.10)',
-  overlayStrong: 'rgba(255,255,255,0.18)',
-  scrim: 'rgba(0,0,0,0.24)',
+  overlay: 'rgba(0,0,0,0.55)',
+  overlayStrong: 'rgba(0,0,0,0.72)',
+  scrim: 'rgba(0,0,0,0.30)',
   whatsapp: '#25D366',
   whatsappText: '#062315',
-  handle: '#49615A',
+  handle: '#3A3A3A',
 };
 
 export type AppColors = typeof lightColors;
@@ -169,18 +174,19 @@ export const space = {
   xxl: 48,
 };
 
-export const radius = { sm: 10, md: 14, lg: 18, xl: 24, pill: 999 };
+export const radius = { sm: 8, md: 10, lg: 12, xl: 16, pill: 999 };
 
 // Minimum touch target for accessibility.
 export const TAP = 56;
 
 export const ROW_MIN_HEIGHT = 64;
 
+// Flat surfaces separated by hairline borders; elevation only for floating layers.
 export const shadow = {
   sm: {
-    boxShadow: '0 4px 14px rgba(18, 34, 31, 0.07)',
+    boxShadow: 'none',
   },
   md: {
-    boxShadow: '0 12px 36px rgba(18, 34, 31, 0.10)',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
   },
 } as const;

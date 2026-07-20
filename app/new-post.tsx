@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { ScrollView, View, TextInput, StyleSheet, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { H2, Muted, Button } from '../src/components/ui';
-import { AppColors, font, radius, space } from '../src/lib/theme';
+import { Chip, H2, Muted, Button } from '../src/components/ui';
+import { AppColors, family, font, radius, space } from '../src/lib/theme';
 import { POST_CATEGORIES } from '../src/lib/categories';
 import { createPost } from '../src/lib/api';
 import { PostCategory } from '../src/lib/types';
@@ -14,8 +14,8 @@ export default function NewPost() {
   const { t } = useTranslation();
   const router = useRouter();
   const { session, user } = useAuth();
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState<PostCategory>('general');
@@ -50,24 +50,14 @@ export default function NewPost() {
 
       <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('community.postCategory')}</Muted>
       <View style={styles.chipRow}>
-        {POST_CATEGORIES.map((c) => {
-          const active = category === c.key;
-          return (
-            <Text
-              key={c.key}
-              onPress={() => setCategory(c.key)}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: active ? colors.primary : colors.chipBg,
-                  color: active ? (isDark ? colors.textOnDark : '#fff') : colors.primaryDark,
-                },
-              ]}
-            >
-              {c.emoji} {t(`postCategories.${c.key}`)}
-            </Text>
-          );
-        })}
+        {POST_CATEGORIES.map((c) => (
+          <Chip
+            key={c.key}
+            label={t(`postCategories.${c.key}`)}
+            active={category === c.key}
+            onPress={() => setCategory(c.key)}
+          />
+        ))}
       </View>
 
       <Muted style={{ marginTop: space.md, marginBottom: 6 }}>{t('community.postTitle')}</Muted>
@@ -102,27 +92,18 @@ export default function NewPost() {
   );
 }
 
-function makeStyles(colors: AppColors, isDark: boolean) {
+function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-    chip: {
-      overflow: 'hidden',
-      paddingHorizontal: space.md,
-      paddingVertical: 10,
-      borderRadius: radius.pill,
-      fontWeight: '800',
-      fontSize: font.sm,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
     input: {
-      backgroundColor: colors.cardStrong,
+      backgroundColor: colors.surfaceTint,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
       paddingHorizontal: space.md,
       paddingVertical: space.sm,
       fontSize: font.md,
+      fontFamily: family.regular,
       color: colors.text,
       minHeight: 54,
     },

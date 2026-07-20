@@ -12,10 +12,10 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { Feather } from '@expo/vector-icons';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Card, H1, H2, Body, Muted, Button, Badge, Stars } from '../../src/components/ui';
-import { AppColors, font, radius, space, shadow } from '../../src/lib/theme';
-import { categoryColor } from '../../src/lib/categories';
+import { Body, Button, Card, H1, H2, Muted, Badge, Stars } from '../../src/components/ui';
+import { AppColors, family, font, radius, space } from '../../src/lib/theme';
 import { fetchService } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -36,15 +36,14 @@ export default function ServiceDetail() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { favoriteSet, toggleFavorite, recordViewed } = useServicePreferences();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
-  const styles = makeStyles(colors, isDark, isWide);
+  const styles = makeStyles(colors, isWide);
 
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const isFav = id ? favoriteSet.has(id) : false;
-  const onPrimary = isDark ? colors.textOnDark : '#fff';
 
   function leaveDetail() {
     if (router.canGoBack()) {
@@ -138,9 +137,9 @@ export default function ServiceDetail() {
         options={{
           title: t(`categories.${service.category}`),
           headerStyle: { backgroundColor: colors.nav },
-          headerTitleStyle: { color: '#fff', fontWeight: '900' },
+          headerTitleStyle: { color: colors.text, fontFamily: family.bold },
           headerShadowVisible: false,
-          headerTintColor: '#fff',
+          headerTintColor: colors.text,
           headerBackVisible: false,
           headerLeft: () => (
             <TouchableOpacity
@@ -150,28 +149,21 @@ export default function ServiceDetail() {
               accessibilityLabel={t('common.back')}
               onPress={leaveDetail}
             >
-              <Text style={styles.headerBackText}>{`< ${t('common.back')}`}</Text>
+              <Feather name="arrow-left" size={20} color={colors.text} />
+              <Text style={styles.headerBackText}>{t('common.back')}</Text>
             </TouchableOpacity>
           ),
         }}
       />
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.hero}>
+        <View style={[styles.hero, { backgroundColor: colors.cardStrong, borderColor: colors.border }]}>
           <View style={styles.heroTop}>
-            <View
-              style={[
-                styles.heroIcon,
-                {
-                  backgroundColor: categoryColor(service.category).bg,
-                  borderColor: categoryColor(service.category).border,
-                },
-              ]}
-            >
-              <ServiceGlyph category={service.category} color={categoryColor(service.category).fg} size={34} />
+            <View style={[styles.heroIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+              <ServiceGlyph category={service.category} color={colors.text} size={34} />
             </View>
             <View style={styles.heroText}>
-              <Text style={styles.kicker}>{t(`categories.${service.category}`)}</Text>
+              <Muted style={styles.kicker}>{t(`categories.${service.category}`)}</Muted>
               <H1 style={styles.title}>{service.name}</H1>
               <View style={styles.metaRow}>
                 <Stars rating={service.rating} />
@@ -180,15 +172,25 @@ export default function ServiceDetail() {
             </View>
           </View>
           <View style={styles.heroSignalRow}>
-            <Text style={styles.heroSignal}>{t(`services.verificationStatus.${verificationStatus}`)}</Text>
-            {service.phone_confirmed ? <Text style={styles.heroSignal}>{t('services.trustPhone')}</Text> : null}
-            {service.source_url ? <Text style={styles.heroSignal}>{t('services.trustSource')}</Text> : null}
+            <Text style={[styles.heroSignal, { color: colors.textMuted, borderColor: colors.border, backgroundColor: colors.bgAlt }]}>
+              {t(`services.verificationStatus.${verificationStatus}`)}
+            </Text>
+            {service.phone_confirmed ? (
+              <Text style={[styles.heroSignal, { color: colors.textMuted, borderColor: colors.border, backgroundColor: colors.bgAlt }]}>
+                {t('services.trustPhone')}
+              </Text>
+            ) : null}
+            {service.source_url ? (
+              <Text style={[styles.heroSignal, { color: colors.textMuted, borderColor: colors.border, backgroundColor: colors.bgAlt }]}>
+                {t('services.trustSource')}
+              </Text>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.detailGrid}>
           <Card style={styles.aboutCard}>
-            <Text style={styles.panelKicker}>{t('services.about')}</Text>
+            <H2>{t('services.about')}</H2>
             {service.description ? <Body>{service.description}</Body> : null}
             {service.address ? <Muted style={styles.detailLine}>{service.address}</Muted> : null}
             {service.hours ? (
@@ -212,14 +214,20 @@ export default function ServiceDetail() {
           </Card>
 
           <Card style={styles.checkCard}>
-            <Text style={styles.panelKicker}>{t('services.trustChecklist')}</Text>
             <H2>{t('services.trustChecklist')}</H2>
             {checklist.map((item) => (
               <View key={item.label} style={styles.checkRow}>
-                <View style={[styles.checkDot, { backgroundColor: item.ok ? colors.success : colors.warningText }]}>
-                  <Text style={[styles.checkDotText, { color: item.ok ? onPrimary : colors.warningBg }]}>
-                    {item.ok ? 'OK' : '!'}
-                  </Text>
+                <View
+                  style={[
+                    styles.checkDot,
+                    { backgroundColor: item.ok ? colors.successSoft : colors.warningBg },
+                  ]}
+                >
+                  <Feather
+                    name={item.ok ? 'check' : 'alert-triangle'}
+                    size={16}
+                    color={item.ok ? colors.success : colors.warningText}
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.checkLabel}>{item.label}</Text>
@@ -234,8 +242,9 @@ export default function ServiceDetail() {
         </View>
 
         {!service.verified ? (
-          <View style={styles.callout}>
-            <Text style={styles.calloutText}>! {t('services.unverified')}</Text>
+          <View style={[styles.callout, { backgroundColor: colors.warningBg, borderLeftColor: colors.warningText }]}>
+            <Feather name="alert-triangle" size={18} color={colors.warningText} />
+            <Text style={[styles.calloutText, { color: colors.warningText }]}>{t('services.unverified')}</Text>
           </View>
         ) : null}
 
@@ -256,41 +265,30 @@ export default function ServiceDetail() {
       </ScrollView>
 
       {service.phone || service.map_url ? (
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
-          <Text style={styles.footerTitle}>{t('services.contactActions')}</Text>
+        <View style={[styles.footer, { backgroundColor: colors.nav, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+          <Muted style={styles.footerTitle}>{t('services.contactActions')}</Muted>
           <View style={styles.footerActions}>
             {showWhatsApp ? (
               <>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('common.call')} variant="primary" onPress={() => openWhatsAppCall(service.phone)} />
+                </View>
                 <TouchableOpacity
-                  style={[styles.fBtn, { backgroundColor: colors.success, flex: 1 }]}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${t('common.call')} on WhatsApp`}
-                  onPress={() => openWhatsAppCall(service.phone)}
-                >
-                  <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('common.call')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.waBtn}
+                  style={[styles.waBtn, { backgroundColor: colors.whatsapp }]}
                   activeOpacity={0.85}
                   accessibilityRole="button"
                   accessibilityLabel="WhatsApp"
                   onPress={() => openWhatsAppChat(service.phone)}
                 >
-                  <Text style={styles.waText}>WhatsApp</Text>
+                  <Feather name="message-circle" size={18} color={colors.whatsappText} />
+                  <Text style={[styles.waText, { color: colors.whatsappText }]}>WhatsApp</Text>
                 </TouchableOpacity>
               </>
             ) : null}
             {service.map_url ? (
-              <TouchableOpacity
-                style={[styles.fBtn, { backgroundColor: colors.primary, flex: 1 }]}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={t('common.directions')}
-                onPress={() => Linking.openURL(service.map_url!)}
-              >
-                <Text style={[styles.fBtnText, { color: onPrimary }]}>{t('common.directions')}</Text>
-              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Button label={t('common.directions')} variant="primary" onPress={() => Linking.openURL(service.map_url!)} />
+              </View>
             ) : null}
           </View>
         </View>
@@ -299,7 +297,7 @@ export default function ServiceDetail() {
   );
 }
 
-function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
+function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
     screen: { flex: 1 },
     loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg },
@@ -312,13 +310,10 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
       gap: space.lg,
     },
     hero: {
-      borderRadius: 16,
+      borderRadius: radius.xl,
       borderWidth: 1,
-      borderColor: isDark ? colors.border : 'rgba(255,255,255,0.68)',
-      backgroundColor: colors.nav,
       padding: isWide ? space.xl : space.lg,
       gap: space.lg,
-      ...shadow.md,
     },
     heroTop: {
       flexDirection: isWide ? 'row' : 'column',
@@ -328,51 +323,39 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
     heroIcon: {
       width: 88,
       height: 88,
-      borderRadius: 12,
+      borderRadius: radius.lg,
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
     },
     heroText: { flex: 1, minWidth: 0 },
-    kicker: {
-      color: 'rgba(255,255,255,0.70)',
-      fontSize: font.xs,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-    },
-    title: { marginTop: space.sm, color: '#fff', fontSize: isWide ? 44 : 34, lineHeight: isWide ? 50 : 39 },
+    kicker: { fontFamily: family.regular, fontSize: font.xs },
+    title: { fontFamily: family.medium, marginTop: space.sm, fontSize: isWide ? 40 : 32, lineHeight: isWide ? 47 : 38 },
     heroSignalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     heroSignal: {
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.12)',
-      backgroundColor: 'rgba(255,255,255,0.08)',
-      color: 'rgba(255,255,255,0.84)',
       paddingHorizontal: space.sm,
       paddingVertical: 8,
+      fontFamily: family.semibold,
       fontSize: font.xs,
-      fontWeight: '900',
       overflow: 'hidden',
     },
     headerBack: {
       minHeight: 44,
       minWidth: 90,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
       paddingHorizontal: space.sm,
-      alignItems: 'flex-start',
-      justifyContent: 'center',
+      justifyContent: 'flex-start',
     },
-    headerBackText: { color: '#fff', fontSize: font.md, fontWeight: '900' },
+    headerBackText: { color: colors.text, fontSize: font.md, fontFamily: family.semibold },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
     detailGrid: { flexDirection: isWide ? 'row' : 'column', gap: space.lg },
-    aboutCard: { flex: 1, gap: space.sm, borderColor: colors.border, borderRadius: 14 },
-    detailLine: { fontSize: font.sm },
-    checkCard: { flex: 1, gap: space.sm, borderColor: colors.border, borderRadius: 14 },
-    panelKicker: {
-      color: colors.accentDark,
-      fontSize: font.xs,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-    },
+    aboutCard: { flex: 1, gap: space.sm },
+    detailLine: { fontFamily: family.regular, fontSize: font.sm },
+    checkCard: { flex: 1, gap: space.sm },
     checkRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -382,13 +365,12 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
     checkDot: {
       width: 34,
       height: 34,
-      borderRadius: 6,
+      borderRadius: radius.sm,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkDotText: { fontWeight: '900', fontSize: font.xs },
-    checkLabel: { color: colors.text, fontSize: font.sm, fontWeight: '900' },
-    checkValue: { fontSize: font.xs },
+    checkLabel: { color: colors.text, fontFamily: family.semibold, fontSize: font.sm },
+    checkValue: { fontFamily: family.regular, fontSize: font.xs },
     careNote: {
       marginTop: space.xs,
       paddingTop: space.sm,
@@ -396,47 +378,35 @@ function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
       borderTopColor: colors.border,
     },
     callout: {
-      backgroundColor: colors.warningBg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
       borderLeftWidth: 5,
-      borderLeftColor: colors.warningText,
       borderRadius: radius.sm,
       padding: space.md,
     },
     calloutText: {
-      color: colors.warningText,
+      flex: 1,
+      fontFamily: family.semibold,
       fontSize: font.sm,
-      fontWeight: '800',
       lineHeight: font.sm * 1.4,
     },
     footer: {
       padding: space.md,
-      backgroundColor: colors.nav,
       borderTopWidth: 1,
-      borderTopColor: colors.border,
       gap: space.sm,
-      ...shadow.md,
     },
-    footerTitle: { color: colors.textMuted, fontSize: font.xs, fontWeight: '900', textTransform: 'uppercase' },
+    footerTitle: { fontFamily: family.medium, fontSize: font.xs },
     footerActions: { flexDirection: 'row', gap: space.sm },
-    fBtn: {
-      minHeight: 60,
-      borderRadius: radius.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: space.md,
-      ...shadow.sm,
-    },
-    fBtnText: { fontSize: font.md, fontWeight: '900' },
     waBtn: {
-      minHeight: 60,
-      borderRadius: radius.lg,
+      minHeight: 56,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 6,
+      borderRadius: radius.lg,
       paddingHorizontal: space.md,
-      backgroundColor: colors.whatsapp,
-      borderWidth: 1,
-      borderColor: colors.whatsapp,
     },
-    waText: { color: colors.whatsappText, fontSize: font.md, fontWeight: '900' },
+    waText: { fontFamily: family.semibold, fontSize: font.md },
   });
 }

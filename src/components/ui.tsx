@@ -11,9 +11,10 @@ import {
   Pressable,
   useWindowDimensions,
 } from 'react-native';
-import { font, radius, space, shadow, TAP } from '../lib/theme';
+import { family, font, radius, space, shadow, TAP, tracking } from '../lib/theme';
 import { useTheme } from '../context/ThemeContext';
 
+// Quiet surface tile (Uber pattern): gray fill, no border, no shadow.
 export function Card({ style, ...props }: ViewProps) {
   const { colors } = useTheme();
   return (
@@ -21,8 +22,7 @@ export function Card({ style, ...props }: ViewProps) {
       style={[
         styles.card,
         {
-          backgroundColor: colors.cardStrong,
-          borderColor: colors.border,
+          backgroundColor: colors.bgAlt,
         },
         style,
       ]}
@@ -66,7 +66,7 @@ export function Button({
   disabled?: boolean;
   icon?: React.ReactNode;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const isSecondary = variant === 'secondary';
   const filled =
     variant === 'primary'
@@ -76,7 +76,13 @@ export function Button({
         : variant === 'accent'
           ? colors.accent
           : colors.cardStrong;
-  const fg = isSecondary ? colors.primaryDark : variant === 'danger' ? '#fff' : isDark ? colors.textOnDark : '#fff';
+  const fg = isSecondary
+    ? colors.text
+    : variant === 'danger'
+      ? '#FFFFFF'
+      : variant === 'accent'
+        ? colors.accentFg
+        : colors.primaryFg;
 
   return (
     <TouchableOpacity
@@ -118,7 +124,7 @@ export function Chip({
   active?: boolean;
   onPress: () => void;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <TouchableOpacity
       accessibilityRole="button"
@@ -132,7 +138,7 @@ export function Chip({
         },
       ]}
     >
-      <Text style={[styles.chipText, { color: active ? (isDark ? colors.textOnDark : '#fff') : colors.primaryDark }]}>
+      <Text style={[styles.chipText, { color: active ? colors.primaryFg : colors.text }]}>
         {emoji ? `${emoji} ` : ''}
         {label}
       </Text>
@@ -153,7 +159,7 @@ export function Stars({ rating }: { rating: number | null }) {
   const { colors } = useTheme();
   if (!rating) return null;
   return (
-    <Text style={{ color: colors.star, fontSize: font.sm, fontWeight: '800' }}>
+    <Text style={{ color: colors.star, fontFamily: family.medium, fontSize: font.sm }}>
       {rating.toFixed(1)}/5
     </Text>
   );
@@ -226,14 +232,13 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: radius.lg,
     padding: space.lg,
-    borderWidth: 1,
+    borderWidth: 0,
     overflow: 'hidden',
-    ...shadow.sm,
   },
-  h1: { fontSize: font.xxl, fontWeight: '800', lineHeight: font.xxl * 1.13, letterSpacing: -0.5 },
-  h2: { fontSize: font.lg, fontWeight: '800', lineHeight: font.lg * 1.2 },
-  body: { fontSize: font.md, lineHeight: font.md * 1.5 },
-  muted: { fontSize: font.sm, lineHeight: font.sm * 1.5 },
+  h1: { fontFamily: family.semibold, fontSize: font.xxl, lineHeight: font.xxl * 1.13, letterSpacing: tracking.display },
+  h2: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: font.lg * 1.2, letterSpacing: tracking.lg },
+  body: { fontFamily: family.regular, fontSize: font.md, lineHeight: font.md * 1.5 },
+  muted: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.5 },
   btn: {
     minHeight: TAP,
     borderRadius: radius.lg,
@@ -246,7 +251,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     ...shadow.sm,
   },
-  btnText: { fontSize: font.md, fontWeight: '700' },
+  btnText: { fontFamily: family.medium, fontSize: font.md },
   btnContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
   chip: {
     minHeight: 48,
@@ -258,7 +263,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     borderWidth: 1,
   },
-  chipText: { fontSize: font.sm, fontWeight: '700' },
+  chipText: { fontFamily: family.medium, fontSize: font.sm },
   badge: {
     paddingHorizontal: space.sm,
     paddingVertical: 5,
@@ -266,7 +271,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
-  badgeText: { fontSize: font.xs, fontWeight: '800' },
+  badgeText: { fontFamily: family.medium, fontSize: font.xs },
   modalScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.52)' },
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
   sheetPanel: {
@@ -279,6 +284,6 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 42, height: 5, borderRadius: 999, alignSelf: 'center', marginTop: space.sm, marginBottom: space.md },
   dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
   dialogPanel: { borderRadius: radius.xl, borderWidth: 1, padding: space.lg, ...shadow.md },
-  modalTitle: { fontSize: font.lg, lineHeight: 28, fontWeight: '800', marginBottom: space.md },
+  modalTitle: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: 28, marginBottom: space.md },
   modalTitleNode: { marginBottom: space.md },
 });

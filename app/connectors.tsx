@@ -1,15 +1,12 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { Card, H1, Body, Muted, Badge } from '../src/components/ui';
-import { AppColors, font, space } from '../src/lib/theme';
+import { Feather } from '@expo/vector-icons';
+import { Card, H1, H2, Body, Muted, Badge } from '../src/components/ui';
+import { AppColors, family, font, radius, space, ROW_MIN_HEIGHT } from '../src/lib/theme';
 import { useTheme } from '../src/context/ThemeContext';
 import { useLocale } from '../src/context/LocaleContext';
 import { Connector, ConnectorStatus, CONNECTORS } from '../src/lib/connectors';
-
-// Theme has no warn accent; amber reads as "partly working" and keeps
-// contrast with the badge text in both light and dark modes.
-const PARTIAL_BADGE = '#B45309';
 
 const STATUS_ORDER: ConnectorStatus[] = ['live', 'partial', 'planned'];
 
@@ -34,13 +31,42 @@ const STATUS_BADGE: Record<ConnectorStatus, { en: string; hi: string }> = {
   planned: { en: 'Coming soon', hi: 'जल्द ही' },
 };
 
-const KIND_META: Record<Connector['kind'], { emoji: string; en: string; hi: string }> = {
-  payment: { emoji: '💳', en: 'Payments', hi: 'भुगतान' },
-  transport: { emoji: '🚗', en: 'Travel', hi: 'यात्रा' },
-  calendar: { emoji: '📅', en: 'Calendar', hi: 'कैलेंडर' },
-  family: { emoji: '👪', en: 'Family', hi: 'परिवार' },
-  emergency: { emoji: '🚑', en: 'Emergency', hi: 'आपातकाल' },
+const KIND_META: Record<Connector['kind'], { icon: keyof typeof Feather.glyphMap; en: string; hi: string }> = {
+  payment: { icon: 'credit-card', en: 'Payments', hi: 'भुगतान' },
+  transport: { icon: 'truck', en: 'Travel', hi: 'यात्रा' },
+  calendar: { icon: 'calendar', en: 'Calendar', hi: 'कैलेंडर' },
+  family: { icon: 'users', en: 'Family', hi: 'परिवार' },
+  emergency: { icon: 'life-buoy', en: 'Emergency', hi: 'आपातकाल' },
 };
+
+function StatusTag({ label, tone, colors }: { label: string; tone: 'strong' | 'soft'; colors: AppColors }) {
+  return (
+    <View
+      style={[
+        statusTagStyles.base,
+        {
+          backgroundColor: tone === 'strong' ? colors.chipBg : 'transparent',
+          borderColor: colors.border,
+        },
+      ]}
+    >
+      <Text style={[statusTagStyles.text, { color: tone === 'strong' ? colors.text : colors.textMuted }]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const statusTagStyles = StyleSheet.create({
+  base: {
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  text: { fontSize: font.xs, fontFamily: family.bold },
+});
 
 export default function ConnectorsScreen() {
   const { colors } = useTheme();
@@ -49,51 +75,56 @@ export default function ConnectorsScreen() {
 
   const pick = (en: string, hi: string) => (lang === 'hi' ? hi : en);
 
-  const statusColor = (status: ConnectorStatus) =>
-    status === 'live' ? colors.success : status === 'partial' ? PARTIAL_BADGE : colors.textMuted;
-
   return (
     <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: pick(COPY.title.en, COPY.title.hi) }} />
       <H1>{pick(COPY.title.en, COPY.title.hi)}</H1>
-      <Body>{pick(COPY.intro.en, COPY.intro.hi)}</Body>
+      <Body style={styles.intro}>{pick(COPY.intro.en, COPY.intro.hi)}</Body>
 
       {STATUS_ORDER.map((status) => {
         const group = CONNECTORS.filter((connector) => connector.status === status);
         if (group.length === 0) return null;
         return (
           <View key={status}>
-            <Muted style={styles.sectionLabel}>
-              {pick(COPY.sections[status].en, COPY.sections[status].hi)}
-            </Muted>
-            <View style={styles.cardList}>
-              {group.map((connector) => {
+            <H2 style={styles.sectionHeader}>{pick(COPY.sections[status].en, COPY.sections[status].hi)}</H2>
+            <Card style={styles.listCard}>
+              {group.map((connector, index) => {
                 const kind = KIND_META[connector.kind];
                 return (
-                  <Card key={connector.id} style={styles.connectorCard}>
-                    <View style={styles.headerRow}>
-                      <Text style={styles.kindEmoji}>{kind.emoji}</Text>
-                      <Text style={[styles.connectorName, { color: colors.text }]}>
-                        {pick(connector.name, connector.nameHi)}
-                      </Text>
+                  <View key={connector.id}>
+                    {index > 0 ? <View style={styles.divider} /> : null}
+                    <View style={styles.row}>
+                      <View style={styles.rowLead}>
+                        <Feather name={kind.icon} size={20} color={colors.text} />
+                      </View>
+                      <View style={styles.rowBody}>
+                        <View style={styles.rowHeaderLine}>
+                          <Text style={styles.connectorName}>{pick(connector.name, connector.nameHi)}</Text>
+                          {connector.status === 'live' ? (
+                            <Badge label={pick(STATUS_BADGE.live.en, STATUS_BADGE.live.hi)} />
+                          ) : (
+                            <StatusTag
+                              label={pick(STATUS_BADGE[connector.status].en, STATUS_BADGE[connector.status].hi)}
+                              tone={connector.status === 'partial' ? 'strong' : 'soft'}
+                              colors={colors}
+                            />
+                          )}
+                        </View>
+                        <Muted style={styles.kindLabel}>{pick(kind.en, kind.hi)}</Muted>
+                        <Body style={styles.description}>
+                          {pick(connector.description, connector.descriptionHi)}
+                        </Body>
+                        {connector.configNote ? (
+                          <Muted style={styles.configNote}>
+                            {pick(connector.configNote, connector.configNoteHi ?? connector.configNote)}
+                          </Muted>
+                        ) : null}
+                      </View>
                     </View>
-                    <View style={styles.badgeRow}>
-                      <Badge
-                        label={pick(STATUS_BADGE[connector.status].en, STATUS_BADGE[connector.status].hi)}
-                        color={statusColor(connector.status)}
-                      />
-                      <Muted style={styles.kindLabel}>{pick(kind.en, kind.hi)}</Muted>
-                    </View>
-                    <Body>{pick(connector.description, connector.descriptionHi)}</Body>
-                    {connector.configNote ? (
-                      <Muted style={styles.configNote}>
-                        {pick(connector.configNote, connector.configNoteHi ?? connector.configNote)}
-                      </Muted>
-                    ) : null}
-                  </Card>
+                  </View>
                 );
               })}
-            </View>
+            </Card>
           </View>
         );
       })}
@@ -103,15 +134,32 @@ export default function ConnectorsScreen() {
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    content: { padding: space.md, gap: space.sm },
-    sectionLabel: { marginTop: space.md, marginBottom: space.xs, fontWeight: '800' },
-    cardList: { gap: space.sm },
-    connectorCard: { gap: space.xs },
-    headerRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    kindEmoji: { fontSize: font.xl },
-    connectorName: { fontSize: font.lg, fontWeight: '900', flexShrink: 1 },
-    badgeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    kindLabel: { fontWeight: '700' },
-    configNote: { fontStyle: 'italic' },
+    content: { padding: space.md, paddingBottom: space.xxl },
+    intro: { marginTop: space.xs, marginBottom: space.sm },
+    sectionHeader: { marginTop: space.lg, marginBottom: space.sm },
+    listCard: { padding: 0 },
+    row: {
+      minHeight: ROW_MIN_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      paddingHorizontal: space.md,
+      paddingVertical: space.md,
+    },
+    rowLead: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowBody: { flex: 1, gap: 4 },
+    rowHeaderLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+    connectorName: { fontSize: font.md, fontFamily: family.semibold, color: colors.text, flexShrink: 1 },
+    kindLabel: { fontFamily: family.medium },
+    description: { marginTop: 2 },
+    configNote: { marginTop: 2 },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 72 },
   });
 }

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -11,21 +10,20 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Feather } from '@expo/vector-icons';
 import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import SiteFooter from '../../src/components/SiteFooter';
-import { H1, H2, Muted, Stars } from '../../src/components/ui';
+import { Button, H1, H2, Muted, Stars } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchServices } from '../../src/lib/api';
-import { categoryColor, SERVICE_CATEGORIES } from '../../src/lib/categories';
+import { SERVICE_CATEGORIES } from '../../src/lib/categories';
 import { EMERGENCY_PRIMARY_NUMBER } from '../../src/lib/config';
-import { AppColors, font, radius, shadow, space } from '../../src/lib/theme';
+import { AppColors, ROW_MIN_HEIGHT, TAP, family, font, radius, space, tracking } from '../../src/lib/theme';
 import { Service, ServiceCategory } from '../../src/lib/types';
-
-const heroImage = require('../../assets/saathi-hero-care.png');
 
 const TRUST_RAILS = [
   {
@@ -108,10 +106,10 @@ export default function Home() {
   const { t } = useTranslation();
   const { lang } = useLocale();
   const { displayName } = useAuth();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
-  const styles = makeStyles(colors, isDark, isWide);
+  const styles = makeStyles(colors, isWide);
   const homeScrollRef = useRef<ScrollView>(null);
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [featured, setFeatured] = useState<Service[]>([]);
@@ -128,31 +126,11 @@ export default function Home() {
   }, [isWide]);
 
   const greeting = `${t('home.greeting')}${displayName ? `, ${displayName}` : ''}`;
-  const quickActions = [
-    {
-      mark: 'AI',
-      title: t('tabs.assistant'),
-      body: t('assistant.agentSignal'),
-      tone: colors.info,
-      soft: colors.infoSoft,
-      onPress: () => router.push('/assistant'),
-    },
-    {
-      mark: 'Q&A',
-      title: t('home.quickCommunity'),
-      body: t('home.mobileCommunityBody'),
-      tone: colors.primary,
-      soft: colors.primarySoft,
-      onPress: () => router.push('/community'),
-    },
-    {
-      mark: '112',
-      title: t('home.quickHelp'),
-      body: t('home.mobileHelpBody'),
-      tone: colors.emergency,
-      soft: colors.emergencySoft,
-      onPress: () => router.push('/help'),
-    },
+
+  const destinations: { icon: keyof typeof Feather.glyphMap; label: string; onPress: () => void }[] = [
+    { icon: 'message-square', label: t('tabs.assistant'), onPress: () => router.push('/assistant') },
+    { icon: 'users', label: t('tabs.community'), onPress: () => router.push('/community') },
+    { icon: 'shield', label: t('help.title'), onPress: () => router.push('/help') },
   ];
 
   return (
@@ -160,193 +138,151 @@ export default function Home() {
       <AppHeader />
       <ScrollView ref={homeScrollRef} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-        <AnimatedSection style={styles.heroCard}>
-          <View style={styles.heroImageWrap}>
-            <Image source={heroImage} resizeMode="cover" style={styles.heroImage} accessibilityLabel={t('home.heroPhotoAlt')} />
-            <View style={styles.locationPill}>
-              <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-              <Text style={styles.locationText}>{t('home.signalCity')}</Text>
-            </View>
-          </View>
+          <AnimatedSection style={styles.intro}>
+            <Text style={[styles.greeting, { color: colors.textMuted }]}>{greeting}</Text>
+            <H1 style={styles.title}>{t('home.mobileNeedTitle')}</H1>
+            <Muted style={styles.subtitle}>{t('home.mobileServiceBody')}</Muted>
+            <Text style={[styles.launchCity, { color: colors.textSubtle }]}>{t('home.signalCity')}</Text>
+          </AnimatedSection>
 
-          <View style={styles.heroContent}>
-            <Text style={[styles.greeting, { color: colors.primaryDark }]}>{greeting}</Text>
-            <H1 style={styles.heroTitle}>{t('home.mobileNeedTitle')}</H1>
-            <Muted style={styles.heroBody}>{t('home.subtitle')}</Muted>
-
-            <View style={styles.heroActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/services')}
-                style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}
-              >
-                <Text style={styles.primaryButtonText}>{t('home.quickServices')}</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('help.callEmergency112')}
-                onPress={() => Linking.openURL(`tel:${EMERGENCY_PRIMARY_NUMBER}`)}
-                style={({ pressed }) => [styles.emergencyButton, { borderColor: colors.emergency }, pressed && styles.pressed]}
-              >
-                <Text style={[styles.emergencyButtonText, { color: colors.emergency }]}>SOS 112</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.trustRow}>
-              {[t('home.signalVerified'), t('home.signalCaregiver')].map((signal) => (
-                <View key={signal} style={[styles.trustPill, { backgroundColor: colors.primarySoft }]}>
-                  <Text style={[styles.trustText, { color: colors.primaryDark }]}>✓ {signal}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </AnimatedSection>
-
-        <AnimatedSection delay={60} style={styles.quickActionGrid}>
-          {quickActions.map((action) => (
+          <AnimatedSection delay={40} style={styles.actions}>
+            <Button
+              label={t('home.quickServices')}
+              onPress={() => router.push('/services')}
+              icon={<Feather name="search" size={20} color={colors.primaryFg} />}
+            />
             <Pressable
-              key={action.title}
               accessibilityRole="button"
-              onPress={action.onPress}
-              style={({ pressed }) => [
-                styles.quickActionCard,
-                { backgroundColor: colors.cardStrong, borderColor: colors.border },
-                pressed && styles.pressed,
-              ]}
+              accessibilityLabel={t('help.callEmergency112')}
+              onPress={() => Linking.openURL(`tel:${EMERGENCY_PRIMARY_NUMBER}`)}
+              style={({ pressed }) => [styles.sosRow, { borderColor: colors.emergency }, pressed && styles.pressed]}
             >
-              <View style={[styles.quickActionMark, { backgroundColor: action.soft }]}>
-                <Text style={[styles.quickActionMarkText, { color: action.tone }]}>{action.mark}</Text>
-              </View>
-              <View style={styles.quickActionCopy}>
-                <Text style={[styles.quickActionTitle, { color: colors.text }]}>{action.title}</Text>
-                <Text style={[styles.quickActionBody, { color: colors.textMuted }]} numberOfLines={2}>{action.body}</Text>
-              </View>
-              <Text style={[styles.quickActionArrow, { color: action.tone }]}>›</Text>
+              <Feather name="phone-call" size={20} color={colors.emergency} />
+              <Text style={[styles.sosLabel, { color: colors.emergency }]}>{t('home.heroSecondary')}</Text>
+              <Text style={[styles.sosHint, { color: colors.emergency }]}>{t('common.call')}</Text>
             </Pressable>
-          ))}
-        </AnimatedSection>
+          </AnimatedSection>
 
-        <AnimatedSection delay={80} style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeadingCopy}>
+          <AnimatedSection delay={80} style={[styles.list, { borderColor: colors.border }]}>
+            {destinations.map((item, index) => (
+              <Pressable
+                key={item.label}
+                accessibilityRole="button"
+                onPress={item.onPress}
+                style={({ pressed }) => [
+                  styles.row,
+                  index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                  <Feather name={item.icon} size={22} color={colors.text} />
+                </View>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>{item.label}</Text>
+                <Feather name="chevron-right" size={22} color={colors.textSubtle} />
+              </Pressable>
+            ))}
+          </AnimatedSection>
+
+          <AnimatedSection delay={120} style={styles.section}>
+            <View style={styles.sectionHeader}>
               <H2>{t('home.browseCategories')}</H2>
-              <Muted>{t('home.mobileServiceBody')}</Muted>
+              <Pressable accessibilityRole="button" onPress={() => router.push('/services')} hitSlop={8}>
+                <Text style={[styles.seeAll, { color: colors.accent }]}>{t('home.seeAll')}</Text>
+              </Pressable>
             </View>
-            <Pressable accessibilityRole="button" onPress={() => router.push('/services')}>
-              <Text style={[styles.seeAll, { color: colors.primary }]}>{t('home.seeAll')}</Text>
-            </Pressable>
-          </View>
 
-          <View style={styles.categoryGrid}>
-            {SERVICE_CATEGORIES.map((category) => {
-              const tone = categoryColor(category.key);
-              return (
+            <View style={styles.categoryGrid}>
+              {SERVICE_CATEGORIES.map((category) => (
                 <Pressable
                   key={category.key}
                   accessibilityRole="button"
                   onPress={() => router.push({ pathname: '/services', params: { category: category.key } })}
                   style={({ pressed }) => [
-                    styles.categoryCard,
-                    { backgroundColor: colors.cardStrong, borderColor: colors.border },
+                    styles.categoryTile,
+                    { backgroundColor: colors.card, borderColor: colors.border },
                     pressed && styles.pressed,
                   ]}
                 >
-                  <View style={[styles.categoryIcon, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                    <ServiceGlyph category={category.key} color={tone.fg} size={26} />
+                  <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                    <ServiceGlyph category={category.key} color={colors.text} size={24} />
                   </View>
-                  <Text style={[styles.categoryLabel, { color: colors.text }]}>{t(`categories.${category.key}`)}</Text>
-                  <Text style={[styles.arrow, { color: colors.primary }]}>›</Text>
+                  <Text style={[styles.categoryLabel, { color: colors.text }]} numberOfLines={2}>
+                    {t(`categories.${category.key}`)}
+                  </Text>
                 </Pressable>
-              );
-            })}
-          </View>
-        </AnimatedSection>
-
-        {featured.length ? (
-          <AnimatedSection delay={140} style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionHeadingCopy}>
-                <Text style={[styles.eyebrow, { color: colors.success }]}>{t('common.verified')}</Text>
-                <H2>{t('home.topRated')}</H2>
-              </View>
-              <Pressable accessibilityRole="button" onPress={() => router.push('/services')}>
-                <Text style={[styles.seeAll, { color: colors.primary }]}>{t('home.seeAll')}</Text>
-              </Pressable>
+              ))}
             </View>
+          </AnimatedSection>
 
-            <View style={styles.providerGrid}>
-              {featured.map((service) => {
-                const tone = categoryColor(service.category);
-                return (
+          {featured.length ? (
+            <AnimatedSection delay={160} style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <H2>{t('home.topRated')}</H2>
+                <Pressable accessibilityRole="button" onPress={() => router.push('/services')} hitSlop={8}>
+                  <Text style={[styles.seeAll, { color: colors.accent }]}>{t('home.seeAll')}</Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.list, { borderColor: colors.border }]}>
+                {featured.map((service, index) => (
                   <Pressable
                     key={service.id}
                     accessibilityRole="button"
                     onPress={() => router.push(`/service/${service.id}`)}
                     style={({ pressed }) => [
-                      styles.providerCard,
-                      { backgroundColor: colors.cardStrong, borderColor: colors.border },
+                      styles.row,
+                      index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
                       pressed && styles.pressed,
                     ]}
                   >
-                    <View style={[styles.providerIcon, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                      <ServiceGlyph category={service.category} color={tone.fg} size={24} />
+                    <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                      <ServiceGlyph category={service.category} color={colors.text} size={22} />
                     </View>
-                    <View style={styles.providerCopy}>
-                      <Text selectable style={[styles.providerName, { color: colors.text }]} numberOfLines={2}>
+                    <View style={styles.rowCopy}>
+                      <Text selectable style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
                         {service.name}
                       </Text>
-                      <Muted numberOfLines={1} style={styles.providerMeta}>
+                      <Muted numberOfLines={1} style={styles.rowMeta}>
                         {service.town || 'Siliguri'} · {t(`categories.${service.category}`)}
                       </Muted>
                     </View>
                     <Stars rating={service.rating} />
                   </Pressable>
-                );
-              })}
+                ))}
+              </View>
+            </AnimatedSection>
+          ) : null}
+
+          <AnimatedSection delay={200} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <H2>{lang === 'hi' ? 'सरकारी और सार्वजनिक सेवाएँ' : 'Government & public services'}</H2>
+            </View>
+
+            <View style={[styles.list, { borderColor: colors.border }]}>
+              {TRUST_RAILS.map((rail, index) => (
+                <Pressable
+                  key={rail.label}
+                  accessibilityRole="link"
+                  accessibilityLabel={`${rail.label}. ${lang === 'hi' ? rail.hi : rail.en}`}
+                  onPress={() => openExternal(rail.url)}
+                  style={({ pressed }) => [
+                    styles.row,
+                    index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={styles.rowCopy}>
+                    <Text style={[styles.rowLabel, { color: colors.text }]}>{rail.label}</Text>
+                    <Muted numberOfLines={2} style={styles.rowMeta}>
+                      {lang === 'hi' ? rail.hi : rail.en}
+                    </Muted>
+                  </View>
+                  <Feather name="external-link" size={20} color={colors.textSubtle} />
+                </Pressable>
+              ))}
             </View>
           </AnimatedSection>
-        ) : null}
-
-        <AnimatedSection delay={200} style={[styles.officialSection, { backgroundColor: colors.cardStrong, borderColor: colors.border }]}>
-          <View style={styles.officialIntro}>
-            <Text style={[styles.eyebrow, { color: colors.primary }]}>
-              {lang === 'hi' ? 'सरकारी और सार्वजनिक सेवाएँ' : 'Government and public services'}
-            </Text>
-            <H2>{t('home.railsTitle')}</H2>
-            <Muted>{t('home.railsBody')}</Muted>
-          </View>
-
-          <View style={styles.railGrid}>
-            {TRUST_RAILS.map((rail, index) => (
-              <Pressable
-                key={rail.label}
-                accessibilityRole="link"
-                accessibilityLabel={`${rail.label}. ${lang === 'hi' ? rail.hi : rail.en}`}
-                onPress={() => openExternal(rail.url)}
-                style={({ pressed }) => [
-                  styles.railCard,
-                  { backgroundColor: colors.bgAlt, borderColor: colors.border },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={[styles.railNumber, { backgroundColor: colors.primarySoft }]}>
-                  <Text style={[styles.railNumberText, { color: colors.primaryDark }]}>{String(index + 1).padStart(2, '0')}</Text>
-                </View>
-                <View style={styles.railCopy}>
-                  <Text style={[styles.railLabel, { color: colors.text }]}>{rail.label}</Text>
-                  <Text style={[styles.railDescription, { color: colors.textMuted }]}>{lang === 'hi' ? rail.hi : rail.en}</Text>
-                </View>
-                <Text style={[styles.externalArrow, { color: colors.primary }]}>↗</Text>
-              </Pressable>
-            ))}
-          </View>
-        </AnimatedSection>
-
-        <View style={[styles.safetyNote, { backgroundColor: colors.primarySoft }]}>
-          <Text style={[styles.safetyTitle, { color: colors.primaryDark }]}>{t('home.trustTitle')}</Text>
-          <Text style={[styles.safetyBody, { color: colors.textMuted }]}>{t('home.trustBanner')}</Text>
-        </View>
-
         </View>
         <SiteFooter services={allServices} />
       </ScrollView>
@@ -354,152 +290,77 @@ export default function Home() {
   );
 }
 
-function makeStyles(colors: AppColors, isDark: boolean, isWide: boolean) {
+function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
     screen: { flex: 1 },
-    scrollContent: {
-      width: '100%',
-    },
+    scrollContent: { width: '100%' },
     content: {
       width: '100%',
-      maxWidth: 1920,
+      maxWidth: 760,
       alignSelf: 'center',
       paddingHorizontal: isWide ? space.lg : space.md,
-      paddingTop: isWide ? space.lg : space.md,
-      paddingBottom: isWide ? 56 : space.xl,
-      gap: isWide ? space.xl : space.xl,
+      paddingTop: space.lg,
+      paddingBottom: space.xl,
+      gap: space.xl,
     },
-    heroCard: {
-      flexDirection: isWide ? 'row' : 'column',
-      overflow: 'hidden',
-      borderRadius: radius.xl,
-      backgroundColor: colors.cardStrong,
-      borderWidth: 1,
-      borderColor: colors.border,
-      ...shadow.md,
-    },
-    heroImageWrap: { flex: isWide ? 0.78 : undefined, minHeight: isWide ? 440 : 245, backgroundColor: colors.primarySoft },
-    heroImage: { width: '100%', height: '100%', minHeight: isWide ? 440 : 245 },
-    locationPill: {
-      position: 'absolute',
-      left: space.md,
-      bottom: space.md,
-      minHeight: 42,
+    intro: { gap: space.xs },
+    greeting: { fontFamily: family.medium, fontSize: font.sm, lineHeight: font.sm * 1.4 },
+    title: { fontFamily: family.medium, fontSize: isWide ? font.xxl : 34, lineHeight: isWide ? font.xxl * 1.13 : 41 },
+    subtitle: { fontFamily: family.medium, fontSize: font.md, lineHeight: font.md * 1.4 },
+    launchCity: { marginTop: space.xs, fontFamily: family.medium, fontSize: font.sm, lineHeight: font.sm * 1.4 },
+    actions: { gap: space.sm },
+    sosRow: {
+      minHeight: TAP,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      borderRadius: radius.pill,
-      paddingHorizontal: space.md,
-      backgroundColor: 'rgba(255,255,255,0.94)',
-      ...shadow.sm,
-    },
-    statusDot: { width: 9, height: 9, borderRadius: 9 },
-    locationText: { color: '#24312E', fontSize: font.xs, fontWeight: '700' },
-    heroContent: { flex: 1.22, justifyContent: 'center', padding: isWide ? 52 : space.lg, gap: space.md },
-    greeting: { fontSize: font.sm, fontWeight: '800' },
-    heroTitle: { maxWidth: 700, fontSize: isWide ? 46 : 34, lineHeight: isWide ? 53 : 41 },
-    heroBody: { maxWidth: 680, fontSize: font.md, lineHeight: 26 },
-    heroActions: { flexDirection: isWide ? 'row' : 'column', gap: space.sm },
-    primaryButton: {
-      minHeight: 58,
-      flex: isWide ? 1 : undefined,
+      gap: space.sm,
+      borderWidth: 1,
       borderRadius: radius.lg,
       paddingHorizontal: space.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
-    primaryButtonText: { color: '#FFFFFF', fontSize: font.md, fontWeight: '800' },
-    emergencyButton: {
-      minHeight: 58,
-      flex: isWide ? 0.72 : undefined,
+    sosLabel: { flex: 1, fontFamily: family.bold, fontSize: font.md, letterSpacing: tracking.md },
+    sosHint: { fontFamily: family.semibold, fontSize: font.sm },
+    list: {
+      borderWidth: 1,
       borderRadius: radius.lg,
-      borderWidth: 2,
-      paddingHorizontal: space.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: isDark ? colors.emergencySoft : '#FFFFFF',
+      overflow: 'hidden',
     },
-    emergencyButtonText: { fontSize: font.md, fontWeight: '800' },
-    trustRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    trustPill: { minHeight: 34, borderRadius: radius.pill, paddingHorizontal: space.sm, alignItems: 'center', justifyContent: 'center' },
-    trustText: { fontSize: font.xs, fontWeight: '700' },
-    quickActionGrid: { flexDirection: isWide ? 'row' : 'column', gap: space.sm },
-    quickActionCard: {
-      flex: isWide ? 1 : undefined,
-      minHeight: isWide ? 104 : 92,
+    row: {
+      minHeight: ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.md,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      padding: space.md,
-      ...shadow.sm,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
     },
-    quickActionMark: { width: 54, height: 54, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-    quickActionMarkText: { fontSize: font.sm, fontWeight: '800' },
-    quickActionCopy: { flex: 1, minWidth: 0, gap: 3 },
-    quickActionTitle: { fontSize: font.md, lineHeight: 23, fontWeight: '800' },
-    quickActionBody: { fontSize: font.xs, lineHeight: 19 },
-    quickActionArrow: { fontSize: 28, lineHeight: 30, fontWeight: '500' },
+    rowIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowCopy: { flex: 1, minWidth: 0, gap: 2 },
+    rowLabel: { flex: 1, fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.3 },
+    rowMeta: { flex: 0, fontFamily: family.regular, fontSize: font.sm },
     section: { gap: space.md },
-    sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.md },
-    sectionHeadingCopy: { flex: 1, gap: 5 },
-    eyebrow: { fontSize: font.xs, lineHeight: 18, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    seeAll: { minHeight: 40, paddingTop: 8, fontSize: font.sm, fontWeight: '800' },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
+    seeAll: { minHeight: 40, paddingTop: 8, fontFamily: family.semibold, fontSize: font.sm },
     categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-    categoryCard: {
+    categoryTile: {
       flexGrow: 1,
-      flexBasis: isWide ? '13%' : '47%',
-      minHeight: isWide ? 112 : 126,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      padding: space.md,
-      gap: space.sm,
-      ...shadow.sm,
-    },
-    categoryIcon: { width: 52, height: 52, borderRadius: radius.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-    categoryLabel: { flex: 1, paddingRight: space.lg, fontSize: font.sm, lineHeight: 21, fontWeight: '800' },
-    arrow: { position: 'absolute', right: space.md, bottom: space.sm, fontSize: 26, lineHeight: 28, fontWeight: '500' },
-    providerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-    providerCard: {
-      flexGrow: 1,
-      flexBasis: isWide ? '31%' : '100%',
-      minHeight: 96,
+      flexBasis: isWide ? '30%' : '47%',
+      minHeight: ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.sm,
-      borderRadius: radius.lg,
       borderWidth: 1,
-      padding: space.md,
-      ...shadow.sm,
-    },
-    providerIcon: { width: 52, height: 52, borderRadius: radius.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-    providerCopy: { flex: 1, minWidth: 0, gap: 3 },
-    providerName: { fontSize: font.sm, lineHeight: 21, fontWeight: '800' },
-    providerMeta: { fontSize: font.xs, lineHeight: 18 },
-    officialSection: { borderRadius: radius.xl, borderWidth: 1, padding: isWide ? space.xl : space.lg, gap: space.lg, ...shadow.sm },
-    officialIntro: { maxWidth: 720, gap: 7 },
-    railGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-    railCard: {
-      flexGrow: 1,
-      flexBasis: isWide ? '31%' : '100%',
-      minHeight: 100,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.sm,
       borderRadius: radius.lg,
-      borderWidth: 1,
-      padding: space.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
     },
-    railNumber: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-    railNumberText: { fontSize: font.xs, fontWeight: '800', fontVariant: ['tabular-nums'] },
-    railCopy: { flex: 1, minWidth: 0, gap: 3 },
-    railLabel: { fontSize: font.sm, lineHeight: 21, fontWeight: '800' },
-    railDescription: { fontSize: font.xs, lineHeight: 19 },
-    externalArrow: { fontSize: 20, lineHeight: 22, fontWeight: '700' },
-    safetyNote: { borderRadius: radius.lg, padding: space.lg, gap: 6 },
-    safetyTitle: { fontSize: font.sm, lineHeight: 22, fontWeight: '800' },
-    safetyBody: { fontSize: font.sm, lineHeight: 23 },
+    categoryLabel: { flex: 1, fontFamily: family.semibold, fontSize: font.sm, lineHeight: font.sm * 1.35 },
     pressed: { opacity: 0.72 },
   });
 }

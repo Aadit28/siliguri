@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ServiceCategory } from '../lib/types';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = {
   category: ServiceCategory;
@@ -8,8 +9,9 @@ type Props = {
   size?: number;
 };
 
-export default function ServiceGlyph({ category, color = '#111111', size = 22 }: Props) {
-  const styles = makeStyles(size, color);
+export default function ServiceGlyph({ category, color, size = 22 }: Props) {
+  const { colors } = useTheme();
+  const styles = makeStyles(size, color ?? colors.text);
 
   if (category === 'elder_home') {
     return (

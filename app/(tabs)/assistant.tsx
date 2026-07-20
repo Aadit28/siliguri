@@ -12,16 +12,18 @@ import {
   View,
 } from 'react-native';
 import * as Linking from 'expo-linking';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
+import { Chip, Muted } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan } from '../../src/lib/assistant';
 import { fetchServices } from '../../src/lib/api';
 import { categoryColor } from '../../src/lib/categories';
-import { font, radius, space, shadow, TAP } from '../../src/lib/theme';
+import { family, font, radius, space, shadow, TAP } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
 import { openWhatsAppCall } from '../../src/lib/whatsapp';
 
@@ -59,7 +61,7 @@ export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
   const { session } = useAuth();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const initialChatState = getInitialChatState(t);
   const [services, setServices] = useState<Service[]>([]);
@@ -298,7 +300,7 @@ export default function AssistantScreen() {
               activeOpacity={0.82}
               style={[styles.newChatButton, { backgroundColor: colors.primary, opacity: loading ? 0.72 : 1 }]}
             >
-              <Text style={[styles.newChatButtonText, { color: isDark ? colors.textOnDark : '#fff' }]}>
+              <Text style={[styles.newChatButtonText, { color: colors.primaryFg }]}>
                 {t('assistant.newChat')}
               </Text>
             </TouchableOpacity>
@@ -347,16 +349,10 @@ export default function AssistantScreen() {
         </View>
 
         <View style={styles.chatShell}>
-          <View style={[styles.botHeader, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
-            <View style={[styles.botAvatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.botAvatarText, { color: isDark ? colors.textOnDark : '#fff' }]}>AI</Text>
-            </View>
-            <View style={styles.botHeaderCopy}>
-              <Text style={[styles.botTitle, { color: colors.text }]}>{t('assistant.botTitle')}</Text>
-              <Text style={[styles.botStatus, { color: colors.success }]}>
-                {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
-              </Text>
-            </View>
+          <View style={styles.statusRow}>
+            <Muted style={styles.statusText}>
+              {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
+            </Muted>
             {!showSideHistory ? (
               <TouchableOpacity
                 onPress={startNewChat}
@@ -364,17 +360,11 @@ export default function AssistantScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('assistant.newChat')}
                 activeOpacity={0.82}
-                style={[styles.mobileNewChat, { backgroundColor: colors.primarySoft, opacity: loading ? 0.6 : 1 }]}
+                style={[styles.mobileNewChat, { borderColor: colors.border, opacity: loading ? 0.5 : 1 }]}
               >
-                <Text style={[styles.mobileNewChatText, { color: colors.primaryDark }]}>{t('assistant.newChat')}</Text>
+                <Text style={[styles.mobileNewChatText, { color: colors.text }]}>{t('assistant.newChat')}</Text>
               </TouchableOpacity>
             ) : null}
-          </View>
-
-          <View style={[styles.safetyPanel, { backgroundColor: colors.warningBg, borderColor: colors.border }]}>
-            <Text style={[styles.safetyText, { color: colors.warningText }]}>
-              {t('assistant.safetyDisclaimer')}
-            </Text>
           </View>
 
           <ScrollView
@@ -416,26 +406,14 @@ export default function AssistantScreen() {
               keyboardShouldPersistTaps="handled"
             >
               {EXAMPLE_KEYS.map((key) => (
-                <TouchableOpacity
+                <Chip
                   key={key}
-                  onPress={() => submit(t(`assistant.examples.${key}`))}
-                  accessibilityRole="button"
-                  accessibilityLabel={t(`assistant.exampleLabels.${key}`)}
-                  disabled={loading || servicesLoading}
-                  activeOpacity={0.82}
-                  style={[
-                    styles.quickChip,
-                    {
-                      backgroundColor: colors.primaryTint,
-                      borderColor: colors.border,
-                      opacity: loading || servicesLoading ? 0.55 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.quickChipText, { color: colors.primaryDark }]}>
-                    {t(`assistant.exampleLabels.${key}`)}
-                  </Text>
-                </TouchableOpacity>
+                  label={t(`assistant.exampleLabels.${key}`)}
+                  onPress={() => {
+                    if (loading || servicesLoading) return;
+                    submit(t(`assistant.examples.${key}`));
+                  }}
+                />
               ))}
             </ScrollView>
 
@@ -450,15 +428,12 @@ export default function AssistantScreen() {
                   style={[
                     styles.photoButton,
                     {
-                      backgroundColor: colors.primaryTint,
                       borderColor: colors.border,
-                      opacity: loading || servicesLoading ? 0.55 : 1,
+                      opacity: loading || servicesLoading ? 0.4 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.photoButtonText, { color: colors.primaryDark }]}>
-                    {t('assistant.attachImage')}
-                  </Text>
+                  <Feather name="image" size={22} color={colors.text} />
                 </TouchableOpacity>
               ) : null}
               <TextInput
@@ -490,16 +465,18 @@ export default function AssistantScreen() {
                 style={[
                   styles.sendButton,
                   {
-                    backgroundColor: canSend ? colors.primary : colors.primaryTint,
-                    opacity: canSend ? 1 : 0.65,
+                    backgroundColor: colors.primary,
+                    opacity: canSend ? 1 : 0.4,
                   },
                 ]}
               >
-                <Text style={[styles.sendButtonText, { color: isDark ? colors.textOnDark : '#fff' }]}>
+                <Text style={[styles.sendButtonText, { color: colors.primaryFg }]}>
                   {t('assistant.chatSend')}
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <Muted style={styles.disclaimer}>{t('assistant.safetyDisclaimer')}</Muted>
 
             {attachments.length ? (
               <ScrollView
@@ -539,7 +516,7 @@ function MessageBubble({
   onAction: (action: AssistantAction, plan?: AssistantPlan) => void;
 }) {
   const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const isUser = message.role === 'user';
   const suggested = message.plan?.suggestedServices[0];
   const suggestedTone = suggested ? categoryColor(suggested.category) : null;
@@ -552,8 +529,8 @@ function MessageBubble({
           styles.message,
           isUser ? styles.userMessage : styles.botMessage,
           {
-            backgroundColor: isUser ? colors.primary : colors.cardSolid,
-            borderColor: isUser ? colors.primary : colors.border,
+            backgroundColor: isUser ? colors.chipBg : colors.cardSolid,
+            borderColor: colors.border,
           },
         ]}
       >
@@ -563,22 +540,13 @@ function MessageBubble({
               <Image
                 key={attachment.id}
                 source={{ uri: attachment.uri }}
-                style={[
-                  styles.messageImage,
-                  { borderColor: isUser ? 'rgba(255,255,255,0.45)' : colors.border },
-                ]}
+                style={[styles.messageImage, { borderColor: colors.border }]}
               />
             ))}
           </View>
         ) : null}
 
-        <Text
-          selectable
-          style={[
-            styles.messageText,
-            { color: isUser ? (isDark ? colors.textOnDark : '#fff') : colors.text },
-          ]}
-        >
+        <Text selectable style={[styles.messageText, { color: colors.text }]}>
           {message.text}
         </Text>
 
@@ -634,10 +602,10 @@ function MessageBubble({
 }
 
 function SmallAvatar() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <View style={[styles.smallAvatar, { backgroundColor: colors.primary }]}>
-      <Text style={[styles.smallAvatarText, { color: isDark ? colors.textOnDark : '#fff' }]}>AI</Text>
+      <Text style={[styles.smallAvatarText, { color: colors.primaryFg }]}>AI</Text>
     </View>
   );
 }
@@ -892,7 +860,7 @@ const styles = StyleSheet.create({
   },
   historyTitle: {
     fontSize: font.md,
-    fontWeight: '900',
+    fontFamily: family.bold,
   },
   newChatButton: {
     minHeight: TAP,
@@ -903,7 +871,7 @@ const styles = StyleSheet.create({
   },
   newChatButtonText: {
     fontSize: font.sm,
-    fontWeight: '900',
+    fontFamily: family.semibold,
   },
   historyList: { flex: 1 },
   historyListContent: {
@@ -927,9 +895,10 @@ const styles = StyleSheet.create({
   },
   historyItemTitle: {
     fontSize: font.sm,
-    fontWeight: '900',
+    fontFamily: family.semibold,
   },
   historyPreview: {
+    fontFamily: family.regular,
     fontSize: font.xs,
     lineHeight: font.xs * 1.25,
   },
@@ -939,46 +908,24 @@ const styles = StyleSheet.create({
     gap: space.sm,
     minWidth: 0,
   },
-  botHeader: {
-    minHeight: 74,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: space.md,
+  statusRow: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: space.sm,
-    ...shadow.sm,
+    paddingHorizontal: 2,
   },
-  botAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  botAvatarText: { fontSize: font.md, fontWeight: '900' },
-  botHeaderCopy: { flex: 1, minWidth: 0 },
-  botTitle: { fontSize: font.lg, fontWeight: '800' },
-  botStatus: { fontSize: font.sm, fontWeight: '700', marginTop: 2 },
+  statusText: { fontFamily: family.regular, fontSize: font.sm },
   mobileNewChat: {
     minHeight: 44,
-    borderRadius: radius.pill,
+    borderRadius: radius.lg,
+    borderWidth: 1,
     paddingHorizontal: space.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mobileNewChatText: { fontSize: font.xs, fontWeight: '800' },
-  safetyPanel: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-  },
-  safetyText: {
-    fontSize: font.xs,
-    lineHeight: font.xs * 1.35,
-    fontWeight: '800',
-  },
+  mobileNewChatText: { fontSize: font.sm, fontFamily: family.semibold },
   thread: { flex: 1 },
   threadContent: {
     paddingVertical: space.md,
@@ -1000,7 +947,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  smallAvatarText: { fontSize: font.xs, fontWeight: '900' },
+  smallAvatarText: { fontSize: font.xs, fontFamily: family.bold },
   message: {
     maxWidth: '82%',
     borderWidth: 1,
@@ -1009,18 +956,19 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   botMessage: {
-    borderTopLeftRadius: radius.sm,
+    borderTopLeftRadius: radius.md,
     borderTopRightRadius: radius.lg,
     borderBottomLeftRadius: radius.lg,
     borderBottomRightRadius: radius.lg,
   },
   userMessage: {
     borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.sm,
+    borderTopRightRadius: radius.md,
     borderBottomLeftRadius: radius.lg,
     borderBottomRightRadius: radius.lg,
   },
   messageText: {
+    fontFamily: family.regular,
     fontSize: font.md,
     lineHeight: font.md * 1.35,
   },
@@ -1033,7 +981,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.sm,
   },
-  typingText: { fontSize: font.sm, fontWeight: '700' },
+  typingText: { fontSize: font.sm, fontFamily: family.semibold },
   simplePlan: {
     marginTop: space.sm,
     paddingTop: space.sm,
@@ -1054,9 +1002,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   serviceTextWrap: { flex: 1, minWidth: 0 },
-  serviceName: { fontSize: font.sm, fontWeight: '900' },
-  serviceMeta: { fontSize: font.xs, lineHeight: font.xs * 1.25 },
+  serviceName: { fontSize: font.sm, fontFamily: family.bold },
+  serviceMeta: { fontFamily: family.regular, fontSize: font.xs, lineHeight: font.xs * 1.25 },
   planHint: {
+    fontFamily: family.regular,
     fontSize: font.xs,
     lineHeight: font.xs * 1.3,
   },
@@ -1073,7 +1022,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.sm,
     maxWidth: '100%',
   },
-  actionText: { fontSize: font.xs, fontWeight: '900' },
+  actionText: { fontSize: font.xs, fontFamily: family.semibold },
   composer: {
     borderWidth: 1,
     borderRadius: radius.lg,
@@ -1087,31 +1036,28 @@ const styles = StyleSheet.create({
   },
   examplesHint: {
     fontSize: font.xs,
-    fontWeight: '800',
+    fontFamily: family.semibold,
     paddingHorizontal: 2,
   },
-  quickChip: {
-    minHeight: 38,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-  },
-  quickChipText: { fontSize: font.sm, fontWeight: '800' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: space.sm,
   },
   photoButton: {
-    minHeight: TAP,
+    width: TAP,
+    height: TAP,
     borderRadius: radius.lg,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
   },
-  photoButtonText: { fontSize: font.sm, fontWeight: '900' },
+  disclaimer: {
+    fontFamily: family.regular,
+    fontSize: font.xs,
+    lineHeight: font.xs * 1.4,
+    paddingHorizontal: 2,
+  },
   input: {
     flex: 1,
     minHeight: TAP,
@@ -1120,6 +1066,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
+    fontFamily: family.regular,
     fontSize: font.md,
     lineHeight: font.md * 1.3,
     textAlignVertical: 'top',
@@ -1132,7 +1079,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: space.sm,
   },
-  sendButtonText: { fontSize: font.sm, fontWeight: '900' },
+  sendButtonText: { fontSize: font.sm, fontFamily: family.bold },
   attachmentList: {
     gap: space.sm,
     paddingRight: space.md,
@@ -1160,7 +1107,7 @@ const styles = StyleSheet.create({
   },
   removeAttachmentText: {
     fontSize: font.sm,
-    fontWeight: '900',
+    fontFamily: family.bold,
     lineHeight: font.sm,
   },
   messageAttachments: {
