@@ -29,6 +29,20 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Best-effort dedupe: one request per phone per 10 minutes
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: recent, error: recentError } = await adminClient()
+      .from('callback_requests')
+      .select('id')
+      .eq('phone', phone)
+      .gte('created_at', cutoff)
+      .limit(1);
+    if (!recentError && recent && recent.length > 0) {
+      return send(res, 429, {
+        error: 'We already have your request. Our team will call you back soon.',
+      });
+    }
+
     const { error } = await supabase.from('callback_requests').insert({
       name,
       phone,
@@ -42,6 +56,7 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { ok: true });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not save callback request.' });
+    console.error('callback/request error:', error);
+    return send(res, 500, { error: 'Could not save callback request. Please try again.' });
   }
 };
