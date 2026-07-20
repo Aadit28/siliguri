@@ -35,7 +35,7 @@ alter table public.services add column if not exists upi_id text;
 
 alter table public.services drop constraint if exists services_category_check;
 alter table public.services add constraint services_category_check
-  check (category in ('doctor','hospital','medical_shop','travel_agent','elder_home','daily_service'));
+  check (category in ('doctor','hospital','medical_shop','travel_agent','elder_home','home_service','daily_service'));
 
 -- 4. ANNOUNCEMENTS
 create table if not exists public.announcements (
