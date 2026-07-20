@@ -32,12 +32,12 @@ module.exports = async function handler(req, res) {
     let { data: user, error } = await (phone
       ? supabase
           .from('user_accounts')
-          .select('id,username,full_name,phone_number,password_hash,password_salt,created_at')
+          .select('id,username,full_name,phone_number,password_hash,password_salt,role,city_id,created_at')
           .eq('phone_number', phone)
           .maybeSingle()
       : supabase
           .from('user_accounts')
-          .select('id,username,full_name,password_hash,password_salt,created_at')
+          .select('id,username,full_name,password_hash,password_salt,role,city_id,created_at')
           .eq('username', username)
           .maybeSingle());
 
@@ -49,7 +49,7 @@ module.exports = async function handler(req, res) {
         }
         const fallback = await supabase
           .from('user_accounts')
-          .select('id,username,full_name,password_hash,password_salt,created_at')
+          .select('id,username,full_name,password_hash,password_salt,role,city_id,created_at')
           .eq('id', userId)
           .maybeSingle();
         user = fallback.data ? { ...fallback.data, phone_number: phone } : null;
