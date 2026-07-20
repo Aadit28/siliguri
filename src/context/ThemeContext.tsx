@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { AppColors, paletteForMode, ThemeMode } from '../lib/theme';
 
@@ -18,15 +18,16 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const systemMode = useColorScheme();
   const [mode, setMode] = useState<ThemeMode>(systemMode === 'dark' ? 'dark' : 'light');
+  const userPicked = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
-      if (!mounted) return;
+      if (!mounted || userPicked.current) return;
       if (stored === 'light' || stored === 'dark') {
         setMode(stored);
-      } else if (systemMode === 'dark') {
-        setMode('dark');
+      } else {
+        setMode(systemMode === 'dark' ? 'dark' : 'light');
       }
     });
     return () => {
@@ -35,6 +36,7 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   }, [systemMode]);
 
   function setThemeMode(nextMode: ThemeMode) {
+    userPicked.current = true;
     setMode(nextMode);
     AsyncStorage.setItem(STORAGE_KEY, nextMode).catch(() => undefined);
   }
