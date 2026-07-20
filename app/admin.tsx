@@ -140,6 +140,7 @@ export default function AdminScreen() {
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(false);
+  const [announcementsError, setAnnouncementsError] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Announcement | null>(null);
 
   // Service form state.
@@ -170,6 +171,7 @@ export default function AdminScreen() {
       return;
     }
     setLoadingAnnouncements(true);
+    setAnnouncementsError(false);
     const { data, error } = await supabase
       .from('announcements')
       .select('*')
@@ -177,7 +179,11 @@ export default function AdminScreen() {
       .order('created_at', { ascending: false })
       .limit(20);
     setLoadingAnnouncements(false);
-    if (!error && data) setAnnouncements(data as Announcement[]);
+    if (error) {
+      setAnnouncementsError(true);
+      return;
+    }
+    if (data) setAnnouncements(data as Announcement[]);
   }
 
   async function loadHelpers() {
@@ -419,6 +425,18 @@ export default function AdminScreen() {
           <View style={styles.stateBlock}>
             <ActivityIndicator color={colors.textMuted} />
             <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+          </View>
+        ) : announcementsError ? (
+          <View style={styles.stateBlock}>
+            <Feather name="alert-circle" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
+            <Pressable
+              accessibilityRole="button"
+              onPress={loadAnnouncements}
+              style={({ pressed }) => [pressed ? { opacity: 0.6 } : null]}
+            >
+              <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </Pressable>
           </View>
         ) : !supabaseConfigured || announcements.length === 0 ? (
           <View style={styles.stateBlock}>
@@ -691,6 +709,12 @@ function makeStyles(colors: AppColors) {
     },
     stateText: {
       textAlign: 'center',
+    },
+    retryText: {
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      color: colors.text,
+      textDecorationLine: 'underline',
     },
     listRow: {
       minHeight: ROW_MIN_HEIGHT,
