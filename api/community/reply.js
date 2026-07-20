@@ -14,6 +14,23 @@ module.exports = async function handler(req, res) {
     const replyBody = String(body.body || '').trim();
     if (!postId || !replyBody) return send(res, 400, { error: 'Write a reply first.' });
 
+    let { data: post, error: postError } = await auth.supabase
+      .from('community_posts')
+      .select('id, status')
+      .eq('id', postId)
+      .maybeSingle();
+    if (postError && /status/i.test(postError.message || '')) {
+      ({ data: post, error: postError } = await auth.supabase
+        .from('community_posts')
+        .select('id')
+        .eq('id', postId)
+        .maybeSingle());
+    }
+    if (postError) throw postError;
+    if (!post || (post.status && post.status !== 'approved')) {
+      return send(res, 404, { error: 'This post is not open for replies.' });
+    }
+
     const { error } = await auth.supabase.from('community_replies').insert({
       post_id: postId,
       body: replyBody,
@@ -23,6 +40,7 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { ok: true });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not send reply.' });
+    console.error('community/reply error:', error);
+    return send(res, 500, { error: 'Could not send reply. Please try again.' });
   }
 };
