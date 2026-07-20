@@ -17,7 +17,10 @@ export async function fetchServices(): Promise<Service[]> {
       .order('verified', { ascending: false })
       .order('rating', { ascending: false });
     if (error) throw error;
-    if (!data || data.length === 0) return localCatalogServices();
+    if (!data || data.length === 0) {
+      usingMockFlag.value = true;
+      return localCatalogServices();
+    }
     usingMockFlag.value = false;
     return mergeServiceCatalog(data as Service[]);
   } catch (e) {
@@ -124,7 +127,7 @@ export async function createPost(input: {
     await backendRequest('/api/community/post', {
       method: 'POST',
       token: input.token,
-      body: { ...input, status: 'pending' },
+      body: { title: input.title, body: input.body, category: input.category, status: 'pending' },
     });
     return { ok: true };
   } catch (error) {
@@ -158,7 +161,11 @@ export async function createReply(input: {
 }): Promise<{ ok: boolean; error?: string }> {
   if (!supabaseConfigured) return { ok: false, error: 'Backend not configured' };
   try {
-    await backendRequest('/api/community/reply', { method: 'POST', token: input.token, body: input });
+    await backendRequest('/api/community/reply', {
+      method: 'POST',
+      token: input.token,
+      body: { postId: input.postId, body: input.body },
+    });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: (error as Error).message };
@@ -191,11 +198,10 @@ export async function fetchFavoriteIds(userId: string): Promise<Set<string>> {
 
 export async function toggleFavorite(serviceId: string, userId: string, isFav: boolean) {
   if (!supabaseConfigured) return;
-  if (isFav) {
-    await supabase.from('favorites').delete().match({ service_id: serviceId, user_id: userId });
-  } else {
-    await supabase.from('favorites').insert({ service_id: serviceId, user_id: userId });
-  }
+  const { error } = isFav
+    ? await supabase.from('favorites').delete().match({ service_id: serviceId, user_id: userId })
+    : await supabase.from('favorites').insert({ service_id: serviceId, user_id: userId });
+  if (error) throw error;
 }
 
 function countBy<T extends Record<string, any>>(rows: T[], key: keyof T): Record<string, number> {
