@@ -67,6 +67,23 @@ const ROUTE_TIME_WORDS = [
   'time',
 ];
 
+const CALENDAR_SCREEN_WORDS = ['calendar', 'appointment', 'schedule', 'reminder', 'कैलेंडर', 'अपॉइंटमेंट', 'रिमाइंडर'];
+
+const CONNECTOR_SCREEN_WORDS = [
+  'what can you connect',
+  'which apps work with',
+  'what connects',
+  'connector',
+  'connections',
+  'integration',
+  'jud sakta',
+  'jud sakti',
+  'jod sakta',
+  'जुड़ सकता',
+  'जुड़ सकते',
+  'जोड़ सकते',
+];
+
 const COPY = {
   en: {
     urgentSummary: 'This may be urgent. Please call emergency help or the nearest hospital now.',
@@ -83,6 +100,17 @@ const COPY = {
     source: 'View source',
     family: 'Prepare family update',
     details: 'Add missing details',
+    openScreen: (screen) =>
+      ({
+        calendar: 'Open my calendar',
+        services: 'Open services',
+        community: 'Open community',
+        help: 'Open help',
+        connectors: 'See what Saathi can connect',
+      })[screen] || 'Open in Saathi',
+    greeting: (name) => `Namaste ${name} ji.`,
+    calendarReminder: (title, day, time) =>
+      `Reminder: ${title} is ${day === 'today' ? 'today' : 'tomorrow'}${time ? ` at ${time}` : ''}.`,
     routeSummary: (origin, destination, estimate) =>
       `By car, ${origin} to ${destination} is roughly ${estimate} in average Siliguri traffic. Traffic can change, so open live directions before leaving.`,
     routeSafety: 'Traffic estimates can change with peak hours, road work and rain. Use live directions before leaving.',
@@ -107,10 +135,44 @@ const COPY = {
     source: 'स्रोत देखें',
     family: 'परिवार अपडेट तैयार करें',
     details: 'बाकी जानकारी जोड़ें',
+    openScreen: (screen) =>
+      ({
+        calendar: 'मेरा कैलेंडर खोलें',
+        services: 'सेवाएं खोलें',
+        community: 'कम्युनिटी खोलें',
+        help: 'मदद खोलें',
+        connectors: 'देखें साथी किनसे जुड़ सकता है',
+      })[screen] || 'साथी में खोलें',
+    greeting: (name) => `नमस्ते ${name} जी।`,
+    calendarReminder: (title, day, time) =>
+      `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
     safety:
       'साथी समन्वय में मदद करता है; यह डॉक्टर या मेडिकल डिवाइस नहीं है। यह निदान, इलाज या दवा की सलाह नहीं देता। लक्षण या आपात चिंता हो तो डॉक्टर, अस्पताल या आपातकालीन सेवा को कॉल करें।',
   },
 };
+
+// Best-effort per-IP limiter. In-memory, so each serverless instance counts separately —
+// this is a burst brake against key abuse, not a hard global quota.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 20;
+const rateLimitHits = new Map();
+
+function allowRequest(ip) {
+  const now = Date.now();
+  const hits = (rateLimitHits.get(ip) || []).filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+  if (hits.length >= RATE_LIMIT_MAX) {
+    rateLimitHits.set(ip, hits);
+    return false;
+  }
+  hits.push(now);
+  rateLimitHits.set(ip, hits);
+  if (rateLimitHits.size > 1000) {
+    for (const [key, timestamps] of rateLimitHits) {
+      if (!timestamps.some((ts) => now - ts < RATE_LIMIT_WINDOW_MS)) rateLimitHits.delete(key);
+    }
+  }
+  return true;
+}
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -118,18 +180,32 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
 
   try {
+    const ip =
+      String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+    if (!allowRequest(ip)) {
+      return send(res, 429, { error: 'Too many requests. Please wait a minute and try again.' });
+    }
+
+    const hasToken = Boolean(String(req.headers.authorization || req.headers.Authorization || '').trim());
+    if (hasToken) {
+      const auth = await authenticate(req);
+      if (auth.error) return send(res, 401, { error: 'Session expired. Please sign in again.' });
+    }
+
     const body = await readBody(req);
-    const message = String(body.message || '').trim();
+    const message = String(body.message || '').trim().slice(0, 2000);
     const lang = body.lang === 'hi' ? 'hi' : 'en';
     const services = sanitizeServices(Array.isArray(body.services) ? body.services : []);
     const imageAttachments = sanitizeImageAttachments(body.imageAttachments);
+    const context = sanitizeContext(body.context);
 
     if (!message && !imageAttachments.length) {
       return send(res, 400, { error: 'Tell Saathi what you need.' });
     }
 
     const effectiveMessage = message || imageOnlyFallbackText(lang);
-    const route = imageAttachments.length ? null : extractRouteTimeRequest(effectiveMessage, services);
+    const urgent = URGENT_WORDS.some((word) => effectiveMessage.toLowerCase().includes(word));
+    const route = urgent || imageAttachments.length ? null : extractRouteTimeRequest(effectiveMessage, services);
     if (route) {
       const plan = buildRouteTimePlan(route);
       await logAssistantEvent(req, { message: effectiveMessage, services, imageCount: imageAttachments.length, plan });
@@ -142,6 +218,8 @@ module.exports = async function handler(req, res) {
         lang,
         services,
         imageAttachments,
+        context,
+        urgent,
       }).catch(() => null);
       if (aiPlan) {
         await logAssistantEvent(req, { message, services, imageCount: imageAttachments.length, plan: aiPlan });
@@ -149,7 +227,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const plan = buildLocalAssistantPlan(effectiveMessage, services, lang);
+    const plan = buildLocalAssistantPlan(effectiveMessage, services, lang, context);
     await logAssistantEvent(req, { message: effectiveMessage, services, imageCount: imageAttachments.length, plan });
     return send(res, 200, plan);
   } catch (error) {
@@ -157,7 +235,7 @@ module.exports = async function handler(req, res) {
   }
 };
 
-async function planWithOpenAI({ message, lang, services, imageAttachments }) {
+async function planWithOpenAI({ message, lang, services, imageAttachments, context, urgent }) {
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   const userContent = [
     {
@@ -165,6 +243,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
       text: JSON.stringify({
         message,
         language: lang,
+        context: context || undefined,
         imageCount: imageAttachments.length,
         services: services.map((service) => ({
           id: service.id,
@@ -203,7 +282,10 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
         {
           role: 'developer',
           content:
-            'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. Return compact JSON only.',
+            'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. Return compact JSON only.' +
+            (urgent
+              ? ' URGENT: the message contains emergency symptoms. Set status to "urgent" and tell the user to call emergency help or the nearest hospital first, before answering anything else (including route or traffic questions).'
+              : ''),
         },
         {
           role: 'user',
@@ -270,7 +352,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments }) {
   if (!text) return null;
 
   const parsed = JSON.parse(text);
-  return normalizeOpenAIPlan(parsed, services, lang);
+  return normalizeOpenAIPlan(parsed, services, lang, { message, context, urgent });
 }
 
 async function logAssistantEvent(req, { message, services, imageCount, plan }) {
@@ -311,8 +393,10 @@ function extractOutputText(data) {
   return chunks.join('\n').trim();
 }
 
-function normalizeOpenAIPlan(plan, services, lang) {
-  const local = buildLocalAssistantPlan(plan.summary || '', services, lang);
+function normalizeOpenAIPlan(plan, services, lang, { message, context, urgent } = {}) {
+  // Fallback intent/status must come from the USER message, never from LLM output,
+  // otherwise a prompt-injected summary could steer the keyword fallback.
+  const local = buildLocalAssistantPlan(message || '', services, lang, context || null);
   const byId = new Map(services.map((service) => [service.id, service]));
   const suggestedServices = (Array.isArray(plan.suggestedServiceIds) ? plan.suggestedServiceIds : [])
     .map((id) => byId.get(String(id)))
@@ -323,7 +407,7 @@ function normalizeOpenAIPlan(plan, services, lang) {
   return {
     source: 'openai',
     intent: safeEnum(plan.intent, ['medical_appointment', 'medicine_delivery', 'transport', 'elder_care', 'daily_help', 'general'], local.intent),
-    status: safeEnum(plan.status, ['needs_details', 'ready_to_call', 'urgent', 'handoff'], local.status),
+    status: urgent ? 'urgent' : safeEnum(plan.status, ['needs_details', 'ready_to_call', 'urgent', 'handoff'], local.status),
     summary: String(plan.summary || local.summary),
     followUpQuestion: plan.followUpQuestion ? String(plan.followUpQuestion) : null,
     safetyNote: String(plan.safetyNote || local.safetyNote),
@@ -341,7 +425,10 @@ function normalizeActions(actions, services, lang) {
     ? actions
         .map((action) => {
           const kind = safeEnum(action.kind, ['call', 'directions', 'source', 'family_update', 'details'], 'details');
-          const service = action.serviceId ? byId.get(String(action.serviceId)) : services[0];
+          const service = action.serviceId ? byId.get(String(action.serviceId)) || null : null;
+          // Drop service-bound actions with a missing/unknown serviceId instead of
+          // defaulting to services[0], which would let the LLM dial an arbitrary provider.
+          if (!service && (kind === 'call' || kind === 'directions' || kind === 'source')) return null;
           const value =
             kind === 'call'
               ? service?.phone
@@ -357,6 +444,7 @@ function normalizeActions(actions, services, lang) {
             serviceId: service?.id || null,
           };
         })
+        .filter(Boolean)
         .slice(0, 4)
     : [];
 
@@ -372,7 +460,7 @@ function defaultActionLabel(kind, service, copy) {
   return copy.details;
 }
 
-function buildLocalAssistantPlan(message, services, lang = 'en') {
+function buildLocalAssistantPlan(message, services, lang = 'en', context = null) {
   const copy = COPY[lang] || COPY.en;
   const normalized = String(message || '').toLowerCase();
   const urgent = URGENT_WORDS.some((word) => normalized.includes(word));
@@ -384,24 +472,39 @@ function buildLocalAssistantPlan(message, services, lang = 'en') {
   const suggestedServices = rankServices(services, category, normalized).slice(0, 3);
   const primary = suggestedServices[0] || null;
   const needsDetails = intent === 'medical_appointment' && !when && !urgent;
+  const wantsCalendarScreen = matchesAny(normalized, CALENDAR_SCREEN_WORDS);
+  const wantsConnectorScreen = matchesAny(normalized, CONNECTOR_SCREEN_WORDS);
 
   const actions = [];
   if (primary?.phone) actions.push({ kind: 'call', label: copy.call(primary.name), value: primary.phone, serviceId: primary.id });
   if (primary?.map_url) actions.push({ kind: 'directions', label: copy.directions, value: primary.map_url, serviceId: primary.id });
   if (primary?.source_url) actions.push({ kind: 'source', label: copy.source, value: primary.source_url, serviceId: primary.id });
+  if (wantsCalendarScreen) {
+    actions.push({ kind: 'open_screen', label: copy.openScreen('calendar'), value: JSON.stringify({ screen: 'calendar' }), serviceId: null });
+  }
+  if (wantsConnectorScreen) {
+    actions.push({ kind: 'open_screen', label: copy.openScreen('connectors'), value: JSON.stringify({ screen: 'connectors' }), serviceId: null });
+  }
   actions.push({ kind: needsDetails ? 'details' : 'family_update', label: needsDetails ? copy.details : copy.family, value: null, serviceId: null });
+
+  const baseSummary = urgent
+    ? copy.urgentSummary
+    : primary
+      ? when && intent === 'medical_appointment'
+        ? copy.readyMedical(primary.name, when)
+        : copy.foundService(primary.name)
+      : copy.noService;
+  const upcoming = !urgent && wantsCalendarScreen ? upcomingCalendarEntry(context) : null;
+  const summaryParts = [];
+  if (!urgent && context?.profile?.name) summaryParts.push(copy.greeting(context.profile.name));
+  summaryParts.push(baseSummary);
+  if (upcoming) summaryParts.push(copy.calendarReminder(upcoming.title, upcoming.day, upcoming.time));
 
   return {
     source: 'local',
     intent,
     status: urgent ? 'urgent' : needsDetails ? 'needs_details' : primary ? 'ready_to_call' : 'handoff',
-    summary: urgent
-      ? copy.urgentSummary
-      : primary
-        ? when && intent === 'medical_appointment'
-          ? copy.readyMedical(primary.name, when)
-          : copy.foundService(primary.name)
-        : copy.noService,
+    summary: summaryParts.join(' '),
     followUpQuestion: needsDetails ? copy.needsTime : null,
     safetyNote: copy.safety,
     suggestedServices,
@@ -437,15 +540,18 @@ function categoryForIntent(intent, urgent, normalized = '') {
 
 function rankServices(services, preferred, normalized) {
   return [...services]
-    .map((service) => ({
-      service,
-      score:
+    .map((service) => {
+      const relevance =
         (preferred && service.category === preferred ? 50 : 0) +
-        (service.verified ? 12 : 0) +
-        (service.phone ? 8 : 0) +
         (service.name && normalized.includes(service.name.toLowerCase().split(' ')[0]) ? 10 : 0) +
-        (service.description ? wordOverlap(normalized, service.description.toLowerCase()) : 0),
-    }))
+        (service.description ? wordOverlap(normalized, service.description.toLowerCase()) : 0);
+      return {
+        service,
+        // Verified/phone bonuses only rank services that actually match the request;
+        // without this, a generic "hello" would ready_to_call a random provider.
+        score: relevance > 0 ? relevance + (service.verified ? 12 : 0) + (service.phone ? 8 : 0) : 0,
+      };
+    })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
     .map((item) => item.service);
@@ -464,6 +570,30 @@ function extractWhen(message) {
     /\b(today|tomorrow|tonight|morning|afternoon|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}(?::\d{2})?\s?(?:am|pm))\b/gi,
   );
   return matches?.slice(0, 3).join(' ') || '';
+}
+
+function upcomingCalendarEntry(context) {
+  const entries = context?.calendar || [];
+  if (!entries.length) return null;
+  const todayKey =
+    context?.todayISO && /^\d{4}-\d{2}-\d{2}$/.test(context.todayISO) ? context.todayISO : localISODate(new Date());
+  const tomorrowKey = nextDateKey(todayKey);
+  for (const entry of entries) {
+    const dateKey = String(entry.dateISO || '').slice(0, 10);
+    if (dateKey === todayKey) return { title: entry.title, time: entry.time || null, day: 'today' };
+    if (dateKey === tomorrowKey) return { title: entry.title, time: entry.time || null, day: 'tomorrow' };
+  }
+  return null;
+}
+
+function nextDateKey(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return localISODate(new Date(year, month - 1, day + 1));
+}
+
+function localISODate(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function buildRouteTimePlan(route) {
@@ -675,9 +805,45 @@ function sanitizeServices(services) {
       phone_confirmed: Boolean(service.phone_confirmed),
       claim_status: service.claim_status ? String(service.claim_status) : null,
       service_area: service.service_area ? String(service.service_area) : null,
+      created_at: service.created_at ? String(service.created_at) : null,
+      upi_id: service.upi_id ? String(service.upi_id) : null,
+      city_id: service.city_id ? String(service.city_id) : null,
     }))
     .filter((service) => service.id && service.name)
     .slice(0, 60);
+}
+
+function sanitizeContext(value) {
+  if (!value || typeof value !== 'object') return null;
+  const profile =
+    value.profile && typeof value.profile === 'object'
+      ? {
+          name: value.profile.name ? String(value.profile.name).slice(0, 80) : undefined,
+          city: value.profile.city ? String(value.profile.city).slice(0, 80) : undefined,
+        }
+      : undefined;
+  const calendar = Array.isArray(value.calendar)
+    ? value.calendar
+        .map((entry) => ({
+          title: String(entry?.title || '').slice(0, 120),
+          dateISO: String(entry?.dateISO || '').slice(0, 10),
+          time: entry?.time ? String(entry.time).slice(0, 20) : null,
+        }))
+        .filter((entry) => entry.title && entry.dateISO)
+        .slice(0, 20)
+    : undefined;
+  const todayISO = typeof value.todayISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.todayISO) ? value.todayISO : undefined;
+  const facts = Array.isArray(value.facts)
+    ? value.facts.map((fact) => String(fact || '').slice(0, 200)).filter(Boolean).slice(0, 10)
+    : undefined;
+  const recentTurns = Array.isArray(value.recentTurns)
+    ? value.recentTurns
+        .map((turn) => ({ role: String(turn?.role || ''), text: String(turn?.text || '').slice(0, 400) }))
+        .filter((turn) => turn.text)
+        .slice(0, 6)
+    : undefined;
+  if (!profile && !calendar?.length && !todayISO && !facts?.length && !recentTurns?.length) return null;
+  return { profile, calendar, todayISO, facts, recentTurns };
 }
 
 function sanitizeImageAttachments(value) {
