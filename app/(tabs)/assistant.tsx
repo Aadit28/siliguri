@@ -3,6 +3,7 @@ import type { TextInputKeyPressEvent } from 'react-native';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,20 +18,27 @@ import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Chip, Muted } from '../../src/components/ui';
+import { Muted } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan } from '../../src/lib/assistant';
 import { addEvent, parseWhenToDate } from '../../src/lib/calendar';
-import { fetchServices } from '../../src/lib/api';
+import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
+import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { categoryColor } from '../../src/lib/categories';
 import { family, font, radius, space, shadow, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
-import { openWhatsAppCall } from '../../src/lib/whatsapp';
+import { openWhatsAppCall, openWhatsAppShare } from '../../src/lib/whatsapp';
 
 const EXAMPLE_KEYS = ['doctor', 'medicine', 'travel'] as const;
+// 1 line = 23.4 text + 20 vertical padding; 3 lines = 90.2.
+const COMPOSER_MIN_HEIGHT = 44;
+const COMPOSER_MAX_HEIGHT = 91;
+// Browser default focus ring draws a heavy black rect around the pill; the filled
+// pill + caret is the focus affordance instead.
+const WEB_INPUT_RESET = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as object) : null;
 const MAX_IMAGE_ATTACHMENTS = 3;
 const MAX_CHAT_SESSIONS = 12;
 const CHAT_STORAGE_KEY = 'saathi-assistant-chats-v1';
@@ -80,6 +88,20 @@ export default function AssistantScreen() {
   const [services, setServices] = useState<Service[]>([]);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<AssistantAttachment[]>([]);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  // One text line incl. vertical padding; grows via onContentSizeChange to 3 lines max.
+  const [inputHeight, setInputHeight] = useState(COMPOSER_MIN_HEIGHT);
+
+  useEffect(() => {
+    if (!input) setInputHeight(COMPOSER_MIN_HEIGHT);
+  }, [input]);
+
+  function handleInputContentSize(event: { nativeEvent: { contentSize: { height: number } } }) {
+    const raw = event?.nativeEvent?.contentSize?.height || 0;
+    // react-native-web reports scrollHeight (padding included); native reports text box only.
+    const padded = Platform.OS === 'web' ? raw : raw + 20;
+    setInputHeight(Math.min(COMPOSER_MAX_HEIGHT, Math.max(COMPOSER_MIN_HEIGHT, Math.round(padded))));
+  }
   const [sessions, setSessions] = useState<ChatSession[]>(() => initialChatState.sessions);
   const [activeSessionId, setActiveSessionId] = useState(() => initialChatState.activeSessionId);
   const [loading, setLoading] = useState(false);
@@ -351,7 +373,9 @@ export default function AssistantScreen() {
       }
     }
     if (action.kind === 'family_update' && plan) {
-      setInput(`${t('assistant.familyMessagePrefix')}\n${plan.summary}`);
+      // Hand off to WhatsApp instead of stuffing the composer — sending the canned
+      // text back into the assistant just produced a nonsense round-trip.
+      openWhatsAppShare(`${t('assistant.familyMessagePrefix')}\n${plan.summary}`);
       return;
     }
     setInput((current) => current || t('assistant.detailPrompt'));
@@ -482,47 +506,63 @@ export default function AssistantScreen() {
             ) : null}
           </ScrollView>
 
-          <View style={[styles.composer, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
-            <Text style={[styles.examplesHint, { color: colors.textMuted }]}>
-              {t('assistant.examplesHint')}
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickPrompts}
-              keyboardShouldPersistTaps="handled"
-            >
-              {EXAMPLE_KEYS.map((key) => (
-                <Chip
-                  key={key}
-                  label={t(`assistant.exampleLabels.${key}`)}
-                  onPress={() => {
-                    if (loading || servicesLoading) return;
-                    submit(t(`assistant.examples.${key}`));
-                  }}
-                />
-              ))}
-            </ScrollView>
-
-            <View style={styles.inputRow}>
-              {canAttachImages ? (
+          <View style={styles.composer}>
+            <View style={[styles.inputBar, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+              <View>
+                {plusMenuOpen ? (
+                  <View style={[styles.plusMenu, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
+                    {canAttachImages ? (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setPlusMenuOpen(false);
+                            pickImages();
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('assistant.attachImage')}
+                          activeOpacity={0.82}
+                          style={styles.plusMenuItem}
+                        >
+                          <Feather name="image" size={18} color={colors.text} />
+                          <Text style={[styles.plusMenuItemText, { color: colors.text }]}>
+                            {t('assistant.attachImage')}
+                          </Text>
+                        </TouchableOpacity>
+                        <View style={[styles.plusMenuDivider, { backgroundColor: colors.border }]} />
+                      </>
+                    ) : null}
+                    {EXAMPLE_KEYS.map((key) => (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => {
+                          setPlusMenuOpen(false);
+                          if (loading || servicesLoading) return;
+                          submit(t(`assistant.examples.${key}`));
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t(`assistant.exampleLabels.${key}`)}
+                        activeOpacity={0.82}
+                        style={styles.plusMenuItem}
+                      >
+                        <Feather name="message-circle" size={18} color={colors.textMuted} />
+                        <Text style={[styles.plusMenuItemText, { color: colors.text }]}>
+                          {t(`assistant.exampleLabels.${key}`)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
                 <TouchableOpacity
-                  onPress={pickImages}
+                  onPress={() => setPlusMenuOpen((open) => !open)}
                   disabled={loading || servicesLoading}
                   accessibilityRole="button"
                   accessibilityLabel={t('assistant.attachImage')}
                   activeOpacity={0.82}
-                  style={[
-                    styles.photoButton,
-                    {
-                      borderColor: colors.border,
-                      opacity: loading || servicesLoading ? 0.4 : 1,
-                    },
-                  ]}
+                  style={[styles.plusButton, { opacity: loading || servicesLoading ? 0.4 : 1 }]}
                 >
-                  <Feather name="image" size={22} color={colors.text} />
+                  <Feather name="plus" size={22} color={colors.text} />
                 </TouchableOpacity>
-              ) : null}
+              </View>
               <TextInput
                 multiline
                 blurOnSubmit={false}
@@ -532,13 +572,15 @@ export default function AssistantScreen() {
                 onChangeText={setInput}
                 onKeyPress={handleComposerKeyPress}
                 onSubmitEditing={() => submit()}
+                onFocus={() => setPlusMenuOpen(false)}
+                onContentSizeChange={handleInputContentSize}
                 placeholder={t('assistant.chatPlaceholder')}
                 placeholderTextColor={colors.textSubtle}
                 style={[
                   styles.input,
+                  WEB_INPUT_RESET,
                   {
-                    backgroundColor: colors.bgAlt,
-                    borderColor: colors.border,
+                    height: inputHeight,
                     color: colors.text,
                   },
                 ]}
@@ -553,17 +595,13 @@ export default function AssistantScreen() {
                   styles.sendButton,
                   {
                     backgroundColor: colors.primary,
-                    opacity: canSend ? 1 : 0.4,
+                    opacity: canSend ? 1 : 0.35,
                   },
                 ]}
               >
-                <Text style={[styles.sendButtonText, { color: colors.primaryFg }]}>
-                  {t('assistant.chatSend')}
-                </Text>
+                <Feather name="arrow-up" size={20} color={colors.primaryFg} />
               </TouchableOpacity>
             </View>
-
-            <Muted style={styles.disclaimer}>{t('assistant.safetyDisclaimer')}</Muted>
 
             {attachments.length ? (
               <ScrollView
@@ -604,9 +642,34 @@ function MessageBubble({
 }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const router = useRouter();
+  const { user } = useAuth();
+  const { favoriteSet, toggleFavorite } = useServicePreferences();
+  const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
   const isUser = message.role === 'user';
   const suggested = message.plan?.suggestedServices[0];
   const suggestedTone = suggested ? categoryColor(suggested.category) : null;
+  const isStarred = suggested ? favoriteSet.has(suggested.id) : false;
+
+  function starSuggested() {
+    if (!suggested) return;
+    setServiceMenuOpen(false);
+    const wasFav = favoriteSet.has(suggested.id);
+    toggleFavorite(suggested.id);
+    if (user) {
+      toggleFavoriteRemote(suggested.id, user.id, wasFav).catch(() => toggleFavorite(suggested.id));
+    }
+  }
+
+  function sendSuggestedToFamily() {
+    if (!suggested) return;
+    setServiceMenuOpen(false);
+    openWhatsAppShare(
+      [t('assistant.familyMessagePrefix'), suggested.name, suggested.phone, suggested.address]
+        .filter(Boolean)
+        .join('\n'),
+    );
+  }
 
   return (
     <View style={isUser ? styles.userRow : styles.botRow}>
@@ -641,24 +704,88 @@ function MessageBubble({
           <View style={[styles.simplePlan, { borderTopColor: colors.border }]}>
             {suggested ? (
               <View style={styles.serviceLine}>
-                <View
-                  style={[
-                    styles.serviceIcon,
-                    {
-                      backgroundColor: suggestedTone?.bg ?? colors.primaryTint,
-                      borderColor: suggestedTone?.border ?? colors.border,
-                    },
-                  ]}
+                <TouchableOpacity
+                  onPress={() => router.push(`/service/${suggested.id}`)}
+                  accessibilityRole="link"
+                  accessibilityLabel={suggested.name}
+                  activeOpacity={0.82}
+                  style={styles.serviceLink}
                 >
-                  <ServiceGlyph category={suggested.category} color={suggestedTone?.fg ?? colors.primaryDark} size={18} />
-                </View>
-                <View style={styles.serviceTextWrap}>
-                  <Text style={[styles.serviceName, { color: colors.text }]} numberOfLines={2}>
-                    {suggested.name}
-                  </Text>
-                  <Text style={[styles.serviceMeta, { color: colors.textMuted }]} numberOfLines={2}>
-                    {suggested.address || t('assistant.serviceReady')}
-                  </Text>
+                  <View
+                    style={[
+                      styles.serviceIcon,
+                      {
+                        backgroundColor: suggestedTone?.bg ?? colors.primaryTint,
+                        borderColor: suggestedTone?.border ?? colors.border,
+                      },
+                    ]}
+                  >
+                    <ServiceGlyph category={suggested.category} color={suggestedTone?.fg ?? colors.primaryDark} size={18} />
+                  </View>
+                  <View style={styles.serviceTextWrap}>
+                    <Text style={[styles.serviceName, { color: colors.accent }]} numberOfLines={2}>
+                      {suggested.name}
+                    </Text>
+                    <Text style={[styles.serviceMeta, { color: colors.textMuted }]} numberOfLines={2}>
+                      {suggested.address || t('assistant.serviceReady')}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <View>
+                  {serviceMenuOpen ? (
+                    <View style={[styles.serviceMenu, { backgroundColor: colors.cardSolid, borderColor: colors.border }]}>
+                      <TouchableOpacity
+                        onPress={starSuggested}
+                        accessibilityRole="button"
+                        accessibilityLabel={t(isStarred ? 'assistant.serviceMenu.unstar' : 'assistant.serviceMenu.star')}
+                        activeOpacity={0.82}
+                        style={styles.plusMenuItem}
+                      >
+                        <Feather name="star" size={18} color={isStarred ? colors.accent : colors.text} />
+                        <Text style={[styles.plusMenuItemText, { color: colors.text }]}>
+                          {t(isStarred ? 'assistant.serviceMenu.unstar' : 'assistant.serviceMenu.star')}
+                        </Text>
+                      </TouchableOpacity>
+                      {suggested.phone ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setServiceMenuOpen(false);
+                            openWhatsAppCall(suggested.phone);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('assistant.serviceMenu.call')}
+                          activeOpacity={0.82}
+                          style={styles.plusMenuItem}
+                        >
+                          <Feather name="phone" size={18} color={colors.text} />
+                          <Text style={[styles.plusMenuItemText, { color: colors.text }]}>
+                            {t('assistant.serviceMenu.call')}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity
+                        onPress={sendSuggestedToFamily}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('assistant.serviceMenu.sendToFamily')}
+                        activeOpacity={0.82}
+                        style={styles.plusMenuItem}
+                      >
+                        <Feather name="users" size={18} color={colors.text} />
+                        <Text style={[styles.plusMenuItemText, { color: colors.text }]}>
+                          {t('assistant.serviceMenu.sendToFamily')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => setServiceMenuOpen((open) => !open)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('assistant.serviceMenu.more')}
+                    activeOpacity={0.82}
+                    style={styles.serviceMoreButton}
+                  >
+                    <Feather name="more-horizontal" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
                 </View>
               </View>
             ) : null}
@@ -1106,6 +1233,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
+    zIndex: 20,
+  },
+  serviceLink: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  serviceMoreButton: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceMenu: {
+    position: 'absolute',
+    top: 36,
+    right: 0,
+    minWidth: 210,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingVertical: space.xs,
+    zIndex: 60,
+    ...shadow.md,
   },
   serviceIcon: {
     width: 34,
@@ -1138,62 +1291,70 @@ const styles = StyleSheet.create({
   },
   actionText: { fontSize: font.xs, fontFamily: family.semibold },
   composer: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: space.sm,
+    paddingTop: space.xs,
     gap: space.sm,
-    ...shadow.sm,
   },
-  quickPrompts: {
-    gap: space.sm,
-    paddingRight: space.md,
-  },
-  examplesHint: {
-    fontSize: font.xs,
-    fontFamily: family.semibold,
-    paddingHorizontal: 2,
-  },
-  inputRow: {
+  inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: space.sm,
-  },
-  photoButton: {
-    width: TAP,
-    height: TAP,
-    borderRadius: radius.lg,
     borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 4,
+  },
+  plusButton: {
+    width: 36,
+    height: 36,
+    marginBottom: 4,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  disclaimer: {
-    fontFamily: family.regular,
-    fontSize: font.xs,
-    lineHeight: font.xs * 1.4,
-    paddingHorizontal: 2,
+  plusMenu: {
+    position: 'absolute',
+    bottom: 48,
+    left: 0,
+    minWidth: 230,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingVertical: space.xs,
+    zIndex: 30,
+    ...shadow.md,
+  },
+  plusMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 44,
+    paddingHorizontal: space.md,
+  },
+  plusMenuItemText: {
+    fontSize: font.sm,
+    fontFamily: family.medium,
+  },
+  plusMenuDivider: {
+    height: 1,
+    marginVertical: space.xs,
+    marginHorizontal: space.sm,
   },
   input: {
     flex: 1,
-    minHeight: TAP,
-    maxHeight: 124,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingHorizontal: space.sm,
+    paddingVertical: 10,
     fontFamily: family.regular,
     fontSize: font.md,
     lineHeight: font.md * 1.3,
     textAlignVertical: 'top',
   },
   sendButton: {
-    minWidth: 76,
-    minHeight: TAP,
-    borderRadius: radius.lg,
+    width: 36,
+    height: 36,
+    marginBottom: 4,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
   },
-  sendButtonText: { fontSize: font.sm, fontFamily: family.bold },
   attachmentList: {
     gap: space.sm,
     paddingRight: space.md,

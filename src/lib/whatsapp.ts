@@ -58,6 +58,13 @@ async function openExternalUrl(url: string) {
   return true;
 }
 
+export async function openWhatsAppShare(text: string) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  // No phone target: WhatsApp opens its own contact picker for the prefilled text.
+  return openExternalUrl(`https://wa.me/?text=${encodeURIComponent(trimmed)}`);
+}
+
 export async function openWhatsAppChat(phone?: string | null) {
   const url = whatsappChatUrl(phone);
   if (!url) return false;

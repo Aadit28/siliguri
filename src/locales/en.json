@@ -196,6 +196,13 @@
     "aiBacked": "AI plan",
     "localBacked": "Local plan",
     "familyMessagePrefix": "Saathi update for family:",
+    "serviceMenu": {
+      "more": "More options",
+      "star": "Star service",
+      "unstar": "Remove star",
+      "call": "Call",
+      "sendToFamily": "Send to family"
+    },
     "detailPrompt": "Patient name, age, concern, preferred date/time, and callback phone:",
     "examples": {
       "doctor": "Book a doctor appointment tomorrow morning for my father.",
