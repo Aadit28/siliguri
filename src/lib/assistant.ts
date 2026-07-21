@@ -31,7 +31,7 @@ export interface AssistantAction {
 }
 
 export interface AssistantPlan {
-  source: 'openai' | 'local';
+  source: 'openai' | 'deepseek' | 'local';
   intent: AssistantIntent;
   status: AssistantStatus;
   summary: string;

@@ -151,27 +151,64 @@ const COPY = {
   },
 };
 
-// Best-effort per-IP limiter. In-memory, so each serverless instance counts separately —
-// this is a burst brake against key abuse, not a hard global quota.
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 20;
+// Layered rate limiting sized for a fixed-budget LLM plan (OpenCode Go):
+// 1) In-memory per-IP burst brake — hard 429, per serverless instance only.
+// 2) Per-IP AI ceiling — above it the request still succeeds via the local planner.
+// 3) Durable daily caps (per-user and global) counted from assistant_events, so they
+//    hold across serverless instances. Exceeding them also degrades to the local
+//    planner instead of erroring — elderly users should never see a hard failure.
+const BURST_WINDOW_MS = 60_000;
+const BURST_MAX = 12;
+const AI_PER_MINUTE_ANON = 4;
+const AI_PER_MINUTE_AUTHED = 10;
+const AI_USER_DAILY_MAX = Number(process.env.AI_USER_DAILY_MAX || 120);
+const AI_GLOBAL_DAILY_MAX = Number(process.env.AI_GLOBAL_DAILY_MAX || 1200);
+const GLOBAL_AI_COUNT_TTL_MS = 60_000;
+
 const rateLimitHits = new Map();
 
-function allowRequest(ip) {
+function trackRequest(ip) {
   const now = Date.now();
-  const hits = (rateLimitHits.get(ip) || []).filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
-  if (hits.length >= RATE_LIMIT_MAX) {
-    rateLimitHits.set(ip, hits);
-    return false;
-  }
+  const hits = (rateLimitHits.get(ip) || []).filter((ts) => now - ts < BURST_WINDOW_MS);
   hits.push(now);
   rateLimitHits.set(ip, hits);
   if (rateLimitHits.size > 1000) {
     for (const [key, timestamps] of rateLimitHits) {
-      if (!timestamps.some((ts) => now - ts < RATE_LIMIT_WINDOW_MS)) rateLimitHits.delete(key);
+      if (!timestamps.some((ts) => now - ts < BURST_WINDOW_MS)) rateLimitHits.delete(key);
     }
   }
-  return true;
+  return hits.length;
+}
+
+let globalAiCountCache = { value: 0, fetchedAt: 0 };
+
+async function aiDailyQuotaOk(userId) {
+  try {
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    const client = adminClient();
+    const now = Date.now();
+    if (now - globalAiCountCache.fetchedAt > GLOBAL_AI_COUNT_TTL_MS) {
+      const { count } = await client
+        .from('assistant_events')
+        .select('id', { count: 'exact', head: true })
+        .neq('source', 'local')
+        .gte('created_at', since);
+      globalAiCountCache = { value: count || 0, fetchedAt: now };
+    }
+    if (globalAiCountCache.value >= AI_GLOBAL_DAILY_MAX) return false;
+    if (userId) {
+      const { count } = await client
+        .from('assistant_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', since);
+      if ((count || 0) >= AI_USER_DAILY_MAX) return false;
+    }
+    return true;
+  } catch {
+    // Quota accounting must never take the assistant down.
+    return true;
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -182,14 +219,17 @@ module.exports = async function handler(req, res) {
   try {
     const ip =
       String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
-    if (!allowRequest(ip)) {
+    const requestsInWindow = trackRequest(ip);
+    if (requestsInWindow > BURST_MAX) {
       return send(res, 429, { error: 'Too many requests. Please wait a minute and try again.' });
     }
 
+    let userId = null;
     const hasToken = Boolean(String(req.headers.authorization || req.headers.Authorization || '').trim());
     if (hasToken) {
       const auth = await authenticate(req);
       if (auth.error) return send(res, 401, { error: 'Session expired. Please sign in again.' });
+      userId = auth.user.id;
     }
 
     const body = await readBody(req);
@@ -208,12 +248,17 @@ module.exports = async function handler(req, res) {
     const route = urgent || imageAttachments.length ? null : extractRouteTimeRequest(effectiveMessage, services);
     if (route) {
       const plan = buildRouteTimePlan(route);
-      await logAssistantEvent(req, { message: effectiveMessage, services, imageCount: imageAttachments.length, plan });
+      await logAssistantEvent(userId, { message: effectiveMessage, imageCount: imageAttachments.length, plan });
       return send(res, 200, plan);
     }
 
-    if (process.env.OPENAI_API_KEY) {
-      const aiPlan = await planWithOpenAI({
+    const provider = pickLlmProvider(imageAttachments);
+    const aiPerMinute = userId ? AI_PER_MINUTE_AUTHED : AI_PER_MINUTE_ANON;
+    const aiEligible = provider && requestsInWindow <= aiPerMinute && (await aiDailyQuotaOk(userId));
+
+    if (aiEligible) {
+      const planner = provider === 'deepseek' ? planWithDeepSeek : planWithOpenAI;
+      const aiPlan = await planner({
         message: message || imageOnlyVisionPrompt(lang),
         lang,
         services,
@@ -222,46 +267,119 @@ module.exports = async function handler(req, res) {
         urgent,
       }).catch(() => null);
       if (aiPlan) {
-        await logAssistantEvent(req, { message, services, imageCount: imageAttachments.length, plan: aiPlan });
+        globalAiCountCache.value += 1;
+        await logAssistantEvent(userId, { message, imageCount: imageAttachments.length, plan: aiPlan });
         return send(res, 200, aiPlan);
       }
     }
 
     const plan = buildLocalAssistantPlan(effectiveMessage, services, lang, context);
-    await logAssistantEvent(req, { message: effectiveMessage, services, imageCount: imageAttachments.length, plan });
+    await logAssistantEvent(userId, { message: effectiveMessage, imageCount: imageAttachments.length, plan });
     return send(res, 200, plan);
   } catch (error) {
     return send(res, 500, { error: error.message || 'Could not plan this request.' });
   }
 };
 
+function pickLlmProvider(imageAttachments) {
+  const hasDeepSeek = Boolean(process.env.DEEPSEEK_API_KEY);
+  const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+  // DeepSeek V4 Flash is text-only, so requests with photos go to OpenAI when possible.
+  if (imageAttachments.length && hasOpenAI) return 'openai';
+  if (hasDeepSeek) return 'deepseek';
+  if (hasOpenAI) return 'openai';
+  return null;
+}
+
+function buildSystemPrompt(urgent) {
+  return (
+    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. Return compact JSON only.' +
+    (urgent
+      ? ' URGENT: the message contains emergency symptoms. Set status to "urgent" and tell the user to call emergency help or the nearest hospital first, before answering anything else (including route or traffic questions).'
+      : '')
+  );
+}
+
+function buildRequestPayload({ message, lang, services, imageAttachments, context }) {
+  return {
+    message,
+    language: lang,
+    context: context || undefined,
+    imageCount: imageAttachments.length,
+    services: services.map((service) => ({
+      id: service.id,
+      name: service.name,
+      category: service.category,
+      description: service.description,
+      phone: service.phone,
+      address: service.address,
+      hours: service.hours,
+      verified: service.verified,
+      town: service.town,
+      verification_status: service.verification_status,
+      verified_at: service.verified_at,
+      phone_confirmed: service.phone_confirmed,
+      claim_status: service.claim_status,
+      service_area: service.service_area,
+    })),
+  };
+}
+
+const PLAN_JSON_INSTRUCTIONS =
+  'Respond with exactly one JSON object, no markdown fences, using these keys: ' +
+  '"intent" (one of "medical_appointment","medicine_delivery","transport","elder_care","daily_help","general"), ' +
+  '"status" (one of "needs_details","ready_to_call","urgent","handoff"), ' +
+  '"summary" (short string in the user\'s language), ' +
+  '"followUpQuestion" (string or null), ' +
+  '"safetyNote" (string), ' +
+  '"suggestedServiceIds" (array of at most 3 ids taken only from the provided services), ' +
+  '"checklist" (array of at most 5 short strings), ' +
+  '"nextSteps" (array of at most 4 short strings), ' +
+  '"actions" (array of at most 4 objects, each {"kind":"call"|"directions"|"source"|"family_update"|"details","label":string,"value":string|null,"serviceId":string|null}). ' +
+  'No other keys.';
+
+async function planWithDeepSeek({ message, lang, services, imageAttachments, context, urgent }) {
+  const baseUrl = String(process.env.DEEPSEEK_BASE_URL || 'https://opencode.ai/zen/go/v1').replace(/\/+$/, '');
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: `${buildSystemPrompt(urgent)} ${PLAN_JSON_INSTRUCTIONS}` },
+        { role: 'user', content: JSON.stringify(buildRequestPayload({ message, lang, services, imageAttachments, context })) },
+      ],
+      response_format: { type: 'json_object' },
+      // DeepSeek V4 hybrid thinking mode: disabled keeps replies fast enough for chat.
+      thinking: { type: 'disabled' },
+      temperature: 0.3,
+      max_tokens: 900,
+    }),
+  });
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+  if (!raw) return null;
+
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const parsed = JSON.parse(text);
+  return normalizeModelPlan(parsed, services, lang, { message, context, urgent, source: 'deepseek' });
+}
+
 async function planWithOpenAI({ message, lang, services, imageAttachments, context, urgent }) {
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   const userContent = [
     {
       type: 'input_text',
-      text: JSON.stringify({
-        message,
-        language: lang,
-        context: context || undefined,
-        imageCount: imageAttachments.length,
-        services: services.map((service) => ({
-          id: service.id,
-          name: service.name,
-          category: service.category,
-          description: service.description,
-          phone: service.phone,
-          address: service.address,
-          hours: service.hours,
-          verified: service.verified,
-          town: service.town,
-          verification_status: service.verification_status,
-          verified_at: service.verified_at,
-          phone_confirmed: service.phone_confirmed,
-          claim_status: service.claim_status,
-          service_area: service.service_area,
-        })),
-      }),
+      text: JSON.stringify(buildRequestPayload({ message, lang, services, imageAttachments, context })),
     },
     ...imageAttachments.map((attachment) => ({
       type: 'input_image',
@@ -281,11 +399,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
       input: [
         {
           role: 'developer',
-          content:
-            'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. Return compact JSON only.' +
-            (urgent
-              ? ' URGENT: the message contains emergency symptoms. Set status to "urgent" and tell the user to call emergency help or the nearest hospital first, before answering anything else (including route or traffic questions).'
-              : ''),
+          content: buildSystemPrompt(urgent),
         },
         {
           role: 'user',
@@ -352,24 +466,17 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
   if (!text) return null;
 
   const parsed = JSON.parse(text);
-  return normalizeOpenAIPlan(parsed, services, lang, { message, context, urgent });
+  return normalizeModelPlan(parsed, services, lang, { message, context, urgent, source: 'openai' });
 }
 
-async function logAssistantEvent(req, { message, services, imageCount, plan }) {
+async function logAssistantEvent(userId, { message, imageCount, plan }) {
   try {
-    let userId = null;
-    const hasToken = Boolean(String(req.headers.authorization || req.headers.Authorization || '').trim());
-    if (hasToken) {
-      const auth = await authenticate(req);
-      if (!auth.error) userId = auth.user.id;
-    }
-
     const serviceIds = (plan.suggestedServices || [])
       .map((service) => String(service.id || ''))
       .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
 
     await adminClient().from('assistant_events').insert({
-      user_id: userId,
+      user_id: userId || null,
       prompt_text: String(message || '').slice(0, 800),
       source: plan.source,
       intent: plan.intent,
@@ -393,7 +500,7 @@ function extractOutputText(data) {
   return chunks.join('\n').trim();
 }
 
-function normalizeOpenAIPlan(plan, services, lang, { message, context, urgent } = {}) {
+function normalizeModelPlan(plan, services, lang, { message, context, urgent, source } = {}) {
   // Fallback intent/status must come from the USER message, never from LLM output,
   // otherwise a prompt-injected summary could steer the keyword fallback.
   const local = buildLocalAssistantPlan(message || '', services, lang, context || null);
@@ -405,7 +512,7 @@ function normalizeOpenAIPlan(plan, services, lang, { message, context, urgent } 
   const fallbackServices = suggestedServices.length ? suggestedServices : local.suggestedServices;
 
   return {
-    source: 'openai',
+    source: source || 'openai',
     intent: safeEnum(plan.intent, ['medical_appointment', 'medicine_delivery', 'transport', 'elder_care', 'daily_help', 'general'], local.intent),
     status: urgent ? 'urgent' : safeEnum(plan.status, ['needs_details', 'ready_to_call', 'urgent', 'handoff'], local.status),
     summary: String(plan.summary || local.summary),
