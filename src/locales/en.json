@@ -243,12 +243,14 @@
     "examples": {
       "doctor": "Book a doctor appointment tomorrow morning for my father.",
       "medicine": "Find a pharmacy that can help with prescription medicine delivery.",
-      "travel": "Help arrange transport to the hospital this evening."
+      "travel": "Help arrange transport to the hospital this evening.",
+      "reminder": "Remind me to take my medicine daily at 8pm."
     },
     "exampleLabels": {
       "doctor": "Book appointment",
       "medicine": "Find medicines",
-      "travel": "Arrange ride"
+      "travel": "Arrange ride",
+      "reminder": "Set a reminder"
     },
     "capabilities": {
       "context": {

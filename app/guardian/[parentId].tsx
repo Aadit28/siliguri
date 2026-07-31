@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -49,6 +49,7 @@ import {
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
 import { requestAssistantPlan, ProposedReminder } from '../../src/lib/assistant';
+import { speechRecognitionSupported, startListening } from '../../src/lib/voice';
 import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
 import { todayISO } from '../../src/lib/notifications';
 
@@ -476,13 +477,48 @@ function OverviewSection({
   const [proposal, setProposal] = useState<ProposedReminder | null>(null);
   const [savingProposal, setSavingProposal] = useState(false);
   const [proposalSaved, setProposalSaved] = useState(false);
+  const [listening, setListening] = useState(false);
+  const dictationRef = useRef<{ stop: () => void } | null>(null);
+  const canDictate = speechRecognitionSupported();
+
+  function toggleDictation() {
+    if (dictationRef.current) {
+      dictationRef.current.stop();
+      dictationRef.current = null;
+      setListening(false);
+      return;
+    }
+    const handle = startListening({
+      lang: i18n.language?.startsWith('hi') ? 'hi' : 'en',
+      onInterim: (text) => setQuestion(text),
+      onResult: (text) => {
+        setQuestion(text);
+        void ask(text);
+      },
+      onEnd: () => {
+        dictationRef.current = null;
+        setListening(false);
+      },
+    });
+    if (!handle) return;
+    dictationRef.current = handle;
+    setListening(true);
+  }
+
+  useEffect(
+    () => () => {
+      dictationRef.current?.stop();
+      dictationRef.current = null;
+    },
+    [],
+  );
 
   // The guardian's agent: the ward's live summary goes in as facts, so "how is
   // Ma doing" is answered from data, not generalities. A reminder request
   // ("remind Ma to take her medicine at 8") comes back as a proposal card;
   // saving it writes a family reminder, which also pings the parent's device.
-  async function ask() {
-    const messageText = question.trim();
+  async function ask(text = question) {
+    const messageText = text.trim();
     if (!messageText || asking || !data) return;
     setAsking(true);
     setAnswer(null);
@@ -610,6 +646,23 @@ function OverviewSection({
             placeholderTextColor={colors.textSubtle}
             style={[styles.askInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bgAlt }]}
           />
+          {canDictate ? (
+            <Pressable
+              onPress={toggleDictation}
+              accessibilityRole="button"
+              accessibilityLabel={t(listening ? 'assistant.voice.stop' : 'assistant.voice.start')}
+              style={({ pressed }) => [
+                styles.askMic,
+                {
+                  borderColor: listening ? colors.danger : colors.border,
+                  backgroundColor: listening ? colors.dangerSoft : 'transparent',
+                },
+                pressed && { opacity: 0.72 },
+              ]}
+            >
+              <Feather name={listening ? 'mic-off' : 'mic'} size={20} color={listening ? colors.danger : colors.text} />
+            </Pressable>
+          ) : null}
           <Button
             label={asking ? t('family.asking') : t('family.askButton')}
             onPress={() => void ask()}
@@ -1475,6 +1528,14 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       marginTop: space.sm,
     },
     askProposalAction: { marginTop: space.sm },
+    askMic: {
+      width: TAP,
+      height: TAP,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     stateCard: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl },
     stateText: { textAlign: 'center' },
     stateBlock: { alignItems: 'center', paddingVertical: space.lg, paddingHorizontal: space.md },

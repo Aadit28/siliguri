@@ -44,7 +44,7 @@ import { family, font, radius, space, shadow, TAB_BAR_CLEARANCE, TAP } from '../
 import { Service } from '../../src/lib/types';
 import { openWhatsAppCall, openWhatsAppShare } from '../../src/lib/whatsapp';
 
-const EXAMPLE_KEYS = ['doctor', 'medicine', 'travel'] as const;
+const EXAMPLE_KEYS = ['doctor', 'medicine', 'travel', 'reminder'] as const;
 // 1 line = 23.4 text + 20 vertical padding; 3 lines = 90.2.
 const COMPOSER_MIN_HEIGHT = 44;
 const COMPOSER_MAX_HEIGHT = 91;
