@@ -93,6 +93,13 @@ export async function revokeFamilyLink(
   });
 }
 
+// Fire-and-forget family alert when the parent presses SOS. Never awaited on
+// the emergency path and never throws — the dial must not wait on the network.
+export function notifyFamilySos(token: string): void {
+  if (!token || isDemoToken(token)) return;
+  void backendRequest('/api/family/sos', { method: 'POST', token }).catch(() => undefined);
+}
+
 // ----- Reminders -----
 
 export async function listFamilyReminders(

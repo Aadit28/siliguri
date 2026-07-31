@@ -25,7 +25,7 @@ import {
   HELPLINE_NUMBER,
 } from '../../src/lib/config';
 import { createCallbackRequest } from '../../src/lib/api';
-import { listFamilyLinks, revokeFamilyLink } from '../../src/lib/family';
+import { listFamilyLinks, notifyFamilySos, revokeFamilyLink } from '../../src/lib/family';
 import { FamilyLink } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/context/ThemeContext';
@@ -136,7 +136,15 @@ export default function Help() {
 
         <Card style={styles.sosCard}>
           <Text style={styles.sosNumber}>{EMERGENCY_PRIMARY_DISPLAY}</Text>
-          <Button label={t('help.callEmergency')} variant="danger" onPress={() => callNumber(EMERGENCY_PRIMARY_NUMBER)} />
+          <Button
+            label={t('help.callEmergency')}
+            variant="danger"
+            onPress={() => {
+              // Alert the family in parallel; the dial never waits for it.
+              if (session?.access_token) notifyFamilySos(session.access_token);
+              callNumber(EMERGENCY_PRIMARY_NUMBER);
+            }}
+          />
           <Muted style={styles.sosHint}>{t('help.emergencyHint')}</Muted>
         </Card>
 

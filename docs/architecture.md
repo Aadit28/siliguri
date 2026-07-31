@@ -175,6 +175,8 @@ Server push is for the family loop:
 
 - guardian adds or edits a ward's reminder -> the parent's phone pings
 - parent completes a reminder -> the guardians' phones ping
+- parent presses the SOS button -> every guardian's phone pings, urgently,
+  while the emergency dial goes ahead without waiting for the network
 - help desk marks a callback contacted or closed -> the requester pings
 - once a day at 20:00 IST a Vercel cron (`server/cron/daily-digest.js`) sends
   each guardian a per-parent summary, and stays silent when there is nothing
