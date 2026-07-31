@@ -42,8 +42,14 @@ node scripts/dev-api.js
 npx tsc --noEmit -p tsconfig.json
 ```
 
-There is no test suite. The typecheck plus a manual walk through the affected
-portal is the whole gate, so do both and report what you actually observed.
+```bash
+npm run test:regression
+```
+
+The regression suite (`scripts/regression.mjs`, 24 assertions across all
+three roles and the agent surfaces) needs the dev API running against the
+seeded database. Run it plus the typecheck before claiming anything works,
+and report what you actually observed.
 
 ## Three portals, one binary
 

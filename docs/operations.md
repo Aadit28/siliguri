@@ -114,17 +114,25 @@ volume, that needs solving, or old requests will fall off the bottom unseen.
 
 ## Before deploying
 
-Run the typecheck and the syntax check. There is no test suite yet, so these are
-the whole gate:
+Run the typecheck, then the regression suite against the local dev API:
 
 ```bash
 npx tsc --noEmit -p tsconfig.json
 ```
 
-Then sign in as each of the three demo accounts and walk one journey each: set a
-reminder as the guardian, open the services list as the parent, and load the
-callback queue as the admin. Most regressions in this codebase show up in one of
-those three within a minute.
+```bash
+npm run test:regression
+```
+
+The suite (`scripts/regression.mjs`) walks all three roles through 24
+assertions: sign-in, assistant answers in both languages, reminder proposals,
+reminder CRUD and validation, push registration, SOS, the alert inbox, admin
+partial patches, and role separation. It needs the dev API running and the
+demo accounts seeded, creates and removes its own rows, and exits non-zero on
+any failure.
+
+Then sign in as one demo account and click through the portal you changed —
+the suite covers the API surface, not the pixels.
 
 ## Rotating credentials
 

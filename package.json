@@ -47,7 +47,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "seed:demo": "node --env-file=.env scripts/seed-demo-accounts.mjs"
+    "seed:demo": "node --env-file=.env scripts/seed-demo-accounts.mjs",
+    "test:regression": "node scripts/regression.mjs"
   },
   "private": true
 }
