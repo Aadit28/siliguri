@@ -1,4 +1,5 @@
 const { authenticate, readBody, requireCityStaff, send, sendServerError, withCors } = require('../_lib/auth');
+const { sendPushToUsers } = require('../_lib/push');
 
 // Callback requests are city-level operational work. City staff can list them
 // and move them through the queue: new -> contacted -> closed (or spam).
@@ -39,9 +40,22 @@ module.exports = async function handler(req, res) {
       if (status === 'closed') patch.resolved_at = new Date().toISOString();
       let update = auth.supabase.from('callback_requests').update(patch).eq('id', id);
       if (cityScoped) update = update.or(cityFilter);
-      const { data: updated, error } = await update.select('id');
+      const { data: updated, error } = await update.select('id,user_id');
       if (error) throw error;
       if (!updated || updated.length === 0) return send(res, 404, { error: 'Request not found.' });
+      // Tell the requester their help request moved — only for the two states
+      // that mean something to them. 'spam'/'queued' are internal.
+      const requesterId = updated[0].user_id;
+      if (requesterId && (status === 'contacted' || status === 'closed')) {
+        await sendPushToUsers(auth.supabase, [requesterId], {
+          title: 'Saathi help desk',
+          body:
+            status === 'contacted'
+              ? 'We tried to reach you about your request. Please pick up or call back.'
+              : 'Your help request has been resolved.',
+          url: '/help',
+        });
+      }
       return send(res, 200, { ok: true });
     }
 

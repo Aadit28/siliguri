@@ -4,6 +4,9 @@ type RequestOptions = {
   method?: 'GET' | 'POST';
   token?: string | null;
   body?: Record<string, unknown>;
+  // Assistant plans wait on a thinking-model reply (~8s typical); the default
+  // fits every other route.
+  timeoutMs?: number;
 };
 
 const REQUEST_TIMEOUT_MS = 10000;
@@ -40,7 +43,7 @@ export async function backendRequest<T>(path: string, options: RequestOptions = 
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${apiBaseUrl()}${path}`, {

@@ -1,5 +1,6 @@
 const { authenticate, readBody, requireFamilyLink, send, withCors,
   sendServerError } = require('../_lib/auth');
+const { sendPushToUsers, guardianIdsForParent } = require('../_lib/push');
 
 const REPEATS = ['once', 'daily', 'weekly', 'monthly'];
 
@@ -89,6 +90,15 @@ module.exports = async function handler(req, res) {
         .select(COLS)
         .single();
       if (error) throw error;
+      // A guardian adding a reminder for the parent: tell the parent's device.
+      // Awaited before the response — Vercel freezes the function afterwards.
+      if (auth.user.id !== parentId) {
+        await sendPushToUsers(auth.supabase, [parentId], {
+          title: 'New reminder from family',
+          body: title,
+          url: '/calendar',
+        });
+      }
       return send(res, 200, { reminder: toReminder(data) });
     }
 
@@ -123,6 +133,13 @@ module.exports = async function handler(req, res) {
         .maybeSingle();
       if (error) throw error;
       if (!data) return send(res, 404, { error: 'Reminder not found.' });
+      if (auth.user.id !== parentId) {
+        await sendPushToUsers(auth.supabase, [parentId], {
+          title: 'Reminder updated by family',
+          body: data.title,
+          url: '/calendar',
+        });
+      }
       return send(res, 200, { reminder: toReminder(data) });
     }
 
@@ -138,6 +155,19 @@ module.exports = async function handler(req, res) {
         .maybeSingle();
       if (error) throw error;
       if (!data) return send(res, 404, { error: 'Reminder not found.' });
+      // The parent completing a reminder is the signal guardians are watching
+      // for — "medicine taken" without needing to call and ask.
+      if (auth.user.id === parentId) {
+        const guardianIds = await guardianIdsForParent(auth.supabase, parentId);
+        if (guardianIds.length) {
+          const parentName = auth.user.full_name || auth.user.username || 'Your parent';
+          await sendPushToUsers(auth.supabase, guardianIds, {
+            title: `${parentName} completed a reminder`,
+            body: data.title,
+            url: '/guardian',
+          });
+        }
+      }
       return send(res, 200, { reminder: toReminder(data) });
     }
 

@@ -4,6 +4,7 @@ import { backendRequest } from '../lib/backend';
 import { clearMemory } from '../lib/memory';
 import { clearFamilyForSelf } from '../lib/familySync';
 import { matchDemoUser } from '../lib/demoAuth';
+import { registerPushToken, unregisterPushToken } from '../lib/pushRegistration';
 
 const DEMO_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -132,6 +133,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch(() => undefined)
       .finally(() => setLoading(false));
   }, []);
+
+  // Register this device for server push once a real (non-demo) session is
+  // live. Best-effort: web and Expo Go quietly no-op inside the helper.
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token || token.startsWith('demo.')) return;
+    void registerPushToken(token);
+  }, [session?.access_token]);
 
   const user = session?.user ?? null;
   const displayName =
@@ -288,6 +297,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     const token = session?.access_token;
+    // Before the token is revoked: unregistering needs an authenticated call.
+    if (token) await unregisterPushToken(token).catch(() => undefined);
     setSession(null);
     await AsyncStorage.removeItem(SESSION_KEY);
     // Assistant memory is stored device-wide; clear it so the next account

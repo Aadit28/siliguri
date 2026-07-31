@@ -48,6 +48,7 @@ import {
   updateFamilyReminder,
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
+import { requestAssistantPlan } from '../../src/lib/assistant';
 import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
 import { todayISO } from '../../src/lib/notifications';
 
@@ -432,7 +433,7 @@ export default function ParentDetail() {
             <Muted style={styles.stateText}>{t('family.errorNotLinked')}</Muted>
           </Card>
         ) : section === 'overview' ? (
-          <OverviewSection token={token} parentId={parentId} styles={styles} colors={colors} isWide={isWide} />
+          <OverviewSection token={token} parentId={parentId} parentName={parentName} styles={styles} colors={colors} isWide={isWide} />
         ) : section === 'reminders' ? (
           <RemindersSection token={token} parentId={parentId} styles={styles} colors={colors} currentUserId={user.id} />
         ) : section === 'places' ? (
@@ -453,20 +454,59 @@ type Styles = ReturnType<typeof makeStyles>;
 function OverviewSection({
   token,
   parentId,
+  parentName,
   styles,
   colors,
   isWide,
 }: {
   token: string;
   parentId: string;
+  parentName: string;
   styles: Styles;
   colors: AppColors;
   isWide: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [data, setData] = useState<ParentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<string | null>(null);
+
+  // The guardian's agent: the ward's live summary goes in as facts, so "how is
+  // Ma doing" is answered from data, not generalities.
+  async function ask() {
+    const messageText = question.trim();
+    if (!messageText || asking || !data) return;
+    setAsking(true);
+    setAnswer(null);
+    try {
+      const lastActive = data.lastActiveAt ? formatISTStamp(data.lastActiveAt) : t('family.neverActive');
+      const plan = await requestAssistantPlan({
+        message: messageText,
+        services: [],
+        lang: i18n.language?.startsWith('hi') ? 'hi' : 'en',
+        token,
+        context: {
+          todayISO: todayISO(),
+          facts: [
+            `You are talking to the guardian ABOUT their parent ${parentName || ''}`.trim(),
+            `Parent last active: ${lastActive}`,
+            `Parent reminders: ${data.reminders.upcoming} upcoming, ${data.reminders.overdue} overdue, ${data.reminders.done7d} completed this week`,
+            `Parent used the assistant ${data.assistantEvents7d} times in 7 days`,
+            `Care team members saved: ${data.careTeamCount}`,
+            `Recent help requests: ${data.callbacks.length}`,
+          ],
+        },
+      });
+      setAnswer([plan.summary, plan.followUpQuestion].filter(Boolean).join('\n\n'));
+    } catch {
+      setAnswer(t('family.errorGeneric'));
+    } finally {
+      setAsking(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -529,6 +569,33 @@ function OverviewSection({
           </Card>
         ))}
       </View>
+
+      <H2 style={styles.subHeader}>{t('family.askSaathiTitle')}</H2>
+      <Card style={styles.listCard}>
+        <Muted style={styles.askHint}>{t('family.askSaathiHint', { name: parentName || t('family.title') })}</Muted>
+        <View style={styles.askRow}>
+          <TextInput
+            value={question}
+            onChangeText={setQuestion}
+            onSubmitEditing={() => void ask()}
+            returnKeyType="send"
+            placeholder={t('family.askSaathiPlaceholder')}
+            placeholderTextColor={colors.textSubtle}
+            style={[styles.askInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bgAlt }]}
+          />
+          <Button
+            label={asking ? t('family.asking') : t('family.askButton')}
+            onPress={() => void ask()}
+            disabled={asking || !question.trim()}
+          />
+        </View>
+        {asking ? <ActivityIndicator color={colors.textMuted} style={styles.askSpinner} /> : null}
+        {answer ? (
+          <View style={[styles.askAnswer, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+            <Text style={styles.askAnswerText}>{answer}</Text>
+          </View>
+        ) : null}
+      </Card>
 
       <H2 style={styles.subHeader}>{t('family.recentCallbacks')}</H2>
       <Card style={styles.listCard}>
@@ -1326,6 +1393,31 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     cardTitle: { fontSize: font.md, fontFamily: family.semibold, lineHeight: Math.round(font.md * 1.5), color: colors.text },
     formAction: { marginTop: space.lg },
     listCard: { paddingHorizontal: 0, paddingVertical: space.xs },
+    askHint: { paddingHorizontal: space.md, paddingTop: space.sm },
+    askRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md },
+    askInput: {
+      flex: 1,
+      minHeight: TAP,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      fontSize: font.md,
+      fontFamily: family.regular,
+    },
+    askSpinner: { paddingBottom: space.md },
+    askAnswer: {
+      marginHorizontal: space.md,
+      marginBottom: space.md,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: space.md,
+    },
+    askAnswerText: {
+      fontSize: font.md,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.md * 1.4),
+      color: colors.text,
+    },
     stateCard: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl },
     stateText: { textAlign: 'center' },
     stateBlock: { alignItems: 'center', paddingVertical: space.lg, paddingHorizontal: space.md },

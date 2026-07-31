@@ -2,6 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
+  "crons": [
+    {
+      "path": "/api/cron/daily-digest",
+      "schedule": "30 14 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:route*",

@@ -23,8 +23,18 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
-import { requestAssistantPlan, AssistantAction, AssistantAttachment, AssistantMessage, AssistantPlan } from '../../src/lib/assistant';
-import { addEvent, parseWhenToDate } from '../../src/lib/calendar';
+import {
+  requestAssistantPlan,
+  AssistantAction,
+  AssistantAttachment,
+  AssistantMessage,
+  AssistantPlan,
+  AssistantPlanContext,
+  ProposedReminder,
+} from '../../src/lib/assistant';
+import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
+import { buildAssistantContext } from '../../src/lib/memory';
+import { speechRecognitionSupported, startListening, speak, stopSpeaking } from '../../src/lib/voice';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { categoryColor } from '../../src/lib/categories';
@@ -83,10 +93,53 @@ type ChatState = {
 
 let cachedInitialChatState: ChatState | null = null;
 
+const VOICE_REPLIES_KEY = 'saathi-assistant-voice-replies';
+
+function loadVoiceRepliesPref(): boolean {
+  const storage = getWebStorage();
+  if (!storage) return false;
+  try {
+    return storage.getItem(VOICE_REPLIES_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveVoiceRepliesPref(value: boolean) {
+  const storage = getWebStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(VOICE_REPLIES_KEY, value ? '1' : '0');
+  } catch {
+    // Storage full/unavailable — the toggle still works for this visit.
+  }
+}
+
+// What the assistant knows about this user for a personalised plan: their
+// name, their own upcoming calendar, device-local memory facts, and today's
+// LOCAL date (the server needs it to resolve "tomorrow" in reminders).
+async function buildPlanContext(name?: string | null): Promise<AssistantPlanContext> {
+  const todayISO = toLocalISODate(new Date());
+  const [memoryContext, events] = await Promise.all([
+    buildAssistantContext().catch(() => ({ facts: [], recentTurns: [] })),
+    listEvents().catch(() => []),
+  ]);
+  return {
+    profile: name ? { name } : undefined,
+    todayISO,
+    calendar: events
+      .filter((event) => event.dateISO >= todayISO)
+      .slice(0, 20)
+      .map((event) => ({ title: event.title, dateISO: event.dateISO, time: event.time ?? null })),
+    facts: memoryContext.facts,
+    recentTurns: memoryContext.recentTurns,
+  };
+}
+
 export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
-  const { session } = useAuth();
+  const { session, displayName } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -118,6 +171,18 @@ export default function AssistantScreen() {
   const [dialFallback, setDialFallback] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const submitInFlightRef = useRef(false);
+  // ----- Voice agent state -----
+  const canDictate = speechRecognitionSupported();
+  const [listening, setListening] = useState(false);
+  const [voiceReplies, setVoiceReplies] = useState(loadVoiceRepliesPref);
+  // Message ids whose proposed reminder was saved (disables the card's button).
+  const [savedReminderIds, setSavedReminderIds] = useState<Set<string>>(() => new Set());
+  const dictationRef = useRef<{ stop: () => void } | null>(null);
+  const voiceRepliesRef = useRef(voiceReplies);
+  voiceRepliesRef.current = voiceReplies;
+  // Whether the last submitted turn arrived by voice — the hands-free loop
+  // only re-opens the mic after replying to a spoken turn, never a typed one.
+  const lastInputWasVoiceRef = useRef(false);
   const canAttachImages = getWebDocument() !== null;
   const activeSession = sessions.find((sessionItem) => sessionItem.id === activeSessionId) ?? sessions[0];
   const messages = activeSession.messages;
@@ -279,6 +344,8 @@ export default function AssistantScreen() {
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
+      // Best-effort personalisation; a failed context read must not block the plan.
+      const context = await buildPlanContext(displayName).catch(() => null);
       const plan = await Promise.race([
         requestAssistantPlan({
           message: body,
@@ -286,6 +353,7 @@ export default function AssistantScreen() {
           lang: lang === 'hi' ? 'hi' : 'en',
           imageAttachments: currentAttachments,
           token: session?.access_token,
+          context,
         }),
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(() => reject(new Error('plan-timeout')), PLAN_TIMEOUT_MS);
@@ -302,6 +370,15 @@ export default function AssistantScreen() {
           plan,
         },
       ]);
+      if (voiceRepliesRef.current) {
+        // Speak the reply; after a SPOKEN question, reopen the mic so the
+        // conversation continues hands-free.
+        void speak(reply, lang === 'hi' ? 'hi' : 'en', () => {
+          if (lastInputWasVoiceRef.current && voiceRepliesRef.current && !dictationRef.current) {
+            startVoiceInput();
+          }
+        });
+      }
     } catch {
       updateMessagesForSession(targetSessionId, (current) => [
         ...current,
@@ -319,11 +396,83 @@ export default function AssistantScreen() {
     }
   }
 
-  async function submit(text = input) {
+  function startVoiceInput() {
+    if (loading || servicesLoading || dictationRef.current) return;
+    stopSpeaking();
+    const handle = startListening({
+      lang: lang === 'hi' ? 'hi' : 'en',
+      onInterim: (text) => setInput(text),
+      onResult: (text) => {
+        lastInputWasVoiceRef.current = true;
+        setInput('');
+        void submit(text, { spoken: true });
+      },
+      onEnd: () => {
+        dictationRef.current = null;
+        setListening(false);
+      },
+      onError: () => {
+        appendAssistantNote(t('assistant.voice.error'));
+      },
+    });
+    if (!handle) {
+      appendAssistantNote(t('assistant.voice.unsupported'));
+      return;
+    }
+    dictationRef.current = handle;
+    setListening(true);
+  }
+
+  function stopVoiceInput() {
+    dictationRef.current?.stop();
+    dictationRef.current = null;
+    setListening(false);
+    setInput('');
+  }
+
+  function toggleVoiceReplies() {
+    setVoiceReplies((current) => {
+      const next = !current;
+      saveVoiceRepliesPref(next);
+      if (!next) stopSpeaking();
+      return next;
+    });
+  }
+
+  // Leaving the screen must release the mic and the speaker.
+  useEffect(
+    () => () => {
+      dictationRef.current?.stop();
+      dictationRef.current = null;
+      stopSpeaking();
+    },
+    [],
+  );
+
+  async function saveProposedReminder(messageId: string, reminder: ProposedReminder) {
+    if (savedReminderIds.has(messageId)) return;
+    try {
+      const event = await addEvent({
+        title: reminder.title,
+        dateISO: reminder.dateISO,
+        time: reminder.time,
+        repeat: reminder.repeat,
+      });
+      setSavedReminderIds((current) => new Set(current).add(messageId));
+      appendAssistantNote(
+        event.alertProblem ? t('assistant.reminderCard.savedNoAlert') : t('assistant.reminderCard.saved'),
+      );
+    } catch {
+      appendAssistantNote(t('reminders.saveFailed'));
+    }
+  }
+
+  async function submit(text = input, { spoken = false }: { spoken?: boolean } = {}) {
     const body = text.trim();
     const currentAttachments = attachments;
     const hasContent = Boolean(body || currentAttachments.length);
     if (!hasContent || loading || servicesLoading || submitInFlightRef.current) return;
+    if (!spoken) lastInputWasVoiceRef.current = false;
 
     submitInFlightRef.current = true;
     const targetSessionId = activeSessionId;
@@ -525,10 +674,34 @@ export default function AssistantScreen() {
         <View style={styles.chatShell}>
           <View style={styles.statusRow}>
             <Muted style={styles.statusText}>
-              {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
+              {listening
+                ? t('assistant.voice.listening')
+                : servicesLoading
+                  ? t('assistant.loadingServices')
+                  : t('assistant.botStatus')}
             </Muted>
-            {!showSideHistory ? (
-              <View style={styles.statusActions}>
+            <View style={styles.statusActions}>
+              <TouchableOpacity
+                onPress={toggleVoiceReplies}
+                accessibilityRole="button"
+                accessibilityLabel={t(voiceReplies ? 'assistant.voice.repliesOn' : 'assistant.voice.repliesOff')}
+                activeOpacity={0.82}
+                style={[
+                  styles.mobileNewChat,
+                  styles.chatsButton,
+                  {
+                    borderColor: voiceReplies ? colors.primary : colors.border,
+                    backgroundColor: voiceReplies ? colors.primaryTint : 'transparent',
+                  },
+                ]}
+              >
+                <Feather name={voiceReplies ? 'volume-2' : 'volume-x'} size={16} color={voiceReplies ? colors.primaryDark : colors.text} />
+                <Text style={[styles.mobileNewChatText, { color: voiceReplies ? colors.primaryDark : colors.text }]}>
+                  {t('assistant.voice.repliesLabel')}
+                </Text>
+              </TouchableOpacity>
+              {!showSideHistory ? (
+                <>
                 <TouchableOpacity
                   onPress={() => setChatSheetOpen(true)}
                   accessibilityRole="button"
@@ -556,8 +729,9 @@ export default function AssistantScreen() {
                 >
                   <Text style={[styles.mobileNewChatText, { color: colors.text }]}>{t('assistant.newChat')}</Text>
                 </TouchableOpacity>
-              </View>
-            ) : null}
+                </>
+              ) : null}
+            </View>
           </View>
 
           <ScrollView
@@ -574,6 +748,8 @@ export default function AssistantScreen() {
                 onAction={handleAction}
                 onRetry={retryPlan}
                 onCallFailed={setDialFallback}
+                onSaveReminder={saveProposedReminder}
+                reminderSaved={savedReminderIds.has(message.id)}
               />
             ))}
 
@@ -670,6 +846,25 @@ export default function AssistantScreen() {
                   },
                 ]}
               />
+              {canDictate ? (
+                <TouchableOpacity
+                  onPress={() => (listening ? stopVoiceInput() : startVoiceInput())}
+                  disabled={loading || servicesLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(listening ? 'assistant.voice.stop' : 'assistant.voice.start')}
+                  activeOpacity={0.82}
+                  hitSlop={8}
+                  style={[
+                    styles.micButton,
+                    {
+                      backgroundColor: listening ? colors.dangerSoft : 'transparent',
+                      opacity: loading || servicesLoading ? 0.4 : 1,
+                    },
+                  ]}
+                >
+                  <Feather name={listening ? 'mic-off' : 'mic'} size={20} color={listening ? colors.danger : colors.text} />
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 onPress={() => submit()}
                 disabled={!canSend}
@@ -802,11 +997,15 @@ function MessageBubble({
   onAction,
   onRetry,
   onCallFailed,
+  onSaveReminder,
+  reminderSaved,
 }: {
   message: AssistantMessage;
   onAction: (action: AssistantAction, plan?: AssistantPlan) => void;
   onRetry: (errorMessageId: string, payload: { message: string; attachments?: AssistantAttachment[] }) => void;
   onCallFailed: (number: string) => void;
+  onSaveReminder: (messageId: string, reminder: ProposedReminder) => void;
+  reminderSaved: boolean;
 }) {
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
@@ -973,6 +1172,43 @@ function MessageBubble({
               </View>
             ) : null}
 
+            {message.plan.proposedReminder ? (
+              <View style={[styles.reminderCard, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                <View style={styles.reminderCardHeader}>
+                  <Feather name="bell" size={18} color={colors.primaryDark} />
+                  <Text style={[styles.reminderCardHeading, { color: colors.textMuted }]}>
+                    {t('assistant.reminderCard.heading')}
+                  </Text>
+                </View>
+                <Text style={[styles.reminderCardTitle, { color: colors.text }]}>
+                  {message.plan.proposedReminder.title}
+                </Text>
+                <Text style={[styles.reminderCardMeta, { color: colors.textMuted }]}>
+                  {reminderMetaLine(message.plan.proposedReminder, t)}
+                </Text>
+                {reminderSaved ? (
+                  <View style={styles.reminderSavedRow}>
+                    <Feather name="check-circle" size={18} color={colors.primaryDark} />
+                    <Text style={[styles.reminderSavedText, { color: colors.primaryDark }]}>
+                      {t('assistant.reminderCard.savedShort')}
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => onSaveReminder(message.id, message.plan!.proposedReminder!)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('assistant.reminderCard.save')}
+                    activeOpacity={0.82}
+                    style={[styles.reminderSaveButton, { backgroundColor: colors.primary }]}
+                  >
+                    <Text style={[styles.reminderSaveText, { color: colors.primaryFg }]}>
+                      {t('assistant.reminderCard.save')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null}
+
             <Text style={[styles.planHint, { color: colors.textMuted }]}>
               {message.plan.safetyNote}
             </Text>
@@ -1008,6 +1244,22 @@ function SmallAvatar() {
       <Text style={[styles.smallAvatarText, { color: colors.primaryFg }]}>AI</Text>
     </View>
   );
+}
+
+function reminderMetaLine(reminder: ProposedReminder, t: (key: string) => string) {
+  const todayISO = toLocalISODate(new Date());
+  const [year, month, day] = todayISO.split('-').map(Number);
+  const tomorrowISO = toLocalISODate(new Date(year, month - 1, day + 1));
+  const dayLabel =
+    reminder.dateISO === todayISO
+      ? t('reminders.today')
+      : reminder.dateISO === tomorrowISO
+        ? t('reminders.tomorrow')
+        : reminder.dateISO;
+  const parts = [dayLabel];
+  if (reminder.time) parts.push(reminder.time);
+  parts.push(t(`reminders.repeat.${reminder.repeat}`));
+  return parts.join(' · ');
 }
 
 function welcomeMessage(text: string): AssistantMessage {
@@ -1609,6 +1861,59 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  micButton: {
+    width: TAP,
+    height: TAP,
+    marginBottom: 2,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderCard: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: space.md,
+    gap: space.xs,
+  },
+  reminderCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+  },
+  reminderCardHeading: {
+    fontSize: font.sm,
+    fontFamily: family.semibold,
+  },
+  reminderCardTitle: {
+    fontSize: font.md,
+    fontFamily: family.bold,
+  },
+  reminderCardMeta: {
+    fontSize: font.sm,
+    fontFamily: family.regular,
+  },
+  reminderSaveButton: {
+    minHeight: TAP,
+    marginTop: space.xs,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.md,
+  },
+  reminderSaveText: {
+    fontSize: font.md,
+    fontFamily: family.semibold,
+  },
+  reminderSavedRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+  },
+  reminderSavedText: {
+    fontSize: font.md,
+    fontFamily: family.semibold,
   },
   attachmentList: {
     gap: space.sm,

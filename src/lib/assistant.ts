@@ -1,6 +1,9 @@
 import { backendRequest } from './backend';
 import { toLocalISODate } from './calendar';
+import { parseReminderRequest, ProposedReminder } from './reminderParse';
 import { Service, ServiceCategory } from './types';
+
+export type { ProposedReminder } from './reminderParse';
 
 export type AssistantIntent =
   | 'medical_appointment'
@@ -41,6 +44,9 @@ export interface AssistantPlan {
   checklist: string[];
   nextSteps: string[];
   actions: AssistantAction[];
+  // A reminder the agent drafted from the message. Nothing is saved until the
+  // user taps the card's Save button — propose/confirm, never silent writes.
+  proposedReminder?: ProposedReminder | null;
 }
 
 export interface AssistantAttachment {
@@ -195,6 +201,9 @@ const COPY = {
     routeChecklist: ['Pickup point', 'Destination', 'Passenger phone number', 'Preferred leaving time'],
     routeNextSteps: ['Open live directions for the current ETA.', 'Share pickup and expected arrival time with family.'],
     liveDirections: 'Open live directions',
+    reminderProposed: (title: string) =>
+      `I prepared a reminder: "${title}". Check the details below and tap Save.`,
+    reminderNextSteps: ['Check the date, time and repeat.', 'Tap Save reminder so this phone rings on time.'],
     safety:
       'Saathi is a coordination tool, not a medical device or doctor. It does not diagnose, treat, cure or prevent any condition. For symptoms or urgent concerns, call a qualified professional or emergency service.',
   },
@@ -235,6 +244,9 @@ const COPY = {
     routeChecklist: ['पिकअप स्थान', 'गंतव्य', 'यात्री का फोन नंबर', 'निकलने का पसंदीदा समय'],
     routeNextSteps: ['मौजूदा समय के अनुमान के लिए लाइव दिशा-निर्देश खोलें।', 'पिकअप और पहुंचने का अनुमानित समय परिवार के साथ साझा करें।'],
     liveDirections: 'लाइव दिशा-निर्देश खोलें',
+    reminderProposed: (title: string) =>
+      `मैंने रिमाइंडर तैयार किया है: "${title}"। नीचे विवरण देखें और सेव दबाएं।`,
+    reminderNextSteps: ['तारीख, समय और दोहराव जांचें।', 'सेव दबाएं ताकि फोन समय पर याद दिलाए।'],
     safety:
       'साथी समन्वय में मदद करता है; यह डॉक्टर या मेडिकल डिवाइस नहीं है। यह निदान, इलाज या दवा की सलाह नहीं देता। लक्षण या आपात चिंता हो तो डॉक्टर, अस्पताल या आपातकालीन सेवा को कॉल करें।',
   },
@@ -263,6 +275,8 @@ export async function requestAssistantPlan(input: {
     return await backendRequest<AssistantPlan>('/api/assistant/plan', {
       method: 'POST',
       token: input.token ?? undefined,
+      // Under the screen's 20s "Typing..." race, above the LLM's ~8s typical.
+      timeoutMs: 18000,
       body: {
         message,
         lang: input.lang,
@@ -285,6 +299,12 @@ export function buildLocalAssistantPlan(
   const copy = COPY[lang] ?? COPY.en;
   const normalized = message.toLowerCase();
   const urgent = URGENT_WORDS.some((word) => normalized.includes(word));
+  // Reminder wins over route-time: "remind me... at 8" contains time words
+  // that would otherwise trip the traffic-question detector.
+  const reminder = urgent ? null : parseReminderRequest(message, lang, context?.todayISO);
+  if (reminder) {
+    return buildReminderPlan(reminder, lang);
+  }
   const route = urgent ? null : extractRouteTimeRequest(message, services);
   if (route) {
     return buildRouteTimePlan(route, lang);
@@ -359,6 +379,25 @@ export function buildLocalAssistantPlan(
     checklist: intent === 'medical_appointment' ? [...copy.checklistDoctor] : [...copy.checklistGeneral],
     nextSteps: [copy.nextCall, copy.nextShare],
     actions,
+  };
+}
+
+function buildReminderPlan(reminder: ProposedReminder, lang: AssistantLang): AssistantPlan {
+  const copy = COPY[lang] ?? COPY.en;
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'handoff',
+    summary: copy.reminderProposed(reminder.title),
+    followUpQuestion: null,
+    safetyNote: copy.safety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [...copy.reminderNextSteps],
+    actions: [
+      { kind: 'open_screen', label: copy.openScreen('calendar'), value: JSON.stringify({ screen: 'calendar' }), serviceId: null },
+    ],
+    proposedReminder: reminder,
   };
 }
 

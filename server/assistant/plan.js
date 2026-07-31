@@ -104,6 +104,151 @@ const ROUTE_TIME_WORDS = [
 
 const CALENDAR_SCREEN_WORDS = ['calendar', 'appointment', 'schedule', 'reminder', 'कैलेंडर', 'अपॉइंटमेंट', 'रिमाइंडर'];
 
+// ----- Reminder proposal parsing (port of src/lib/reminderParse.ts) -----
+// Keep the two in sync: the client uses its copy when offline, this one powers
+// the online local planner and validates whatever the LLM proposes.
+
+const REMINDER_TRIGGER = /\b(remind|reminder|remember)\b|याद|रिमाइंड|\byaad\b/i;
+const REMINDER_DAILY = /\b(every ?day|daily|roz|har din)\b|रोज|हर दिन|प्रतिदिन/i;
+const REMINDER_WEEKLY = /\b(every ?week|weekly|har hafte|har week)\b|हर हफ्ते|साप्ताहिक/i;
+const REMINDER_MONTHLY = /\b(every ?month|monthly|har mahine|har month)\b|हर महीने|मासिक/i;
+const REMINDER_TOMORROW = /\btomorrow\b|\bkal\b|कल/i;
+const REMINDER_TODAY = /\btoday\b|\btonight\b|\baaj\b|आज/i;
+const REMINDER_EVENING = /\b(evening|night|tonight|shaam|raat)\b|शाम|रात/i;
+const REMINDER_MORNING = /\b(morning|subah)\b|सुबह/i;
+const REMINDER_WEEKDAYS = [
+  { index: 0, pattern: /\bsunday\b|रविवार|\bravivar\b/i },
+  { index: 1, pattern: /\bmonday\b|सोमवार|\bsomvar\b/i },
+  { index: 2, pattern: /\btuesday\b|मंगलवार|\bmangalvar\b/i },
+  { index: 3, pattern: /\bwednesday\b|बुधवार|\bbudhvar\b/i },
+  { index: 4, pattern: /\bthursday\b|गुरुवार|\bguruvar\b/i },
+  { index: 5, pattern: /\bfriday\b|शुक्रवार|\bshukravar\b/i },
+  { index: 6, pattern: /\bsaturday\b|शनिवार|\bshanivar\b/i },
+];
+const REMINDER_REPEATS = ['once', 'daily', 'weekly', 'monthly'];
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function extractReminderTime(message) {
+  const clocked = message.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)\b/i);
+  if (clocked) {
+    let hours = parseInt(clocked[1], 10);
+    const minutes = clocked[2] ? parseInt(clocked[2], 10) : 0;
+    if (hours < 1 || hours > 12 || minutes > 59) return null;
+    const meridiem = clocked[3].toLowerCase();
+    if (meridiem === 'pm' && hours !== 12) hours += 12;
+    if (meridiem === 'am' && hours === 12) hours = 0;
+    return `${pad2(hours)}:${pad2(minutes)}`;
+  }
+  const baje = message.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*(?:baje|बजे)/i);
+  if (baje) {
+    let hours = parseInt(baje[1], 10);
+    const minutes = baje[2] ? parseInt(baje[2], 10) : 0;
+    if (hours < 1 || hours > 23 || minutes > 59) return null;
+    if (hours <= 11 && REMINDER_EVENING.test(message)) hours += 12;
+    return `${pad2(hours)}:${pad2(minutes)}`;
+  }
+  const twentyFour = message.match(/\b(?:at|@)\s*(\d{1,2})[:.](\d{2})\b/i);
+  if (twentyFour) {
+    const hours = parseInt(twentyFour[1], 10);
+    const minutes = parseInt(twentyFour[2], 10);
+    if (hours > 23 || minutes > 59) return null;
+    return `${pad2(hours)}:${pad2(minutes)}`;
+  }
+  if (REMINDER_MORNING.test(message) && REMINDER_TRIGGER.test(message)) return '09:00';
+  if (REMINDER_EVENING.test(message) && REMINDER_TRIGGER.test(message)) return '20:00';
+  return null;
+}
+
+function resolveReminderDate(message, todayISO) {
+  const [year, month, day] = todayISO.split('-').map(Number);
+  const today = new Date(year, month - 1, day);
+  if (REMINDER_TOMORROW.test(message) && !REMINDER_TODAY.test(message)) {
+    const next = new Date(today);
+    next.setDate(next.getDate() + 1);
+    return localISODate(next);
+  }
+  const weekday = REMINDER_WEEKDAYS.find((entry) => entry.pattern.test(message));
+  if (weekday) {
+    let diff = weekday.index - today.getDay();
+    if (diff <= 0) diff += 7;
+    const next = new Date(today);
+    next.setDate(next.getDate() + diff);
+    return localISODate(next);
+  }
+  return todayISO;
+}
+
+function cleanReminderTitle(message) {
+  let title = message
+    .replace(/^.*?\b(?:remind (?:me|us|him|her)?|reminder|remember)\b(?:\s+(?:to|about|for))?/i, '')
+    .replace(/(?:मुझे|हमें)?\s*याद\s*(?:दिला(?:ना|ओ|इए|एं)?|रख(?:ना|ो|िए)?)\s*(?:कि|की)?/g, ' ')
+    .replace(/\byaad\s*(?:dila(?:na|o|iye|do)?|rakh(?:na|o)?)\b/gi, ' ')
+    .replace(REMINDER_DAILY, ' ')
+    .replace(REMINDER_WEEKLY, ' ')
+    .replace(REMINDER_MONTHLY, ' ')
+    .replace(REMINDER_TOMORROW, ' ')
+    .replace(/\btoday\b|\btonight\b|\baaj\b|आज/gi, ' ')
+    .replace(/\b(?:every\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, ' ')
+    .replace(/\b(?:at|@)?\s*\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|baje|बजे)\b/gi, ' ')
+    .replace(/\b(?:at|@)\s*\d{1,2}[:.]\d{2}\b/gi, ' ')
+    .replace(/\b(morning|evening|night|subah|shaam|raat)\b|सुबह|शाम|रात/gi, ' ')
+    .replace(/\b(please|kripya)\b|कृपया/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,.:;!?-]+|[\s,.:;!?-]+$/g, '')
+    .trim();
+  title = title.replace(/\s*(?:लेना|करना|जाना)?\s*(?:है|हैं|hai|hain)[.?!]?$/i, '').trim();
+  // Stripping schedule words can strand a function word at either edge
+  // ("call the doctor on", "मुझे दवा लेना").
+  title = title
+    .replace(/^(?:to|about|for|that|मुझे|हमें|mujhe|humein|hume|कि|की|ki)\s+/i, '')
+    .replace(/\s+(?:on|at|in|by|को|पर|ko|par)$/i, '')
+    .trim();
+  return title.slice(0, 80);
+}
+
+function parseReminderRequest(message, lang, todayISO) {
+  if (!REMINDER_TRIGGER.test(message)) return null;
+  const repeat = REMINDER_DAILY.test(message)
+    ? 'daily'
+    : REMINDER_WEEKLY.test(message)
+      ? 'weekly'
+      : REMINDER_MONTHLY.test(message)
+        ? 'monthly'
+        : REMINDER_WEEKDAYS.some((entry) => entry.pattern.test(message)) && /\bevery\b|हर|\bhar\b/i.test(message)
+          ? 'weekly'
+          : 'once';
+  const baseDay =
+    todayISO && /^\d{4}-\d{2}-\d{2}$/.test(todayISO) ? todayISO : localISODate(new Date());
+  return {
+    title: cleanReminderTitle(message) || (lang === 'hi' ? 'रिमाइंडर' : 'Reminder'),
+    dateISO: resolveReminderDate(message, baseDay),
+    time: extractReminderTime(message),
+    repeat,
+  };
+}
+
+// Whatever proposes a reminder — this parser or the LLM — the result must be a
+// real date, a real time and a known repeat, or the card is not shown at all.
+function sanitizeProposedReminder(value) {
+  if (!value || typeof value !== 'object') return null;
+  const title = String(value.title || '').trim().slice(0, 80);
+  const dateISO = String(value.dateISO || '').trim();
+  if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return null;
+  const parsed = new Date(`${dateISO}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dateISO) return null;
+  let time = null;
+  if (value.time) {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value.time).trim());
+    if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+    time = `${match[1]}:${match[2]}`;
+  }
+  const repeat = REMINDER_REPEATS.includes(value.repeat) ? value.repeat : 'once';
+  return { title, dateISO, time, repeat };
+}
+
 const CONNECTOR_SCREEN_WORDS = [
   'what can you connect',
   'which apps work with',
@@ -152,6 +297,8 @@ const COPY = {
     routeChecklist: ['Pickup point', 'Destination', 'Passenger phone number', 'Preferred leaving time'],
     routeNextSteps: ['Open live directions for the current ETA.', 'Share pickup and expected arrival time with family.'],
     liveDirections: 'Open live directions',
+    reminderProposed: (title) => `I prepared a reminder: "${title}". Check the details below and tap Save.`,
+    reminderNextSteps: ['Check the date, time and repeat.', 'Tap Save reminder so this phone rings on time.'],
     safety:
       'Saathi is a coordination tool, not a medical device or doctor. It does not diagnose, treat, cure or prevent any condition. For symptoms or urgent concerns, call a qualified professional or emergency service.',
   },
@@ -181,6 +328,8 @@ const COPY = {
     greeting: (name) => `नमस्ते ${name} जी।`,
     calendarReminder: (title, day, time) =>
       `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
+    reminderProposed: (title) => `मैंने रिमाइंडर तैयार किया है: "${title}"। नीचे विवरण देखें और सेव दबाएं।`,
+    reminderNextSteps: ['तारीख, समय और दोहराव जांचें।', 'सेव दबाएं ताकि फोन समय पर याद दिलाए।'],
     safety:
       'साथी समन्वय में मदद करता है; यह डॉक्टर या मेडिकल डिवाइस नहीं है। यह निदान, इलाज या दवा की सलाह नहीं देता। लक्षण या आपात चिंता हो तो डॉक्टर, अस्पताल या आपातकालीन सेवा को कॉल करें।',
   },
@@ -240,9 +389,10 @@ async function aiDailyQuotaOk(userId) {
       if ((count || 0) >= AI_USER_DAILY_MAX) return false;
     }
     return true;
-  } catch {
+  } catch (error) {
     // Fail closed: if quota accounting is unreachable we cannot meter LLM
     // spend, so fall back to the free local planner instead of unmetered AI.
+    console.warn('AI quota check failed, using local plan:', error?.message || error);
     return false;
   }
 }
@@ -304,7 +454,12 @@ module.exports = async function handler(req, res) {
         imageAttachments,
         context,
         urgent,
-      }).catch(() => null);
+      }).catch((error) => {
+        // The local planner covers the user; the log is for operators, so a
+        // dead key or renamed model is visible instead of a silent downgrade.
+        console.warn('LLM planner failed, using local plan:', error?.message || error);
+        return null;
+      });
       if (aiPlan) {
         globalAiCountCache.value += 1;
         await logAssistantEvent(userId, { message, imageCount: imageAttachments.length, plan: aiPlan });
@@ -332,7 +487,7 @@ function pickLlmProvider(imageAttachments) {
 
 function buildSystemPrompt(urgent) {
   return (
-    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. Return compact JSON only.' +
+    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. When the user asks to be reminded of something, fill proposedReminder (use context.todayISO as today when resolving "tomorrow" or weekday names) and never claim the reminder is saved — the app asks the user to confirm it. Return compact JSON only.' +
     (urgent
       ? ' URGENT: the message contains emergency symptoms. Set status to "urgent" and tell the user to call emergency help or the nearest hospital first, before answering anything else (including route or traffic questions).'
       : '')
@@ -373,7 +528,8 @@ const PLAN_JSON_INSTRUCTIONS =
   '"suggestedServiceIds" (array of at most 3 ids taken only from the provided services), ' +
   '"checklist" (array of at most 5 short strings), ' +
   '"nextSteps" (array of at most 4 short strings), ' +
-  '"actions" (array of at most 4 objects, each {"kind":"call"|"directions"|"source"|"family_update"|"details","label":string,"value":string|null,"serviceId":string|null}). ' +
+  '"actions" (array of at most 4 objects, each {"kind":"call"|"directions"|"source"|"family_update"|"details","label":string,"value":string|null,"serviceId":string|null}), ' +
+  '"proposedReminder" (null, or when the user asks to be reminded of something: {"title":string,"dateISO":"YYYY-MM-DD","time":"HH:MM" or null,"repeat":"once"|"daily"|"weekly"|"monthly"} — the app shows it as a card the user must confirm). ' +
   'No other keys.';
 
 async function planWithDeepSeek({ message, lang, services, imageAttachments, context, urgent }) {
@@ -394,21 +550,34 @@ async function planWithDeepSeek({ message, lang, services, imageAttachments, con
         { role: 'user', content: JSON.stringify(buildRequestPayload({ message, lang, services, imageAttachments, context })) },
       ],
       response_format: { type: 'json_object' },
-      // DeepSeek V4 hybrid thinking mode: disabled keeps replies fast enough for chat.
-      thinking: { type: 'disabled' },
+      // DeepSeek V4 hybrid thinking mode: disabled keeps replies fast enough
+      // for chat. Only DeepSeek models understand the parameter — the OpenCode
+      // Go plan also serves kimi/glm/qwen, which reject unknown fields.
+      ...(model.startsWith('deepseek') ? { thinking: { type: 'disabled' } } : {}),
       temperature: 0.3,
-      max_tokens: 900,
+      // Thinking models (kimi, glm) spend budget on reasoning before the JSON;
+      // below ~3000 the object gets cut off mid-key on longer answers.
+      max_tokens: 3000,
     }),
   });
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    console.warn(`LLM request failed (${response.status} ${model}), using local plan`);
+    return null;
+  }
 
   const data = await response.json();
   const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-  if (!raw) return null;
+  if (!raw) {
+    console.warn(`LLM returned empty content (${model}), using local plan`);
+    return null;
+  }
 
-  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  const parsed = JSON.parse(text);
+  const parsed = extractJsonObject(raw);
+  if (!parsed) {
+    console.warn(`LLM returned unparseable JSON (${model}), using local plan`);
+    return null;
+  }
   return normalizeModelPlan(parsed, services, lang, { message, context, urgent, source: 'deepseek' });
 }
 
@@ -488,6 +657,16 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
                   },
                 },
               },
+              proposedReminder: {
+                type: ['object', 'null'],
+                additionalProperties: false,
+                properties: {
+                  title: { type: 'string' },
+                  dateISO: { type: 'string' },
+                  time: { type: ['string', 'null'] },
+                  repeat: { type: 'string', enum: ['once', 'daily', 'weekly', 'monthly'] },
+                },
+              },
             },
           },
         },
@@ -523,6 +702,26 @@ async function logAssistantEvent(userId, { message, imageCount, plan }) {
   } catch {
     // Logging is useful for safety review, but planning should never fail because logging is unavailable.
   }
+}
+
+// Thinking models sometimes leak reasoning prose around the JSON object even
+// in json_object mode. Take the outermost {...} block instead of trusting the
+// whole message to be JSON.
+function extractJsonObject(raw) {
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const candidates = [text];
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first >= 0 && last > first) candidates.push(text.slice(first, last + 1));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
 }
 
 function extractOutputText(data) {
@@ -562,6 +761,10 @@ function normalizeModelPlan(plan, services, lang, { message, context, urgent, so
     checklist: safeStringList(plan.checklist, local.checklist, 5),
     nextSteps: safeStringList(plan.nextSteps, local.nextSteps, 4),
     actions: normalizeActions(plan.actions, fallbackServices, lang),
+    // Validated hard (real date, real time, known repeat) or dropped; the
+    // deterministic parser is the fallback when the LLM offered nothing usable.
+    proposedReminder:
+      sanitizeProposedReminder(plan.proposedReminder) || local.proposedReminder || null,
   };
 }
 
@@ -611,6 +814,10 @@ function buildLocalAssistantPlan(message, services, lang = 'en', context = null)
   const copy = COPY[lang] || COPY.en;
   const normalized = String(message || '').toLowerCase();
   const urgent = URGENT_WORDS.some((word) => normalized.includes(word));
+  // Reminder wins over route-time: "remind me... at 8" contains time words
+  // that would otherwise trip the traffic-question detector.
+  const reminder = urgent ? null : parseReminderRequest(String(message || ''), lang, context?.todayISO);
+  if (reminder) return buildReminderProposalPlan(reminder, lang);
   const route = urgent ? null : extractRouteTimeRequest(message, services);
   if (route) return buildRouteTimePlan(route);
   const intent = detectIntent(normalized, urgent);
@@ -658,6 +865,25 @@ function buildLocalAssistantPlan(message, services, lang = 'en', context = null)
     checklist: intent === 'medical_appointment' ? copy.checklistDoctor : copy.checklistGeneral,
     nextSteps: [copy.nextCall, copy.nextShare],
     actions,
+  };
+}
+
+function buildReminderProposalPlan(reminder, lang) {
+  const copy = COPY[lang] || COPY.en;
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'handoff',
+    summary: copy.reminderProposed(reminder.title),
+    followUpQuestion: null,
+    safetyNote: copy.safety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [...copy.reminderNextSteps],
+    actions: [
+      { kind: 'open_screen', label: copy.openScreen('calendar'), value: JSON.stringify({ screen: 'calendar' }), serviceId: null },
+    ],
+    proposedReminder: reminder,
   };
 }
 

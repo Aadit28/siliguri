@@ -158,7 +158,8 @@ export async function scheduleReminderWithOutcome(event: ScheduleInput): Promise
       content: {
         title: event.title,
         body: event.note ?? event.serviceName ?? undefined,
-        data: { eventId: event.id },
+        // url: tapping the alert lands on the calendar (root layout listener).
+        data: { eventId: event.id, url: '/calendar' },
       },
       trigger,
     });

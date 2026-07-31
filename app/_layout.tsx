@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Stack } from 'expo-router';
+import { View, StyleSheet, Platform } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -57,9 +58,43 @@ export default function RootLayout() {
   );
 }
 
+// Identifiers already routed, so the cold-start "last response" and the live
+// listener cannot both navigate for the same tap.
+const handledNotificationIds = new Set<string>();
+
+// Notification taps carry an internal path in data.url (set by both the local
+// reminder scheduler and the server push helper). Only such internal paths are
+// accepted: a push payload must not be able to send an elder to an arbitrary
+// external URL.
+function useNotificationDeepLinks() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+
+    const route = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const id = response.notification.request.identifier;
+      if (handledNotificationIds.has(id)) return;
+      handledNotificationIds.add(id);
+      const url = response.notification.request.content.data?.url;
+      if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) {
+        router.push(url as never);
+      }
+    };
+
+    // App launched by tapping a notification: the tap happened before the
+    // listener below existed.
+    Notifications.getLastNotificationResponseAsync().then(route).catch(() => undefined);
+    const subscription = Notifications.addNotificationResponseReceivedListener(route);
+    return () => subscription.remove();
+  }, [router]);
+}
+
 function RootStack() {
   const { colors, isDark } = useTheme();
   const { isComputerMode } = useDisplayMode();
+  useNotificationDeepLinks();
 
   return (
     <>
