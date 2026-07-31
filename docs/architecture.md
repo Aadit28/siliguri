@@ -194,6 +194,12 @@ remote push token (a dev build can), and the web build has no Expo push at
 all. Every step is best-effort, so those platforms degrade to local alerts
 without erroring.
 
+Because of those limits, every push also writes a row into `alerts`
+(migration 13) whether or not any device received it. The bell merges that
+inbox with the local reminder list — on web it is the only place a family
+alert will ever appear. Opening the panel marks the inbox read; the digest
+cron prunes rows older than thirty days.
+
 Notification taps carry an internal path in `data.url` (`/calendar`,
 `/guardian`, `/help`). The root layout routes it and refuses anything that is
 not an app path, so a push payload can never send an elder to an external

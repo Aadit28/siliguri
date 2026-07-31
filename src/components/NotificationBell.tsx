@@ -15,7 +15,9 @@ import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { fetchServerAlerts, markServerAlertsRead, ServerAlert } from '../lib/alerts';
 import { listEvents } from '../lib/calendar';
 import { buildNotifications, formatEventWhen, NotificationItem } from '../lib/notifications';
 import { family, font, radius, shadow, space } from '../lib/theme';
@@ -32,27 +34,60 @@ export default function NotificationBell() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
+  const { session } = useAuth();
   const { height } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [serverAlerts, setServerAlerts] = useState<ServerAlert[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const requestId = useRef(0);
+  const token = session?.access_token;
   const load = useCallback(() => {
     const id = ++requestId.current;
     listEvents().then((events) => {
       if (id === requestId.current) setItems(buildNotifications(events));
     });
+    // Server alerts: family activity and help-desk updates. Web and Expo Go
+    // never receive these as push, so the inbox is their only channel.
+    fetchServerAlerts(token).then((result) => {
+      if (id === requestId.current) {
+        setServerAlerts(result.alerts);
+        setUnreadCount(result.unread);
+      }
+    });
     return () => {
       // Invalidate any in-flight request on blur/unmount.
       requestId.current += 1;
     };
-  }, []);
+  }, [token]);
 
   useFocusEffect(load);
 
+  function openPanel() {
+    load();
+    setOpen(true);
+    // The badge earned its attention; opening the panel spends it.
+    if (unreadCount) {
+      markServerAlertsRead(token);
+      setUnreadCount(0);
+    }
+  }
+
   // Only things already due or due today are worth a badge; the rest sit quietly.
-  const badgeCount = items.filter((item) => item.tone !== 'soon').length;
+  const badgeCount = items.filter((item) => item.tone !== 'soon').length + unreadCount;
   const panelHeight = Math.max(240, Math.round(height / 3));
+
+  function alertDay(iso: string) {
+    // IST calendar day, compared in IST — the alert about a Siliguri parent
+    // should read "today" on the Siliguri day, wherever the guardian is.
+    const ist = new Date(new Date(iso).getTime() + 5.5 * 60 * 60 * 1000);
+    const todayIst = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const dayKey = ist.toISOString().slice(0, 10);
+    const todayKey = todayIst.toISOString().slice(0, 10);
+    if (dayKey === todayKey) return t('notifications.tone.today');
+    return dayKey;
+  }
 
   function toneColor(tone: NotificationItem['tone']) {
     if (tone === 'overdue') return colors.emergency;
@@ -66,10 +101,7 @@ export default function NotificationBell() {
         accessibilityRole="button"
         accessibilityLabel={t('notifications.title')}
         accessibilityHint={badgeCount ? t('notifications.badgeHint', { count: badgeCount }) : undefined}
-        onPress={() => {
-          load();
-          setOpen(true);
-        }}
+        onPress={openPanel}
         style={({ pressed }) => [styles.bellButton, { borderColor: colors.border }, pressed && styles.pressed]}
       >
         <Feather name="bell" size={20} color={colors.text} />
@@ -126,7 +158,7 @@ export default function NotificationBell() {
               </Pressable>
             </View>
 
-            {items.length === 0 ? (
+            {items.length === 0 && serverAlerts.length === 0 ? (
               <View style={styles.empty}>
                 <Feather name="bell-off" size={22} color={colors.textSubtle} />
                 <Text style={[styles.emptyText, { color: colors.textMuted }]}>
@@ -135,6 +167,41 @@ export default function NotificationBell() {
               </View>
             ) : (
               <ScrollView contentContainerStyle={styles.list}>
+                {serverAlerts.map((alert) => (
+                  <Pressable
+                    key={alert.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${alert.title}. ${alert.body ?? ''}`}
+                    onPress={() => {
+                      setOpen(false);
+                      const target = alert.url;
+                      if (target && target.startsWith('/') && !target.startsWith('//')) {
+                        router.push(target as never);
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.item,
+                      { borderColor: colors.navPillEdge, backgroundColor: colors.navPill },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.itemDot,
+                        { backgroundColor: alert.unread ? colors.accent : colors.textMuted },
+                      ]}
+                    />
+                    <View style={styles.itemCopy}>
+                      <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1}>
+                        {alert.title}
+                      </Text>
+                      <Text style={[styles.itemMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                        {[alertDay(alert.createdAt), alert.body].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={20} color={colors.textSubtle} />
+                  </Pressable>
+                ))}
                 {items.map((item) => (
                   <Pressable
                     key={item.id}

@@ -23,6 +23,23 @@ async function sendPushToUsers(client, userIds, message) {
     const ids = [...new Set((userIds || []).filter(Boolean))];
     if (!ids.length) return { sent: 0 };
 
+    // The in-app inbox row comes FIRST and is written for every recipient,
+    // devices or not: web and Expo Go cannot receive push, and the bell is
+    // the only place those users will ever see this alert.
+    await client
+      .from('alerts')
+      .insert(
+        ids.map((userId) => ({
+          user_id: userId,
+          title: String(message.title || 'Saathi').slice(0, 120),
+          body: message.body ? String(message.body).slice(0, 240) : null,
+          url: message.url ? String(message.url).slice(0, 200) : null,
+        })),
+      )
+      .then(({ error: insertError }) => {
+        if (insertError) console.warn('Alert inbox write failed:', insertError.message);
+      });
+
     const { data, error } = await client
       .from('push_tokens')
       .select('token')

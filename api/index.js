@@ -29,6 +29,7 @@ const ROUTES = {
   'admin/helper': () => require('../server/admin/helper'),
   'notify/whatsapp': () => require('../server/notify/whatsapp'),
   'notify/register': () => require('../server/notify/register'),
+  'notify/alerts': () => require('../server/notify/alerts'),
   'cron/daily-digest': () => require('../server/cron/daily-digest'),
   'family/link': () => require('../server/family/link'),
   'family/sos': () => require('../server/family/sos'),
