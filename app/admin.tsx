@@ -176,8 +176,8 @@ type CallbackRequest = {
   created_at: string;
 };
 
-// The queue the backend can hand us. `queued`/`spam` rows used to render with a
-// raw status string and no way to act on them (audit finding 12).
+// Every status the backend can hand us. Keep this in sync with STATUSES in
+// api/admin/callback.js, or a row arrives that the queue cannot label or act on.
 const CALLBACK_STATUSES = ['new', 'queued', 'contacted', 'closed', 'spam'] as const;
 type CallbackFilter = 'all' | (typeof CALLBACK_STATUSES)[number];
 
@@ -206,7 +206,7 @@ export default function AdminScreen() {
   const screenTitle = isCityHelper ? t('admin.helperTitle') : t('admin.title');
 
   // One section on screen at a time; callbacks lead because they are the only
-  // time-sensitive queue here (audit finding 9).
+  // time-sensitive queue here.
   const [section, setSection] = useState<AdminSection>('callbacks');
   // Set when an offline demo token is rejected by the live backend, so the gate
   // explains what happened instead of bouncing back to /login (finding 8).
@@ -255,7 +255,7 @@ export default function AdminScreen() {
   const [callbackFilter, setCallbackFilter] = useState<CallbackFilter>('all');
 
   // Per-row in-flight ids so a second tap cannot fire the same mutation twice
-  // on a slow connection (audit finding 13). The callback queue records the
+  // on a slow connection. The callback queue records the
   // status being written too, so only the button that was pressed spins.
   const [pendingCallback, setPendingCallback] = useState<{ id: string; status: string } | null>(
     null,
@@ -359,7 +359,7 @@ export default function AdminScreen() {
     setAnnouncementsError(false);
     try {
       // This read bypasses backendRequest, so it needs its own deadline and
-      // catch — otherwise a stalled request leaves a permanent spinner (H5).
+      // catch, otherwise a stalled request leaves a permanent spinner.
       const query = supabase
         .from('announcements')
         .select('*')
@@ -393,7 +393,7 @@ export default function AdminScreen() {
       setHelpers(rows);
     } catch (error) {
       // A failed load is not an empty city — say so instead of faking an empty
-      // state, and treat a 401 like the other sections do (H4).
+      // state, and treat a 401 like the other sections do.
       if (!handleAuthError(error)) setHelpersError(true);
     } finally {
       setLoadingHelpers(false);
@@ -552,7 +552,7 @@ export default function AdminScreen() {
     setServiceSuccess(false);
     if (!serviceName.trim() || !category) return;
 
-    // Validate optional fields before touching the network (H2).
+    // Validate optional fields before touching the network.
     const normalizedPhone = normalizeIndianPhone(phone);
     if (normalizedPhone === null) {
       setServiceError(t('admin.invalidPhone'));
@@ -673,7 +673,7 @@ export default function AdminScreen() {
     } catch (error) {
       if (handleAuthError(error)) return;
       const raw = (error as Error)?.message || '';
-      // Backend replies "No account with that username." — soften it (H9).
+      // Backend replies "No account with that username."; soften it.
       setHelperError(/no account/i.test(raw) ? t('admin.helperNotFound') : friendlyMessage(error));
     } finally {
       setAddingHelper(false);
@@ -983,7 +983,7 @@ export default function AdminScreen() {
             </Text>
           </Pressable>
         ) : (
-          // Helpers see verification state but cannot change it (H1).
+          // Helpers see verification state but cannot change it.
           <View style={styles.readonlyRow}>
             <Feather
               name={verified ? 'shield' : 'shield-off'}

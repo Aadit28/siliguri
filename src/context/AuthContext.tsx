@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Offline demo sessions (`demo.<id>`) are device-local by design: the
         // backend has no such token and would answer 401, which used to wipe a
         // still-valid demo session on every launch. Keep it and let the screens
-        // that need a real token handle their own 401 (audit finding 7).
+        // that need a real token handle their own 401.
         if (saved.access_token.startsWith('demo.')) return;
         try {
           const { user: freshUser } = await backendRequest<{ user: SaathiUser }>(
