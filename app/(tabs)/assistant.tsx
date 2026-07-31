@@ -33,7 +33,7 @@ import {
   ProposedReminder,
 } from '../../src/lib/assistant';
 import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
-import { buildAssistantContext } from '../../src/lib/memory';
+import { appendTurn, buildAssistantContext } from '../../src/lib/memory';
 import { speechRecognitionSupported, startListening, speak, stopSpeaking } from '../../src/lib/voice';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -344,8 +344,11 @@ export default function AssistantScreen() {
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
-      // Best-effort personalisation; a failed context read must not block the plan.
+      // Best-effort personalisation; a failed context read must not block the
+      // plan. The context is built BEFORE this turn is recorded, then the turn
+      // is appended, so "recentTurns" means previous turns, not this one twice.
       const context = await buildPlanContext(displayName).catch(() => null);
+      if (body) void appendTurn({ role: 'user', text: body }).catch(() => undefined);
       const plan = await Promise.race([
         requestAssistantPlan({
           message: body,
@@ -361,6 +364,7 @@ export default function AssistantScreen() {
       ]);
 
       const reply = [plan.summary, plan.followUpQuestion].filter(Boolean).join('\n\n');
+      void appendTurn({ role: 'assistant', text: reply }).catch(() => undefined);
       updateMessagesForSession(targetSessionId, (current) => [
         ...current,
         {

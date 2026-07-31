@@ -48,7 +48,7 @@ import {
   updateFamilyReminder,
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
-import { requestAssistantPlan } from '../../src/lib/assistant';
+import { requestAssistantPlan, ProposedReminder } from '../../src/lib/assistant';
 import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
 import { todayISO } from '../../src/lib/notifications';
 
@@ -473,14 +473,21 @@ function OverviewSection({
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<ProposedReminder | null>(null);
+  const [savingProposal, setSavingProposal] = useState(false);
+  const [proposalSaved, setProposalSaved] = useState(false);
 
   // The guardian's agent: the ward's live summary goes in as facts, so "how is
-  // Ma doing" is answered from data, not generalities.
+  // Ma doing" is answered from data, not generalities. A reminder request
+  // ("remind Ma to take her medicine at 8") comes back as a proposal card;
+  // saving it writes a family reminder, which also pings the parent's device.
   async function ask() {
     const messageText = question.trim();
     if (!messageText || asking || !data) return;
     setAsking(true);
     setAnswer(null);
+    setProposal(null);
+    setProposalSaved(false);
     try {
       const lastActive = data.lastActiveAt ? formatISTStamp(data.lastActiveAt) : t('family.neverActive');
       const plan = await requestAssistantPlan({
@@ -501,10 +508,30 @@ function OverviewSection({
         },
       });
       setAnswer([plan.summary, plan.followUpQuestion].filter(Boolean).join('\n\n'));
+      setProposal(plan.proposedReminder ?? null);
     } catch {
       setAnswer(t('family.errorGeneric'));
     } finally {
       setAsking(false);
+    }
+  }
+
+  async function saveProposal() {
+    if (!proposal || savingProposal || proposalSaved) return;
+    setSavingProposal(true);
+    try {
+      await addFamilyReminder(token, {
+        parentId,
+        title: proposal.title,
+        dateISO: proposal.dateISO,
+        time: proposal.time,
+        repeat: proposal.repeat,
+      });
+      setProposalSaved(true);
+    } catch (e) {
+      setAnswer(friendlyFamilyError(e, t));
+    } finally {
+      setSavingProposal(false);
     }
   }
 
@@ -593,6 +620,26 @@ function OverviewSection({
         {answer ? (
           <View style={[styles.askAnswer, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
             <Text style={styles.askAnswerText}>{answer}</Text>
+          </View>
+        ) : null}
+        {proposal ? (
+          <View style={[styles.askAnswer, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+            <Text style={styles.askProposalHeading}>{t('family.askProposalHeading', { name: parentName || t('family.title') })}</Text>
+            <Text style={styles.askProposalTitle}>{proposal.title}</Text>
+            <Text style={styles.askProposalMeta}>
+              {[proposal.dateISO, proposal.time, t(`family.repeat.${proposal.repeat}`)].filter(Boolean).join(' · ')}
+            </Text>
+            {proposalSaved ? (
+              <Text style={styles.askProposalSaved}>{t('family.askProposalSaved', { name: parentName || t('family.title') })}</Text>
+            ) : (
+              <View style={styles.askProposalAction}>
+                <Button
+                  label={savingProposal ? t('family.saving') : t('family.askProposalSave', { name: parentName || t('family.title') })}
+                  onPress={() => void saveProposal()}
+                  disabled={savingProposal}
+                />
+              </View>
+            )}
           </View>
         ) : null}
       </Card>
@@ -1418,6 +1465,16 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       lineHeight: Math.round(font.md * 1.4),
       color: colors.text,
     },
+    askProposalHeading: { fontSize: font.sm, fontFamily: family.semibold, color: colors.textMuted },
+    askProposalTitle: { fontSize: font.md, fontFamily: family.bold, color: colors.text, marginTop: 4 },
+    askProposalMeta: { fontSize: font.sm, fontFamily: family.regular, color: colors.textMuted, marginTop: 2 },
+    askProposalSaved: {
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      color: colors.text,
+      marginTop: space.sm,
+    },
+    askProposalAction: { marginTop: space.sm },
     stateCard: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl },
     stateText: { textAlign: 'center' },
     stateBlock: { alignItems: 'center', paddingVertical: space.lg, paddingHorizontal: space.md },
