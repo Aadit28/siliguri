@@ -1,4 +1,4 @@
-const { authenticate, readBody, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, send, sendServerError, withCors } = require('../_lib/auth');
 
 const CATEGORIES = new Set(['general', 'health', 'travel', 'daily_life', 'best_practice']);
 
@@ -35,7 +35,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { ok: true, status: 'pending' });
   } catch (error) {
-    console.error('community/post error:', error);
-    return send(res, 500, { error: 'Could not post. Please try again.' });
+    return sendServerError(res, error, 'Could not post. Please try again.');
   }
 };

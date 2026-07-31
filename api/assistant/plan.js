@@ -259,7 +259,9 @@ module.exports = async function handler(req, res) {
       userId = auth.user.id;
     }
 
-    const body = await readBody(req);
+    // Photo attachments arrive as base64 data URIs: 3 images x ~3MB plus the
+    // JSON envelope. sanitizeImageAttachments enforces the per-image ceiling.
+    const body = await readBody(req, { maxBytes: 10 * 1024 * 1024 });
     const message = String(body.message || '').trim().slice(0, 2000);
     const lang = body.lang === 'hi' ? 'hi' : 'en';
     const services = sanitizeServices(Array.isArray(body.services) ? body.services : []);
@@ -1002,7 +1004,8 @@ function sanitizeImageAttachments(value) {
     .filter((attachment) => {
       const mimeType = attachment.mimeType || '';
       return (
-        attachment.uri.length < 8_000_000 &&
+        // Keeps 3 attachments inside the route's 10MB body ceiling.
+        attachment.uri.length < 3_000_000 &&
         (attachment.uri.startsWith('data:image/') || /^https:\/\//i.test(attachment.uri)) &&
         (!mimeType || mimeType.startsWith('image/'))
       );

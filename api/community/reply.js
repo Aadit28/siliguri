@@ -1,4 +1,4 @@
-const { authenticate, readBody, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, send, sendServerError, withCors } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -41,7 +41,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { ok: true });
   } catch (error) {
-    console.error('community/reply error:', error);
-    return send(res, 500, { error: 'Could not send reply. Please try again.' });
+    return sendServerError(res, error, 'Could not send reply. Please try again.');
   }
 };

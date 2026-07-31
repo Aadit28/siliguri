@@ -1,4 +1,13 @@
-const { adminClient, authenticate, makeRateLimiter, readBody, requestIp, send, withCors } = require('../_lib/auth');
+const {
+  adminClient,
+  authenticate,
+  makeRateLimiter,
+  readBody,
+  requestIp,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
 
 const SOURCES = new Set(['help', 'assistant', 'service']);
 
@@ -67,7 +76,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { ok: true });
   } catch (error) {
-    console.error('callback/request error:', error);
-    return send(res, 500, { error: 'Could not save callback request. Please try again.' });
+    return sendServerError(res, error, 'Could not save callback request. Please try again.');
   }
 };

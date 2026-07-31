@@ -34,25 +34,26 @@ function send(res, status, body) {
 
 const MAX_BODY_BYTES = 64 * 1024;
 
-async function readBody(req) {
+function tooLarge() {
+  const err = new Error('Request too large.');
+  err.status = 413;
+  return err;
+}
+
+// maxBytes is overridable because /api/assistant/plan legitimately carries
+// base64 photo attachments (a prescription photo is megabytes, not kilobytes);
+// every other route stays on the small default.
+async function readBody(req, { maxBytes = MAX_BODY_BYTES } = {}) {
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') {
-    if (req.body.length > MAX_BODY_BYTES) {
-      const err = new Error('Request too large.');
-      err.status = 413;
-      throw err;
-    }
+    if (Buffer.byteLength(req.body, 'utf8') > maxBytes) throw tooLarge();
     return JSON.parse(req.body || '{}');
   }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
-      const err = new Error('Request too large.');
-      err.status = 413;
-      throw err;
-    }
+    if (size > maxBytes) throw tooLarge();
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString('utf8');
