@@ -42,6 +42,9 @@ export default function AddReminderSheet({
   const [repeat, setRepeat] = useState<FamilyReminderRepeat>('once');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Saved, but this device will not ring. Distinct from `error`, which means
+  // nothing was saved at all.
+  const [alertWarning, setAlertWarning] = useState<string | null>(null);
 
   // A guardian can write to their own device or to a linked parent's account.
   // The target is never inferred: writing to someone else's phone has to be a
@@ -92,6 +95,7 @@ export default function AddReminderSheet({
     setRepeat('once');
     setTarget('self');
     setError(null);
+    setAlertWarning(null);
   }
 
   async function handleSave() {
@@ -107,6 +111,7 @@ export default function AddReminderSheet({
       return;
     }
     setError(null);
+    setAlertWarning(null);
     setSaving(true);
     try {
       if (forParent && session) {
@@ -121,7 +126,24 @@ export default function AddReminderSheet({
         // it now rather than after the next foreground sync.
         await refreshFamilyForSelf(session.access_token, user?.id);
       } else {
-        await addEvent({ title: title.trim(), dateISO, time: normalizedTime, repeat });
+        const saved = await addEvent({ title: title.trim(), dateISO, time: normalizedTime, repeat });
+        // Saved rows that could not be scheduled must say so: the sheet has
+        // just promised this phone will ring at that time.
+        if (saved.alertProblem && saved.alertProblem !== 'past') {
+          setAlertWarning(
+            saved.alertProblem === 'permission'
+              ? t('reminders.alertBlocked', {
+                  defaultValue:
+                    'Saved. This phone will not alert you until notifications are turned on in Settings.',
+                })
+              : t('reminders.alertUnavailable', {
+                  defaultValue: 'Saved. This device cannot show alerts, so check the calendar.',
+                }),
+          );
+          setSaving(false);
+          onSaved();
+          return;
+        }
       }
       reset();
       onSaved();
@@ -265,6 +287,13 @@ export default function AddReminderSheet({
           <View style={styles.errorRow}>
             <Feather name="alert-circle" size={16} color={colors.danger} />
             <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+          </View>
+        ) : null}
+
+        {alertWarning ? (
+          <View style={styles.errorRow}>
+            <Feather name="bell-off" size={16} color={colors.textMuted} />
+            <Text style={[styles.errorText, { color: colors.textMuted }]}>{alertWarning}</Text>
           </View>
         ) : null}
 

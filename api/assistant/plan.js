@@ -1,5 +1,12 @@
-const { adminClient, authenticate, readBody, send, withCors,
-  sendServerError } = require('../_lib/auth');
+const {
+  adminClient,
+  authenticate,
+  readBody,
+  requestIp,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
 
 // Each list mixes English, Hinglish and Devanagari so Hindi-first elders get a
 // category match instead of the "no matching service" fallback.
@@ -246,9 +253,10 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
 
   try {
-    const ip =
-      String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
-    const requestsInWindow = trackRequest(ip);
+    // requestIp() rather than the first x-forwarded-for entry: a client can set
+    // that header and mint a fresh bucket per request, and this is the limiter
+    // standing in front of paid LLM calls.
+    const requestsInWindow = trackRequest(requestIp(req));
     if (requestsInWindow > BURST_MAX) {
       return send(res, 429, { error: 'Too many requests. Please wait a minute and try again.' });
     }

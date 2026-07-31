@@ -140,14 +140,21 @@ export type ScheduleInput = {
   repeat?: ReminderRepeat;
 };
 
-export async function scheduleReminder(event: ScheduleInput): Promise<string | null> {
-  if (!supported) return null;
+// Why a schedule attempt did not produce an alert. The caller needs this to be
+// honest with the user: a reminder that saves but never rings is the one
+// failure this product cannot afford to hide.
+export type ScheduleOutcome =
+  | { ok: true; notificationId: string }
+  | { ok: false; reason: 'unsupported' | 'past' | 'permission' | 'failed' };
+
+export async function scheduleReminderWithOutcome(event: ScheduleInput): Promise<ScheduleOutcome> {
+  if (!supported) return { ok: false, reason: 'unsupported' };
   const trigger = triggerFor(event);
-  if (!trigger) return null;
-  if (!(await ensurePermission())) return null;
+  if (!trigger) return { ok: false, reason: 'past' };
+  if (!(await ensurePermission())) return { ok: false, reason: 'permission' };
 
   try {
-    return await Notifications.scheduleNotificationAsync({
+    const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: event.title,
         body: event.note ?? event.serviceName ?? undefined,
@@ -155,9 +162,15 @@ export async function scheduleReminder(event: ScheduleInput): Promise<string | n
       },
       trigger,
     });
+    return { ok: true, notificationId };
   } catch {
-    return null;
+    return { ok: false, reason: 'failed' };
   }
+}
+
+export async function scheduleReminder(event: ScheduleInput): Promise<string | null> {
+  const outcome = await scheduleReminderWithOutcome(event);
+  return outcome.ok ? outcome.notificationId : null;
 }
 
 export async function cancelReminder(notificationId?: string | null) {

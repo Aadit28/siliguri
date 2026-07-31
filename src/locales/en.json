@@ -485,7 +485,9 @@
     "alertNoteParent": "Their phone will alert them at this time.",
     "forMe": "For me",
     "savesToSelf": "Saves to your own account.",
-    "alertNoteParentNamed": "{{name}}’s phone will alert them at this time."
+    "alertNoteParentNamed": "{{name}}’s phone will alert them at this time.",
+    "alertBlocked": "Saved. This phone will not alert you until notifications are turned on in Settings.",
+    "alertUnavailable": "Saved. This device cannot show alerts, so check the calendar."
   },
   "notifications": {
     "title": "Notifications",

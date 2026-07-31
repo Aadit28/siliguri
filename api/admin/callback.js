@@ -18,10 +18,17 @@ module.exports = async function handler(req, res) {
     const body = await readBody(req);
     const action = body.action ? String(body.action) : 'list';
 
-    // Citizen names/phones are PII: staff see only their own city's queue.
-    // Super admins (and legacy no-city admins) see everything.
+    // Citizen names/phones are PII. Super admins see every row. A city admin
+    // sees their own city plus rows with no city, because an unauthenticated
+    // help-desk request has no city to stamp and still has to reach someone.
+    // City helpers are the untrusted tier (they cannot verify services or
+    // manage staff either), so they see their own city only.
     const isSuperAdmin = auth.user.role === 'super_admin';
+    const isHelper = auth.user.role === 'city_helper';
     const cityScoped = !isSuperAdmin && auth.user.city_id;
+    const cityFilter = isHelper
+      ? `city_id.eq.${auth.user.city_id}`
+      : `city_id.eq.${auth.user.city_id},city_id.is.null`;
 
     if (action === 'status') {
       const id = String(body.id || '');
@@ -31,7 +38,7 @@ module.exports = async function handler(req, res) {
       const patch = { status };
       if (status === 'closed') patch.resolved_at = new Date().toISOString();
       let update = auth.supabase.from('callback_requests').update(patch).eq('id', id);
-      if (cityScoped) update = update.or(`city_id.eq.${auth.user.city_id},city_id.is.null`);
+      if (cityScoped) update = update.or(cityFilter);
       const { data: updated, error } = await update.select('id');
       if (error) throw error;
       if (!updated || updated.length === 0) return send(res, 404, { error: 'Request not found.' });
@@ -43,7 +50,7 @@ module.exports = async function handler(req, res) {
       .select('id,name,phone,issue,source,status,service_id,city_id,created_at')
       .order('created_at', { ascending: false })
       .limit(50);
-    if (cityScoped) query = query.or(`city_id.eq.${auth.user.city_id},city_id.is.null`);
+    if (cityScoped) query = query.or(cityFilter);
     const { data: requests, error } = await query;
     if (error) throw error;
     return send(res, 200, { requests: requests || [] });

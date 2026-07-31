@@ -47,7 +47,12 @@ function localShape(
   };
 }
 
-async function mergeReminders(reminders: FamilyReminder[]) {
+// `complete` says whether every server list came back. On a partial fetch the
+// reminders we did receive are still mirrored, but nothing is deleted: an empty
+// list from a failed request is indistinguishable from "the guardian removed
+// everything", and acting on it would cancel a real medicine alert on the
+// parent's phone because their bus went through a tunnel.
+async function mergeReminders(reminders: FamilyReminder[], complete: boolean) {
   const existing = await listEvents();
   const mirrored = existing.filter((event) => event.serverId);
   const byServerId = new Map(mirrored.map((event) => [event.serverId, event]));
@@ -80,7 +85,9 @@ async function mergeReminders(reminders: FamilyReminder[]) {
     });
   }
 
-  // Drop local mirrors whose server row is gone or no longer active.
+  // Drop local mirrors whose server row is gone or no longer active. Only safe
+  // when the fetch succeeded; see the note on `complete`.
+  if (!complete) return;
   for (const event of mirrored) {
     if (event.serverId && !activeIds.has(event.serverId)) {
       await removeEvent(event.id);
@@ -126,11 +133,19 @@ function labelReminder(reminder: FamilyReminder, link: FamilyLink): FamilyRemind
 }
 
 async function runSync(token: string, selfId: string): Promise<FamilySyncResult> {
+  // Any failed list makes the mirror incomplete, which suppresses the deletion
+  // pass in mergeReminders.
+  let complete = true;
+  const failed = <T>(fallback: T) => (): T => {
+    complete = false;
+    return fallback;
+  };
+
   const [ownReminders, careTeam, favorites, links] = await Promise.all([
-    listFamilyReminders(token, selfId).then((r) => r.reminders).catch(() => []),
-    listCareTeam(token, selfId).then((r) => r.members).catch(() => []),
-    listFamilyFavorites(token, selfId).then((r) => r.favorites).catch(() => []),
-    listFamilyLinks(token).catch(() => ({ asGuardian: [], asParent: [] })),
+    listFamilyReminders(token, selfId).then((r) => r.reminders).catch(failed<FamilyReminder[]>([])),
+    listCareTeam(token, selfId).then((r) => r.members).catch(failed<CareTeamMember[]>([])),
+    listFamilyFavorites(token, selfId).then((r) => r.favorites).catch(failed<FamilyFavorite[]>([])),
+    listFamilyLinks(token).catch(failed({ asGuardian: [] as FamilyLink[], asParent: [] as FamilyLink[] })),
   ]);
 
   // Guardians hold no reminders of their own — theirs are the ones they set on
@@ -142,7 +157,7 @@ async function runSync(token: string, selfId: string): Promise<FamilySyncResult>
     wards.map((link) =>
       listFamilyReminders(token, link.parentId as string)
         .then((r) => r.reminders.map((reminder) => labelReminder(reminder, link)))
-        .catch(() => [] as FamilyReminder[]),
+        .catch(failed<FamilyReminder[]>([])),
     ),
   );
 
@@ -154,7 +169,7 @@ async function runSync(token: string, selfId: string): Promise<FamilySyncResult>
   }
 
   await cancelLegacyMonthlyAlerts().catch(() => undefined);
-  await mergeReminders([...byId.values()]).catch(() => undefined);
+  await mergeReminders([...byId.values()], complete).catch(() => undefined);
   return { careTeam, favorites, guardians: links.asParent };
 }
 

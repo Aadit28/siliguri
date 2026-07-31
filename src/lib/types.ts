@@ -86,6 +86,10 @@ export interface CalendarEvent {
   notificationId?: string | null;
   // Set once the reminder is mirrored to a parent's family_reminders row.
   serverId?: string | null;
+  // Why this device could not schedule an alert for the reminder, if it could
+  // not. Returned by addEvent for the screen to report; never persisted, since
+  // it describes one attempt on one device rather than the reminder itself.
+  alertProblem?: 'unsupported' | 'past' | 'permission' | 'failed';
 }
 
 // FAMILY / GUARDIAN ----------------------------------------------------------

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CalendarEvent, ReminderRepeat } from './types';
-import { cancelReminder, scheduleReminder } from './reminderNotifications';
+import { cancelReminder, scheduleReminderWithOutcome } from './reminderNotifications';
 
 const STORAGE_KEY = 'saathi.calendar.v1';
 
@@ -123,16 +123,21 @@ export async function addEvent(input: {
     await writeStore(events);
     // Scheduling lives here so every entry point (calendar screen, quick-add
     // sheet, assistant) gets the OS alert without repeating the wiring.
-    const notificationId = await scheduleReminder(event);
-    if (notificationId) {
-      event.notificationId = notificationId;
+    const outcome = await scheduleReminderWithOutcome(event);
+    if (outcome.ok) {
+      event.notificationId = outcome.notificationId;
       try {
         await writeStore(events);
       } catch {
-        // Could not record the id — cancel so the notification isn't orphaned.
-        await cancelReminder(notificationId);
+        // Could not record the id: cancel so the notification isn't orphaned.
+        await cancelReminder(outcome.notificationId);
         event.notificationId = null;
       }
+    } else {
+      // The row is saved either way, but the caller must be able to tell the
+      // user their phone will not ring. Not persisted: it describes this
+      // attempt on this device, not the reminder.
+      event.alertProblem = outcome.reason;
     }
     return event;
   });

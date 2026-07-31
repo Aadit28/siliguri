@@ -48,6 +48,18 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // An unauthenticated request has no city of its own, and a row with no city
+    // is visible to every city's admins. When the request came from a service
+    // page, borrow that service's city so it reaches the right desk instead.
+    if (!cityId && serviceId) {
+      const { data: service } = await adminClient()
+        .from('services')
+        .select('city_id')
+        .eq('id', serviceId)
+        .maybeSingle();
+      cityId = service?.city_id || null;
+    }
+
     // Best-effort dedupe: one request per phone per 10 minutes
     const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: recent, error: recentError } = await adminClient()
