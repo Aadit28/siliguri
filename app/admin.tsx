@@ -255,8 +255,11 @@ export default function AdminScreen() {
   const [callbackFilter, setCallbackFilter] = useState<CallbackFilter>('all');
 
   // Per-row in-flight ids so a second tap cannot fire the same mutation twice
-  // on a slow connection (audit finding 13).
-  const [pendingCallbackId, setPendingCallbackId] = useState<string | null>(null);
+  // on a slow connection (audit finding 13). The callback queue records the
+  // status being written too, so only the button that was pressed spins.
+  const [pendingCallback, setPendingCallback] = useState<{ id: string; status: string } | null>(
+    null,
+  );
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
   const [pendingAnnouncementId, setPendingAnnouncementId] = useState<string | null>(null);
 
@@ -331,8 +334,8 @@ export default function AdminScreen() {
   }
 
   async function setCallbackStatus(id: string, status: string) {
-    if (pendingCallbackId) return;
-    setPendingCallbackId(id);
+    if (pendingCallback) return;
+    setPendingCallback({ id, status });
     try {
       await backendRequest('/api/admin/callback', {
         method: 'POST',
@@ -343,7 +346,7 @@ export default function AdminScreen() {
     } catch (error) {
       if (!handleAuthError(error)) setCallbacksError(true);
     } finally {
-      setPendingCallbackId(null);
+      setPendingCallback(null);
     }
   }
 
@@ -568,6 +571,14 @@ export default function AdminScreen() {
       return;
     }
 
+    // The server writes only the keys the body actually carries, and
+    // JSON.stringify drops `undefined` — so an edit that omits a blanked field
+    // silently keeps the old value. Every optional field on this form is loaded
+    // from the row being edited, so on an edit each one is sent even when empty
+    // ('' is what the server maps to null). A create still omits empties so the
+    // new row falls back to its column defaults.
+    const optionalField = (value: string) => (value ? value : editingId ? '' : undefined);
+
     setSavingService(true);
     try {
       await backendRequest('/api/admin/service', {
@@ -577,12 +588,12 @@ export default function AdminScreen() {
           id: editingId || undefined,
           name: serviceName.trim(),
           category,
-          phone: normalizedPhone,
-          address: address.trim() || undefined,
-          map_url: map || undefined,
-          hours: hours.trim() || undefined,
-          description: description.trim() || undefined,
-          upi_id: upi || undefined,
+          phone: optionalField(normalizedPhone ?? ''),
+          address: optionalField(address.trim()),
+          map_url: optionalField(map),
+          hours: optionalField(hours.trim()),
+          description: optionalField(description.trim()),
+          upi_id: optionalField(upi),
           verified,
         },
       });
@@ -717,6 +728,10 @@ export default function AdminScreen() {
   const openCallbacks = callbacks.filter(
     (c) => c.status !== 'closed' && c.status !== 'spam',
   ).length;
+
+  function isCallbackPending(id: string, status: string) {
+    return pendingCallback?.id === id && pendingCallback.status === status;
+  }
 
   function callbackStatusColor(status: string) {
     if (status === 'closed') return colors.success;
@@ -1185,24 +1200,24 @@ export default function AdminScreen() {
                       <Button
                         label={t('admin.callbackMarkContacted')}
                         variant="secondary"
-                        loading={pendingCallbackId === item.id}
-                        disabled={pendingCallbackId !== null}
+                        loading={isCallbackPending(item.id, 'contacted')}
+                        disabled={pendingCallback !== null}
                         onPress={() => setCallbackStatus(item.id, 'contacted')}
                       />
                     ) : null}
                     <Button
                       label={t('admin.callbackMarkClosed')}
                       variant="secondary"
-                      loading={pendingCallbackId === item.id}
-                      disabled={pendingCallbackId !== null}
+                      loading={isCallbackPending(item.id, 'closed')}
+                      disabled={pendingCallback !== null}
                       onPress={() => setCallbackStatus(item.id, 'closed')}
                     />
                     {item.status !== 'spam' ? (
                       <Button
                         label={t('admin.callbackMarkSpam', { defaultValue: 'Mark spam' })}
                         variant="secondary"
-                        loading={pendingCallbackId === item.id}
-                        disabled={pendingCallbackId !== null}
+                        loading={isCallbackPending(item.id, 'spam')}
+                        disabled={pendingCallback !== null}
                         onPress={() => setCallbackStatus(item.id, 'spam')}
                       />
                     ) : null}

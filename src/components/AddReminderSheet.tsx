@@ -10,13 +10,10 @@ import { addFamilyReminder, friendlyFamilyError, listFamilyLinks } from '../lib/
 import { refreshFamilyForSelf } from '../lib/familySync';
 import { todayISO } from '../lib/notifications';
 import { AppColors, family, font, radius, space, TAP } from '../lib/theme';
-import { FamilyLink, FamilyReminderRepeat, ReminderRepeat } from '../lib/types';
+import { FamilyLink, FamilyReminderRepeat } from '../lib/types';
 
 const TIME_PRESETS = ['08:00', '12:00', '18:00', '21:00'];
-const REPEATS: FamilyReminderRepeat[] = ['once', 'daily', 'weekly'];
-// The local calendar store cannot hold a monthly repeat; only a reminder written
-// to a parent's account (which can) offers it.
-const FAMILY_REPEATS: FamilyReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
+const REPEATS: FamilyReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
 
 // Reminder days are the parent's Asia/Kolkata day, so the Today/Tomorrow
 // presets shift from that anchor rather than the device's own calendar.
@@ -46,10 +43,11 @@ export default function AddReminderSheet({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A guardian's own device has no reminders of its own to keep — what they add
-  // here belongs on a linked parent's account, or the parent never sees it.
+  // A guardian can write to their own device or to a linked parent's account.
+  // The target is never inferred: writing to someone else's phone has to be a
+  // deliberate tap, so this starts on 'self' and the picker stays on screen.
   const [wards, setWards] = useState<FamilyLink[]>([]);
-  const [wardId, setWardId] = useState<string | null>(null);
+  const [target, setTarget] = useState<'self' | string>('self');
 
   useEffect(() => {
     const token = session?.access_token;
@@ -60,7 +58,10 @@ export default function AddReminderSheet({
         if (!active) return;
         const live = asGuardian.filter((link) => link.status === 'active' && link.parentId);
         setWards(live);
-        setWardId((current) => current ?? live[0]?.parentId ?? null);
+        // A link revoked since the last open must not stay selected.
+        setTarget((current) =>
+          current !== 'self' && !live.some((link) => link.parentId === current) ? 'self' : current,
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -68,8 +69,15 @@ export default function AddReminderSheet({
     };
   }, [visible, session?.access_token]);
 
-  const forParent = wards.length > 0 && wardId !== null;
-  const repeatOptions = forParent ? FAMILY_REPEATS : REPEATS;
+  const selectedWard = target === 'self' ? null : (wards.find((w) => w.parentId === target) ?? null);
+  const forParent = selectedWard !== null;
+  const wardLabel = (link: FamilyLink) =>
+    link.parentName || link.parentPhone || t('family.guardianLabel');
+
+  function chooseTarget(next: 'self' | string) {
+    setTarget(next);
+    setError(null);
+  }
 
   const dayPresets = [
     { label: t('reminders.today'), value: shiftedISO(0) },
@@ -82,6 +90,7 @@ export default function AddReminderSheet({
     setDateISO(shiftedISO(0));
     setTime('08:00');
     setRepeat('once');
+    setTarget('self');
     setError(null);
   }
 
@@ -102,7 +111,7 @@ export default function AddReminderSheet({
     try {
       if (forParent && session) {
         await addFamilyReminder(session.access_token, {
-          parentId: wardId as string,
+          parentId: selectedWard.parentId as string,
           title: title.trim(),
           dateISO,
           time: normalizedTime,
@@ -112,10 +121,7 @@ export default function AddReminderSheet({
         // it now rather than after the next foreground sync.
         await refreshFamilyForSelf(session.access_token, user?.id);
       } else {
-        // 'monthly' is never offered outside the family path — the local store
-        // has no way to represent it.
-        const localRepeat: ReminderRepeat = repeat === 'monthly' ? 'once' : repeat;
-        await addEvent({ title: title.trim(), dateISO, time: normalizedTime, repeat: localRepeat });
+        await addEvent({ title: title.trim(), dateISO, time: normalizedTime, repeat });
       }
       reset();
       onSaved();
@@ -130,30 +136,48 @@ export default function AddReminderSheet({
   return (
     <Sheet visible={visible} onClose={onClose} title={t('reminders.newTitle')}>
       <View style={styles.form}>
-        {forParent ? (
+        {wards.length > 0 ? (
           <View style={styles.field}>
             <Text style={styles.label}>
               {t('reminders.forWhom', { defaultValue: 'Who is this for?' })}
             </Text>
-            {wards.length > 1 ? (
-              <View style={styles.chipRow}>
-                {wards.map((link) => (
-                  <Chip
-                    key={link.id}
-                    label={link.parentName || link.parentPhone || t('family.guardianLabel')}
-                    active={wardId === link.parentId}
-                    onPress={() => setWardId(link.parentId ?? null)}
-                  />
-                ))}
-              </View>
-            ) : (
-              <Muted style={styles.forWhom}>
-                {t('reminders.savesToParent', {
-                  name: wards[0]?.parentName || wards[0]?.parentPhone || '',
-                  defaultValue: 'Saves to {{name}}’s account.',
-                })}
-              </Muted>
-            )}
+            <View style={styles.chipRow}>
+              <Chip
+                label={t('reminders.forMe', { defaultValue: 'For me' })}
+                active={target === 'self'}
+                onPress={() => chooseTarget('self')}
+              />
+              {wards.map((link) => (
+                <Chip
+                  key={link.id}
+                  label={wardLabel(link)}
+                  active={target === link.parentId}
+                  onPress={() => chooseTarget(link.parentId as string)}
+                />
+              ))}
+            </View>
+            <View style={styles.destinationRow}>
+              <Feather
+                name={forParent ? 'send' : 'user'}
+                size={14}
+                color={forParent ? colors.accent : colors.textMuted}
+              />
+              <Text
+                style={[
+                  styles.destinationText,
+                  { color: forParent ? colors.accent : colors.textMuted },
+                ]}
+              >
+                {forParent
+                  ? t('reminders.savesToParent', {
+                      name: wardLabel(selectedWard),
+                      defaultValue: 'Saves to {{name}}’s account.',
+                    })
+                  : t('reminders.savesToSelf', {
+                      defaultValue: 'Saves to your own account.',
+                    })}
+              </Text>
+            </View>
           </View>
         ) : null}
 
@@ -226,7 +250,7 @@ export default function AddReminderSheet({
         <View style={styles.field}>
           <Text style={styles.label}>{t('reminders.repeatLabel')}</Text>
           <View style={styles.chipRow}>
-            {repeatOptions.map((option) => (
+            {REPEATS.map((option) => (
               <Chip
                 key={option}
                 label={t(`reminders.repeat.${option}`)}
@@ -252,8 +276,9 @@ export default function AddReminderSheet({
         />
         <Muted style={styles.footnote}>
           {forParent
-            ? t('reminders.alertNoteParent', {
-                defaultValue: 'Their phone will alert them at this time.',
+            ? t('reminders.alertNoteParentNamed', {
+                name: wardLabel(selectedWard),
+                defaultValue: '{{name}}’s phone will alert them at this time.',
               })
             : t('reminders.alertNote')}
         </Muted>
@@ -280,7 +305,13 @@ function makeStyles(colors: AppColors) {
       fontSize: font.md,
       color: colors.text,
     },
-    forWhom: { fontSize: font.sm },
+    destinationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
+      marginTop: space.xs,
+    },
+    destinationText: { flex: 1, fontFamily: family.semibold, fontSize: font.sm },
     errorRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
     errorText: { fontFamily: family.medium, fontSize: font.sm },
     footnote: { fontSize: font.xs, textAlign: 'center' },

@@ -19,7 +19,7 @@ import { listFamilyLinks } from '../src/lib/family';
 import { todayISO } from '../src/lib/notifications';
 import { CalendarEvent, ReminderRepeat } from '../src/lib/types';
 
-const REPEATS: ReminderRepeat[] = ['once', 'daily', 'weekly'];
+const REPEATS: ReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
 
 function toISO(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -192,15 +192,16 @@ export default function CalendarScreen() {
       ),
     [],
   );
-  // Marks include computed occurrences of daily/weekly reminders across the
-  // visible month, not just each event's stored start date.
+  // Marks every occurrence a repeating reminder has inside the visible month,
+  // not just each event's stored start date. A monthly reminder recurs on its
+  // start day-of-month: months that have no such day (the 31st in April) are
+  // skipped rather than rolled forward, matching how familySync picks a
+  // monthly reminder's next date.
   const eventDates = useMemo(() => {
     const marks = new Set<string>();
     const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
     for (const event of events) {
-      // Widened: the local store only writes once/daily/weekly, but a mirrored
-      // family reminder can carry 'monthly' — mark those on their day of month.
-      const repeat: ReminderRepeat | 'monthly' = event.repeat ?? 'once';
+      const repeat: ReminderRepeat = event.repeat ?? 'once';
       if (repeat === 'once') {
         marks.add(event.dateISO);
         continue;
@@ -216,7 +217,9 @@ export default function CalendarScreen() {
             ? true
             : repeat === 'weekly'
               ? cell.getDay() === start.getDay()
-              : day === ed;
+              : repeat === 'monthly'
+                ? day === ed
+                : false;
         if (occurs) marks.add(toISO(cursor.year, cursor.month, day));
       }
     }

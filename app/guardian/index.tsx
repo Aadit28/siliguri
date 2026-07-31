@@ -406,6 +406,19 @@ export default function GuardianDashboard() {
       >
       <Stack.Screen options={{ title: t('family.title') }} />
       <View style={styles.shell}>
+        {/* This screen hides the native header so AppHeader can render, which
+            leaves a phone with no back gesture. Same fall-through as
+            /guardian/[parentId]: pop when there is history, otherwise home. */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          style={styles.backRow}
+          hitSlop={8}
+        >
+          <Feather name="chevron-left" size={18} color={colors.textMuted} />
+          <Text style={styles.backText}>{t('family.back')}</Text>
+        </Pressable>
+
         <H1>{t('family.title')}</H1>
         <Muted style={styles.subtitle}>{t('family.intro')}</Muted>
 
@@ -631,6 +644,16 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       maxWidth: 960,
       alignSelf: 'center',
     },
+    // Taller than the [parentId] equivalent: elder-sized tap floor.
+    backRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      minHeight: TAP,
+      marginBottom: space.xs,
+      alignSelf: 'flex-start',
+    },
+    backText: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
     subtitle: { marginTop: space.xs, maxWidth: 620 },
     headerRow: {
       marginTop: space.xl,

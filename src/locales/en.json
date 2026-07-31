@@ -468,7 +468,10 @@
     "alertNote": "Your phone will alert you at this time.",
     "forWhom": "Who is this for?",
     "savesToParent": "Saves to {{name}}’s account.",
-    "alertNoteParent": "Their phone will alert them at this time."
+    "alertNoteParent": "Their phone will alert them at this time.",
+    "forMe": "For me",
+    "savesToSelf": "Saves to your own account.",
+    "alertNoteParentNamed": "{{name}}’s phone will alert them at this time."
   },
   "notifications": {
     "title": "Notifications",

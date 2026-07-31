@@ -464,7 +464,10 @@
     "alertNote": "इस समय आपका फोन आपको याद दिलाएगा।",
     "forWhom": "यह किसके लिए है?",
     "savesToParent": "{{name}} के खाते में सहेजा जाएगा।",
-    "alertNoteParent": "इस समय उनके फ़ोन पर अलर्ट जाएगा।"
+    "alertNoteParent": "इस समय उनके फ़ोन पर अलर्ट जाएगा।",
+    "forMe": "मेरे लिए",
+    "savesToSelf": "आपके अपने खाते में सहेजा जाएगा।",
+    "alertNoteParentNamed": "इस समय {{name}} के फ़ोन पर अलर्ट जाएगा।"
   },
   "notifications": {
     "title": "सूचनाएं",
