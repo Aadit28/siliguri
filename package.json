@@ -34,13 +34,13 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-url-polyfill": "^3.0.0",
-    "react-native-web": "^0.21.2"
+    "react-native-web": "^0.21.2",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
     "babel-preset-expo": "~56.0.15",
-    "typescript": "~6.0.3",
-    "ws": "^8.21.0"
+    "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",

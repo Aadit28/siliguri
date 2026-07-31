@@ -14,29 +14,9 @@ function loadEnv() {
   }
 }
 
-const routes = {
-  '/api/auth/signup': '../api/auth/signup.js',
-  '/api/auth/signin': '../api/auth/signin.js',
-  '/api/auth/me': '../api/auth/me.js',
-  '/api/auth/signout': '../api/auth/signout.js',
-  '/api/auth/otp-request': '../api/auth/otp-request.js',
-  '/api/auth/otp-verify': '../api/auth/otp-verify.js',
-  '/api/assistant/plan': '../api/assistant/plan.js',
-  '/api/callback/request': '../api/callback/request.js',
-  '/api/community/post': '../api/community/post.js',
-  '/api/community/reply': '../api/community/reply.js',
-  '/api/community/like': '../api/community/like.js',
-  '/api/admin/announcement': '../api/admin/announcement.js',
-  '/api/admin/service': '../api/admin/service.js',
-  '/api/admin/callback': '../api/admin/callback.js',
-  '/api/admin/helper': '../api/admin/helper.js',
-  '/api/notify/whatsapp': '../api/notify/whatsapp.js',
-  '/api/family/link': '../api/family/link.js',
-  '/api/family/reminders': '../api/family/reminders.js',
-  '/api/family/care-team': '../api/family/care-team.js',
-  '/api/family/favorites': '../api/family/favorites.js',
-  '/api/family/analytics': '../api/family/analytics.js',
-};
+// Same table production uses, so a route cannot work here and 404 when
+// deployed. See api/[...route].js for why the handlers live under server/.
+const { ROUTES } = require('../api/index.js');
 
 function createResponse(res) {
   res.status = (code) => {
@@ -54,16 +34,15 @@ loadEnv();
 
 const server = http.createServer(async (req, res) => {
   const pathname = new URL(req.url || '/', `http://${req.headers.host}`).pathname;
-  const handlerPath = routes[pathname];
-  if (!handlerPath) {
+  const load = ROUTES[pathname.replace(/^\/api\//, '').replace(/\/+$/, '')];
+  if (!load) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
     return;
   }
 
   try {
-    const handler = require(path.resolve(__dirname, handlerPath));
-    await handler(req, createResponse(res));
+    await load()(req, createResponse(res));
   } catch (error) {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: error.message || 'Server error' }));
