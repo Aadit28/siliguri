@@ -362,7 +362,6 @@ const PLAN_JSON_INSTRUCTIONS =
   '"status" (one of "needs_details","ready_to_call","urgent","handoff"), ' +
   '"summary" (short string in the user\'s language), ' +
   '"followUpQuestion" (string or null), ' +
-  '"safetyNote" (string), ' +
   '"suggestedServiceIds" (array of at most 3 ids taken only from the provided services), ' +
   '"checklist" (array of at most 5 short strings), ' +
   '"nextSteps" (array of at most 4 short strings), ' +
@@ -450,7 +449,6 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
               'status',
               'summary',
               'followUpQuestion',
-              'safetyNote',
               'suggestedServiceIds',
               'checklist',
               'nextSteps',
@@ -464,7 +462,6 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
               status: { type: 'string', enum: ['needs_details', 'ready_to_call', 'urgent', 'handoff'] },
               summary: { type: 'string' },
               followUpQuestion: { type: ['string', 'null'] },
-              safetyNote: { type: 'string' },
               suggestedServiceIds: { type: 'array', items: { type: 'string' }, maxItems: 3 },
               checklist: { type: 'array', items: { type: 'string' }, maxItems: 5 },
               nextSteps: { type: 'array', items: { type: 'string' }, maxItems: 4 },
@@ -548,7 +545,11 @@ function normalizeModelPlan(plan, services, lang, { message, context, urgent, so
     status: urgent ? 'urgent' : safeEnum(plan.status, ['needs_details', 'ready_to_call', 'urgent', 'handoff'], local.status),
     summary: String(plan.summary || local.summary),
     followUpQuestion: plan.followUpQuestion ? String(plan.followUpQuestion) : null,
-    safetyNote: String(plan.safetyNote || local.safetyNote),
+    // The disclaimer is a product commitment, not model output: it must read the
+    // same on every request, in reviewed wording, in the user's language. An LLM
+    // note like "ask a doctor before taking medicine" is not the same promise as
+    // "Saathi does not diagnose, treat, cure or prevent any condition".
+    safetyNote: local.safetyNote,
     suggestedServices: fallbackServices,
     checklist: safeStringList(plan.checklist, local.checklist, 5),
     nextSteps: safeStringList(plan.nextSteps, local.nextSteps, 4),
