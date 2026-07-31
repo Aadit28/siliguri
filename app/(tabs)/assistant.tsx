@@ -36,6 +36,7 @@ import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src
 import { appendTurn, buildAssistantContext } from '../../src/lib/memory';
 import { speechRecognitionSupported, startListening, speak, stopSpeaking } from '../../src/lib/voice';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
+import { notifyFamilySos } from '../../src/lib/family';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { categoryColor } from '../../src/lib/categories';
 import { openUpiPayment } from '../../src/lib/payments';
@@ -453,6 +454,19 @@ export default function AssistantScreen() {
     [],
   );
 
+  // Urgent plans: one tap tells every linked guardian, alongside (never
+  // instead of) the emergency call actions. Tracked per message so the chip
+  // reads "family alerted" after firing instead of inviting repeat taps.
+  const [alertedMessageIds, setAlertedMessageIds] = useState<Set<string>>(() => new Set());
+
+  function alertFamilyFromPlan(messageId: string) {
+    const token = session?.access_token;
+    if (!token || alertedMessageIds.has(messageId)) return;
+    notifyFamilySos(token);
+    setAlertedMessageIds((current) => new Set(current).add(messageId));
+    appendAssistantNote(t('assistant.familyAlerted'));
+  }
+
   async function saveProposedReminder(messageId: string, reminder: ProposedReminder) {
     if (savedReminderIds.has(messageId)) return;
     try {
@@ -754,6 +768,8 @@ export default function AssistantScreen() {
                 onCallFailed={setDialFallback}
                 onSaveReminder={saveProposedReminder}
                 reminderSaved={savedReminderIds.has(message.id)}
+                onAlertFamily={session?.access_token ? alertFamilyFromPlan : undefined}
+                familyAlerted={alertedMessageIds.has(message.id)}
               />
             ))}
 
@@ -1003,6 +1019,8 @@ function MessageBubble({
   onCallFailed,
   onSaveReminder,
   reminderSaved,
+  onAlertFamily,
+  familyAlerted,
 }: {
   message: AssistantMessage;
   onAction: (action: AssistantAction, plan?: AssistantPlan) => void;
@@ -1010,6 +1028,8 @@ function MessageBubble({
   onCallFailed: (number: string) => void;
   onSaveReminder: (messageId: string, reminder: ProposedReminder) => void;
   reminderSaved: boolean;
+  onAlertFamily?: (messageId: string) => void;
+  familyAlerted: boolean;
 }) {
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
@@ -1216,6 +1236,38 @@ function MessageBubble({
             <Text style={[styles.planHint, { color: colors.textMuted }]}>
               {message.plan.safetyNote}
             </Text>
+
+            {message.plan.status === 'urgent' && onAlertFamily ? (
+              <TouchableOpacity
+                onPress={() => onAlertFamily(message.id)}
+                disabled={familyAlerted}
+                accessibilityRole="button"
+                accessibilityLabel={t(familyAlerted ? 'assistant.familyAlertedShort' : 'assistant.alertFamily')}
+                activeOpacity={0.82}
+                style={[
+                  styles.alertFamilyButton,
+                  {
+                    backgroundColor: familyAlerted ? colors.chipBg : colors.danger,
+                    borderColor: colors.border,
+                    borderWidth: familyAlerted ? 1 : 0,
+                  },
+                ]}
+              >
+                <Feather
+                  name={familyAlerted ? 'check-circle' : 'users'}
+                  size={18}
+                  color={familyAlerted ? colors.text : colors.dangerFg}
+                />
+                <Text
+                  style={[
+                    styles.alertFamilyText,
+                    { color: familyAlerted ? colors.text : colors.dangerFg },
+                  ]}
+                >
+                  {t(familyAlerted ? 'assistant.familyAlertedShort' : 'assistant.alertFamily')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
 
             <View style={styles.actionRow}>
               {message.plan.actions.slice(0, 3).map((action, index) => (
@@ -1917,6 +1969,21 @@ const styles = StyleSheet.create({
   },
   reminderSavedText: {
     fontSize: font.md,
+    fontFamily: family.semibold,
+  },
+  alertFamilyButton: {
+    minHeight: TAP,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  alertFamilyText: {
+    fontSize: font.sm,
     fontFamily: family.semibold,
   },
   attachmentList: {

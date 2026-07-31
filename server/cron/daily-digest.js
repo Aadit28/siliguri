@@ -45,6 +45,15 @@ module.exports = async function handler(req, res) {
       .then(({ error }) => {
         if (error) console.warn('alerts purge failed:', error.message);
       });
+    // A token untouched for 90 days belongs to a device that stopped opening
+    // the app; Expo would refuse it eventually, this just gets there first.
+    await client
+      .from('push_tokens')
+      .delete()
+      .lt('updated_at', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString())
+      .then(({ error }) => {
+        if (error) console.warn('push_tokens purge failed:', error.message);
+      });
 
     const todayISO = istTodayISO();
     // Bound the scan: a reminder more than 30 days overdue has been reported

@@ -229,6 +229,9 @@
       "error": "I could not hear that. Please try again.",
       "unsupported": "Voice input works in the Chrome browser on this device."
     },
+    "alertFamily": "Alert my family",
+    "familyAlerted": "Your family has been alerted on their phones.",
+    "familyAlertedShort": "Family alerted",
     "reminderCard": {
       "heading": "Reminder to save",
       "save": "Save reminder",
