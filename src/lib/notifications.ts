@@ -50,12 +50,28 @@ function weekdayOf(dateISO: string) {
   return new Date(year, month - 1, day).getDay();
 }
 
+// Next same-day-of-month occurrence on or after `reference`. Months without the
+// day (the 31st in April) are skipped rather than rolled into the next month.
+export function nextMonthlyISO(dateISO: string, reference: string): string {
+  const [year, month, day] = dateISO.split('-').map(Number);
+  if (!year || !month || !day) return dateISO;
+  if (dateISO >= reference) return dateISO;
+  for (let ahead = 1; ahead <= 48; ahead++) {
+    const candidate = new Date(year, month - 1 + ahead, day);
+    if (candidate.getDate() !== day) continue;
+    const iso = toLocalISODate(candidate);
+    if (iso >= reference) return iso;
+  }
+  return dateISO;
+}
+
 // A repeating reminder's stored dateISO is only its start; what matters on
 // screen is the next time it actually fires.
 export function nextOccurrenceISO(event: CalendarEvent, reference = todayISO()) {
   const repeat = event.repeat ?? 'once';
   if (repeat === 'once' || event.dateISO >= reference) return event.dateISO;
   if (repeat === 'daily') return reference;
+  if (repeat === 'monthly') return nextMonthlyISO(event.dateISO, reference);
   const target = weekdayOf(event.dateISO);
   const offset = (target - weekdayOf(reference) + 7) % 7;
   return shiftISO(reference, offset);

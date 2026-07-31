@@ -1,4 +1,5 @@
 import { backendRequest } from './backend';
+import { isValidISODate } from './calendar';
 import type {
   CareTeamCategory,
   CareTeamMember,
@@ -20,9 +21,11 @@ import {
   demoRemoveCareTeamMember,
   demoRemoveFavorite,
   demoRemoveReminder,
+  demoRequestLink,
   demoRevokeLink,
   demoSetCareTeamMember,
   demoUpdateReminder,
+  demoVerifyLink,
   isDemoToken,
 } from './demoFamily';
 
@@ -31,12 +34,23 @@ import {
 // Demo sessions (offline demo accounts) are served from the in-memory store in
 // demoFamily.ts instead of the network.
 
+// A wrongly-ordered date ("31-07-2026") passes the server's column type but no
+// recurrence helper can read it, so the reminder silently never fires. Rejected
+// before it leaves the device, shaped like a 400 from our own handlers so
+// friendlyFamilyError shows the sentence as-is.
+function assertISODate(dateISO: string) {
+  if (!isValidISODate(dateISO)) {
+    throw Object.assign(new Error('Use a date like 2026-08-15.'), { status: 400 });
+  }
+}
+
 // ----- Links -----
 
 export async function requestFamilyLink(
   token: string,
   input: { parentPhone: string; relationship?: string | null },
 ): Promise<{ ok: boolean; devCode?: string }> {
+  if (isDemoToken(token)) return demoRequestLink(token, input);
   return backendRequest('/api/family/link', {
     method: 'POST',
     token,
@@ -48,6 +62,7 @@ export async function verifyFamilyLink(
   token: string,
   input: { parentPhone: string; code: string },
 ): Promise<{ ok: boolean; link: FamilyLink }> {
+  if (isDemoToken(token)) return demoVerifyLink(token, input);
   return backendRequest('/api/family/link', {
     method: 'POST',
     token,
@@ -103,6 +118,7 @@ export async function addFamilyReminder(
     repeat?: FamilyReminderRepeat;
   },
 ): Promise<{ reminder: FamilyReminder }> {
+  assertISODate(input.dateISO);
   if (isDemoToken(token)) return demoAddReminder(token, input);
   return backendRequest('/api/family/reminders', {
     method: 'POST',
@@ -123,6 +139,7 @@ export async function updateFamilyReminder(
     repeat?: FamilyReminderRepeat;
   },
 ): Promise<{ reminder: FamilyReminder }> {
+  if (input.dateISO !== undefined) assertISODate(input.dateISO);
   if (isDemoToken(token)) return demoUpdateReminder(token, input);
   return backendRequest('/api/family/reminders', {
     method: 'POST',

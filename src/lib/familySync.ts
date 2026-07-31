@@ -8,7 +8,7 @@ import {
   listFamilyLinks,
   listFamilyReminders,
 } from './family';
-import { todayISO } from './notifications';
+import { nextMonthlyISO, todayISO } from './notifications';
 import type {
   CareTeamMember,
   FamilyFavorite,
@@ -31,39 +31,20 @@ export interface FamilySyncResult {
 
 const EMPTY: FamilySyncResult = { careTeam: [], favorites: [], guardians: [] };
 
-// The local calendar store models once/daily/weekly only. Monthly family
-// reminders are mirrored as a one-off on their next occurrence, recomputed on
-// every foreground sync — which also matches what expo-notifications can
-// schedule (it has no native monthly repeat).
-function toLocalRepeat(repeat: FamilyReminder['repeat']): ReminderRepeat {
-  return repeat === 'daily' || repeat === 'weekly' ? repeat : 'once';
-}
-
-function pad2(value: number) {
-  return String(value).padStart(2, '0');
-}
-
-// Next same-day-of-month occurrence on or after `from`. Months without the day
-// (the 31st in April) are skipped rather than rolled into the next month.
-function nextMonthlyISO(dateISO: string, from: string): string {
-  const [year, month, day] = dateISO.split('-').map(Number);
-  if (!year || !month || !day) return dateISO;
-  if (dateISO >= from) return dateISO;
-  for (let ahead = 1; ahead <= 48; ahead++) {
-    const candidate = new Date(year, month - 1 + ahead, day);
-    if (candidate.getDate() !== day) continue;
-    const iso = `${candidate.getFullYear()}-${pad2(candidate.getMonth() + 1)}-${pad2(candidate.getDate())}`;
-    if (iso >= from) return iso;
-  }
-  return dateISO;
-}
-
-// What the local store should hold for a family reminder: monthly collapses to
-// its next occurrence, everything else keeps its own date and repeat.
-function localShape(reminder: FamilyReminder, today: string) {
-  return reminder.repeat === 'monthly'
-    ? { dateISO: nextMonthlyISO(reminder.dateISO, today), repeat: 'once' as ReminderRepeat }
-    : { dateISO: reminder.dateISO, repeat: toLocalRepeat(reminder.repeat) };
+// What the local store should hold for a family reminder. Every repeat kind is
+// storable now, so the repeat carries through and the calendar marks a monthly
+// reminder in each later month. Monthly is still dated at its next occurrence:
+// expo-notifications has no monthly trigger, so its alert is a one-shot that
+// only re-arms because this date moves on the foreground sync after it fires.
+function localShape(
+  reminder: FamilyReminder,
+  today: string,
+): { dateISO: string; repeat: ReminderRepeat } {
+  return {
+    dateISO:
+      reminder.repeat === 'monthly' ? nextMonthlyISO(reminder.dateISO, today) : reminder.dateISO,
+    repeat: reminder.repeat,
+  };
 }
 
 async function mergeReminders(reminders: FamilyReminder[]) {
@@ -209,4 +190,21 @@ export async function refreshFamilyForSelf(
   if (inFlight) await inFlight.catch(() => undefined);
   cached = null;
   return syncFamilyForSelf(token, userId);
+}
+
+// Sign-out on a shared family tablet must leave nothing of the mirrored family
+// behind: the ward rows are someone else's medical reminders, and their OS
+// alerts outlive the session that scheduled them. Called from AuthContext for
+// the same reason assistant memory is cleared there.
+export async function clearFamilyForSelf(): Promise<void> {
+  cached = null;
+  // A sync already reading the server would re-mirror the rows behind us, so
+  // let it finish writing before the mirrors are dropped.
+  if (inFlight) await inFlight.catch(() => undefined);
+  cached = null;
+  const events = await listEvents();
+  for (const event of events) {
+    // removeEvent cancels the event's scheduled notification as well.
+    if (event.serverId) await removeEvent(event.id);
+  }
 }

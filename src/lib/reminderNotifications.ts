@@ -58,10 +58,8 @@ function eventDate(event: { dateISO: string; time?: string | null }) {
   return new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
 }
 
-// Widened repeat: local CalendarEvent never stores 'monthly', but family
-// reminders can carry it, so scheduling handles it without editing types.
 function triggerFor(
-  event: { dateISO: string; time?: string | null; repeat?: ReminderRepeat | 'monthly' },
+  event: { dateISO: string; time?: string | null; repeat?: ReminderRepeat },
 ) {
   const date = eventDate(event);
   const channelId = Platform.OS === 'android' ? ANDROID_CHANNEL_ID : undefined;
@@ -130,10 +128,8 @@ function triggerFor(
   };
 }
 
-// Accepts personal CalendarEvents (repeat is once/daily/weekly) and mirrored
-// family reminders, which additionally carry 'monthly'. A plain object shape —
-// not CalendarEvent — lets callers schedule a monthly reminder that the local
-// calendar store can't represent.
+// A plain object shape rather than CalendarEvent: the only fields scheduling
+// reads are these, so callers holding a family reminder can schedule directly.
 export type ScheduleInput = {
   id: string;
   title: string;
@@ -141,7 +137,7 @@ export type ScheduleInput = {
   time?: string | null;
   note?: string | null;
   serviceName?: string | null;
-  repeat?: ReminderRepeat | 'monthly';
+  repeat?: ReminderRepeat;
 };
 
 export async function scheduleReminder(event: ScheduleInput): Promise<string | null> {

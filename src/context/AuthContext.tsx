@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { backendRequest } from '../lib/backend';
 import { clearMemory } from '../lib/memory';
+import { clearFamilyForSelf } from '../lib/familySync';
 import { matchDemoUser } from '../lib/demoAuth';
 
 const DEMO_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -292,6 +293,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Assistant memory is stored device-wide; clear it so the next account
     // on a shared family device does not inherit this user's chats/facts.
     await clearMemory().catch(() => undefined);
+    // Same reason: the mirrored family reminders (and their scheduled alerts)
+    // belong to this user's wards, not to whoever signs in next.
+    await clearFamilyForSelf().catch(() => undefined);
     if (token) {
       await backendRequest('/api/auth/signout', { method: 'POST', token }).catch(() => undefined);
     }

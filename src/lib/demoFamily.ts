@@ -188,7 +188,12 @@ function fail(message: string, status = 400): Error & { status: number } {
 function canAccess(token: string, parentId: string): boolean {
   const user = demoUserByToken(token);
   if (!user) throw fail('Sign in again.', 401);
-  return parentId === PARENT.id && (user.id === PARENT.id || user.id === GUARDIAN.id);
+  if (parentId !== PARENT.id) return false;
+  if (user.id === PARENT.id) return true;
+  // Mirrors requireFamilyLink in api/_lib/auth.js: a guardian reaches the
+  // parent's data only through a live link, so revoking cuts access off here
+  // too rather than leaving the parent detail page working.
+  return user.id === link.guardianId && link.status === 'active';
 }
 
 function requireAccess(token: string, parentId: string) {
@@ -197,13 +202,62 @@ function requireAccess(token: string, parentId: string) {
 
 // ----- Handlers (mirror src/lib/family.ts return shapes) --------------------
 
+// Nothing sends WhatsApp in demo mode, so the link code is fixed and handed
+// straight back the way api/family/link.js does under OTP_DEV_ECHO — the
+// guardian screen already shows a returned devCode as "Test mode code".
+export const DEMO_LINK_CODE = '123456';
+
+function samePhone(a: string, b: string) {
+  return a.replace(/\D/g, '') === b.replace(/\D/g, '');
+}
+
+export function demoRequestLink(
+  token: string,
+  input: { parentPhone: string; relationship?: string | null },
+): { ok: boolean; devCode?: string } {
+  const user = demoUserByToken(token);
+  if (!user) throw fail('Sign in again.', 401);
+  if (samePhone(input.parentPhone, user.phone)) throw fail('You cannot link your own account.');
+  if (!samePhone(input.parentPhone, PARENT.phone)) {
+    // Same deliberately vague wording as api/family/link.js: a specific "no
+    // account" answer would let anyone probe which numbers use Saathi.
+    throw fail('That number cannot be linked right now. Check it with your parent and try again.', 404);
+  }
+  if (link.status === 'active' && link.guardianId === user.id) {
+    throw fail('You are already linked to this parent.');
+  }
+  link.status = 'pending';
+  link.guardianId = user.id;
+  link.guardianName = user.fullName;
+  link.relationship = input.relationship?.trim() || null;
+  link.verifiedAt = null;
+  return { ok: true, devCode: DEMO_LINK_CODE };
+}
+
+export function demoVerifyLink(
+  token: string,
+  input: { parentPhone: string; code: string },
+): { ok: boolean; link: FamilyLink } {
+  const user = demoUserByToken(token);
+  if (!user) throw fail('Sign in again.', 401);
+  if (link.status !== 'pending' || link.guardianId !== user.id || !samePhone(input.parentPhone, PARENT.phone)) {
+    throw fail('Ask for a code first.', 404);
+  }
+  if (input.code.replace(/\D/g, '') !== DEMO_LINK_CODE) {
+    throw fail('That code is not right. Check your parent’s WhatsApp and try again.', 401);
+  }
+  link.status = 'active';
+  link.verifiedAt = new Date().toISOString();
+  return { ok: true, link: { ...link } };
+}
+
 export function demoListLinks(token: string): { asGuardian: FamilyLink[]; asParent: FamilyLink[] } {
   const user = demoUserByToken(token);
   if (!user) throw fail('Sign in again.', 401);
   return {
     // Mirrors api/family/link.js: the guardian list keeps revoked rows (so the
     // card can show "Removed"), the parent list only shows live access.
-    asGuardian: user.id === GUARDIAN.id ? [link] : [],
+    asGuardian: user.id === link.guardianId ? [link] : [],
     asParent: user.id === PARENT.id && link.status === 'active' ? [link] : [],
   };
 }
@@ -211,7 +265,7 @@ export function demoListLinks(token: string): { asGuardian: FamilyLink[]; asPare
 export function demoRevokeLink(token: string, id: string): { ok: boolean } {
   const user = demoUserByToken(token);
   if (!user) throw fail('Sign in again.', 401);
-  if (link.id !== id || (user.id !== GUARDIAN.id && user.id !== PARENT.id)) {
+  if (link.id !== id || (user.id !== link.guardianId && user.id !== PARENT.id)) {
     throw fail('Link not found.', 404);
   }
   link.status = 'revoked';
