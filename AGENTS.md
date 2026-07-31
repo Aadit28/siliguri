@@ -18,8 +18,15 @@ writing Expo code. Do not rely on memory of older SDKs.
 ## Stack
 
 Expo SDK 56, React Native 0.85, Expo Router (routes in `app/`, shared code in
-`src/`), Supabase Postgres, and serverless handlers in `api/` deployed as Vercel
-functions. Translations live in `src/locales/en.json` and `hi.json`, at parity.
+`src/`), Supabase Postgres, and serverless handlers in `server/` reached through
+the single dispatcher `api/index.js` (Vercel Hobby caps functions at twelve).
+Translations live in `src/locales/en.json` and `hi.json`, at parity.
+
+The assistant's LLM is whatever `DEEPSEEK_MODEL` names on the OpenCode Go plan
+(currently `kimi-k2.5`; deepseek-v4-flash is region-locked there). Server push
+goes through Expo's push API (`server/_lib/push.js`, `push_tokens` table); a
+daily digest cron runs at 20:00 IST behind `CRON_SECRET`. Notification taps
+deep-link via an internal path in `data.url` — internal paths only.
 
 ## Commands
 
@@ -72,7 +79,17 @@ every family route re-checks the link, and citizen data is scoped by `city_id`
 on the server. Do not trust `x-forwarded-for[0]` for anything; use `requestIp()`.
 
 **Model output is not policy.** The assistant's disclaimer is fixed reviewed
-copy, and its actions are filtered against the service ids the client sent.
+copy, its actions are filtered against the service ids the client sent, and a
+`proposedReminder` from the model is re-validated by `sanitizeProposedReminder`
+before the app ever shows it. Nothing the model proposes saves without a
+confirming tap.
+
+**The reminder parser exists twice on purpose.** `src/lib/reminderParse.ts` on
+the device, a port inside `server/assistant/plan.js` on the server. Change one,
+change both.
+
+**Await pushes before the response.** Vercel freezes the function when the
+response ends; a fire-and-forget `sendPushToUsers` silently dies.
 
 ## Working in this repo
 

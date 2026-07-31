@@ -40,7 +40,8 @@ src/
   lib/                  API clients, family sync, notifications, i18n, theme
   locales/              en.json, hi.json
   data/services.json    Offline fallback copy of the directory
-api/                    Serverless handlers, one file per route
+api/index.js            The one serverless function; dispatches by route name
+server/                 The actual handlers, one file per route, plus _lib/
 scripts/
   dev-api.js            Runs the same handlers locally on port 8788
   seed.mjs              Loads the services directory
@@ -56,16 +57,23 @@ supabase-*.sql          Schema and migrations, applied in order
 ```
 Screen  ->  src/lib/api.ts or family.ts
         ->  src/lib/backend.ts  (adds the bearer token, 10s timeout)
-        ->  /api/<route>
-        ->  api/_lib/auth.js    (authenticate, role checks, rate limits)
+        ->  /api/<route>        (vercel.json इसे api/index.js में भेजता है)
+        ->  server/<route>.js   (dispatch table से load होता है)
+        ->  server/_lib/auth.js (authenticate, role checks, rate limits)
         ->  Supabase (service role)
 ```
+
+सारे routes एक ही serverless function से गुज़रते हैं, क्योंकि Vercel का Hobby
+plan एक deployment में बारह functions की सीमा रखता है और हमारे पास बीस से ऊपर
+routes हैं। dispatch table `api/index.js` में है; `scripts/dev-api.js` वही table
+import करता है, इसलिए ऐसा नहीं हो सकता कि कोई route लोकल पर चले और production
+में 404 दे।
 
 `backend.ts` API का base URL चलते समय तय करता है। localhost पर यह पोर्ट 8788 की
 तरफ़ इशारा करता है, ताकि बिना किसी configuration के dev API उठ जाए। production
 में यह `EXPO_PUBLIC_API_BASE_URL` इस्तेमाल करता है।
 
-सत्र अपने बनाए हुए हैं, Supabase Auth के नहीं। `api/auth/signin` एक PBKDF2 hash
+सत्र अपने बनाए हुए हैं, Supabase Auth के नहीं। `server/auth/signin.js` एक PBKDF2 hash
 जाँचता है और `auth_tokens` में एक random token लिख देता है; क्लाइंट उसे
 AsyncStorage में रखता है। यह बात जितनी छोटी लगती है, उससे कहीं बड़ी है: **इस ऐप
 में `auth.uid()` हमेशा null रहता है**, इसलिए `auth.uid()` के भरोसे लिखी कोई भी
@@ -121,13 +129,18 @@ Jersey में हो। "कल 8:30" पर लगाए reminder का म
 
 ## सहायक
 
-`api/assistant/plan.js` repo की सबसे बड़ी फ़ाइल है। यह परतों में जवाब देती है:
+`server/assistant/plan.js` repo की सबसे बड़ी फ़ाइल है। यह परतों में जवाब देती है:
 
 1. keyword वाला planner सबसे पहले चलता है, और हमेशा चलता है। यह अंग्रेज़ी, हिंदी
    और हिंग्लिश शब्दों को सेवा की श्रेणी से मिलाता है और क्लाइंट की भेजी असली
    service rows से plan बनाता है।
-2. अगर model की key सेट है और request उसके कोटे के भीतर है, तो DeepSeek (या फ़ोटो
-   होने पर OpenAI, क्योंकि DeepSeek फ़ोटो नहीं पढ़ सकता) को मौका मिलता है।
+2. अगर model की key सेट है और request उसके कोटे के भीतर है, तो सेट किया हुआ chat
+   model (फ़ोटो होने पर OpenAI) को मौका मिलता है। model `DEEPSEEK_MODEL` से तय
+   होता है और अभी OpenCode Go plan पर `kimi-k2.5` है — deepseek-v4-flash वहाँ
+   region-lock हो गया। Kimi सोचने वाला model है: कभी-कभी अपने JSON के चारों तरफ़
+   तर्क की गद्य लपेट देता है, इसलिए parser सबसे बाहरी `{...}` block उठाता है और
+   request में 3000 output tokens की जगह रखी जाती है। लोकल planner पर हर गिरावट
+   अपनी वजह log करती है — वरना मरी हुई key और सामान्य लोकल दिन एक जैसे दिखते हैं।
 3. model के जवाब को लोकल plan के हिसाब से सामान्य किया जाता है। intent और status
    उपयोगकर्ता के अपने संदेश से दोबारा निकाले जाते हैं, और ऐसी हर action हटा दी
    जाती है जो उस service id की तरफ़ इशारा करे जो क्लाइंट ने भेजी ही नहीं थी।
@@ -142,6 +155,58 @@ Jersey में हो। "कल 8:30" पर लगाए reminder का म
 
 कोटा fail closed है। अगर counter पढ़ा ही न जा सके, तो request बिना हिसाब के पैसे
 खर्च करने के बजाय मुफ़्त लोकल planner पर उतर जाती है।
+
+### सहायक जो reminder बना सकता है
+
+"मुझे रोज़ रात 8 बजे BP की दवा याद दिलाना" — या अंग्रेज़ी में वही बात — जवाब में
+`proposedReminder` लाती है: शीर्षक, तारीख़, समय, दोहराव। क्लाइंट उसे एक कार्ड की
+तरह दिखाता है और जब तक उपयोगकर्ता Save नहीं दबाता, कुछ भी सेव नहीं होता। Save
+दबाने पर वही रास्ता चलता है जो हाथ से लिखे reminder का है: लोकल कैलेंडर में
+लिखना और OS का अलार्म तय करना।
+
+Parser की दो प्रतियाँ जान-बूझकर हैं: `src/lib/reminderParse.ts` डिवाइस पर चलती
+है (ऑफ़लाइन जवाबों के लिए) और उसका port `server/assistant/plan.js` के अंदर सर्वर
+पर, जहाँ वह LLM के सुझाव की जाँच भी करता है। **दोनों को साथ-साथ बदलें**, और
+model की तारीख़ों पर कभी भरोसा न करें: `sanitizeProposedReminder` वह सब गिरा
+देता है जो असली तारीख़, असली समय और जाना-पहचाना दोहराव न हो।
+
+### आवाज़
+
+`src/lib/voice.ts` ब्राउज़र की SpeechRecognition (hi-IN/en-IN) और expo-speech
+को लपेटता है। जहाँ recognition मौजूद है वहीं mic का बटन दिखता है — व्यवहार में
+वह web build पर Chrome है; native के लिए dev-build module चाहिए, इसलिए वहाँ बटन
+बनता ही नहीं। आवाज़ में जवाब चालू हों तो उत्तर बोला जाता है, और बोले हुए सवाल के
+बाद mic फिर खुल जाता है, ताकि बुज़ुर्ग बिना हाथ लगाए बातचीत चला सकें। रद्द करने
+पर `stop()` नहीं, `abort()` चलता है — `stop()` आख़िरी नतीजा फिर भी पहुँचा देता
+और वही शब्द भेज देता जो उपयोगकर्ता ने रद्द किए थे।
+
+## Push नोटिफ़िकेशन और deep links
+
+लोकल reminder अलार्म को इसमें से कुछ नहीं चाहिए — वे डिवाइस पर ही तय होते हैं।
+सर्वर push परिवार के चक्र के लिए है:
+
+- गार्जियन ने बुज़ुर्ग का reminder जोड़ा या बदला -> पैरेंट का फोन बजता है
+- पैरेंट ने reminder पूरा किया -> गार्जियनों के फोन बजते हैं
+- help desk ने callback को contacted या closed किया -> माँगने वाले का फोन बजता है
+- रोज़ रात 8 बजे (IST) एक Vercel cron (`server/cron/daily-digest.js`) हर
+  गार्जियन को हर पैरेंट का सार भेजता है, और कहने को कुछ न हो तो चुप रहता है
+
+रास्ता: साइन-इन के बाद ऐप अपना Expo push token दर्ज करता है
+(`src/lib/pushRegistration.ts` -> `/api/notify/register` -> `push_tokens`,
+migration 11)। `server/_lib/push.js` Expo के API से भेजता है और जो token
+`DeviceNotRegistered` लौटें उन्हें मिटा देता है। भेजना **HTTP जवाब से पहले await
+होता है** — जवाब ख़त्म होते ही Vercel function को जमा देता है, इसलिए छोड़ा हुआ
+promise चुपचाप मर जाता।
+
+दो platform-सीमाएँ याद रखने लायक: नए Android पर Expo Go push token बना ही नहीं
+सकता (dev build बना सकता है), और web build में Expo push है ही नहीं। हर कदम
+best-effort है, इसलिए ये platform बिना error के लोकल अलार्म पर उतर जाते हैं।
+
+नोटिफ़िकेशन के tap में `data.url` के अंदर ऐप का ही रास्ता होता है (`/calendar`,
+`/guardian`, `/help`)। root layout उसे खोलता है और जो ऐप का रास्ता न हो उसे मना
+कर देता है, ताकि कोई push payload बुज़ुर्ग को बाहर की साइट पर न भेज सके।
+sign-out पहले token हटाता है, फिर सत्र रद्द करता है — घर का साझा टैबलेट पिछले
+खाते के लिए बजता नहीं रहना चाहिए।
 
 ## दर-सीमाएँ
 

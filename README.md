@@ -18,12 +18,19 @@ you sign in as.
 **Parent.** The elder in Siliguri. A directory of verified local services
 (doctors, hospitals, medical shops, home repair, transport, civic offices), an
 assistant that turns "book a doctor for tomorrow" into a named provider and a
-call script, a community board, reminders, and a help desk with one-tap dialling.
+call script — and "remind me to take BP medicine daily at 8pm", in English or
+Hindi, into a reminder card that saves and rings on one confirming tap. On the
+web build the assistant listens and talks: a mic button dictates in hi-IN or
+en-IN, and spoken questions get spoken answers. Plus a community board,
+reminders, and a help desk with one-tap dialling.
 
 **Guardian.** The adult child. Links to a parent's account with the parent's
 consent, then sets reminders on their behalf, keeps a care team of trusted
-numbers, pins services, and sees a quiet activity summary. Times are shown in IST
-no matter where the guardian is sitting.
+numbers, pins services, and sees a quiet activity summary with an Ask Saathi box
+that answers "how is Ma doing this week" from her actual reminders and activity.
+On a dev build their phone pings when the parent completes a reminder, and a
+daily digest lands at 20:00 IST. Times are shown in IST no matter where the
+guardian is sitting.
 
 **Admin.** City operations staff. Curates the services directory, publishes
 announcements, works the callback queue, and manages city helpers. Everything is
@@ -35,7 +42,7 @@ scoped to one city, so staff in one city never see another city's citizen data.
 | --- | --- |
 | Screens | `app/`, Expo Router file-based routes |
 | Shared code | `src/`: components, contexts, `lib/` |
-| API | `api/`, 21 routes deployed as Vercel functions |
+| API | `server/`, 23 routes behind the single dispatcher `api/index.js` |
 | Local API for development | `scripts/dev-api.js`, same handlers on port 8788 |
 | Database | Supabase Postgres; schema and migrations at the repo root |
 | Translations | `src/locales/en.json`, `src/locales/hi.json` |
@@ -123,9 +130,11 @@ only appear in development builds, or when `EXPO_PUBLIC_SHOW_DEMO_ACCOUNTS=1`.
 | `EXPO_PUBLIC_API_BASE_URL` | Where the app looks for `/api/*` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only. Never ships in the app bundle |
 | `DEEPSEEK_API_KEY` | Assistant planner. Without it the local planner handles everything |
-| `OPENAI_API_KEY` | Used for photo attachments, which DeepSeek cannot read |
+| `DEEPSEEK_MODEL` | Which model the OpenCode Go key calls. Currently `kimi-k2.5` |
+| `OPENAI_API_KEY` | Used for photo attachments, which the text models cannot read |
 | `WHATSAPP_*` | Required for OTP sign-in and guardian linking |
 | `AI_USER_DAILY_MAX`, `AI_GLOBAL_DAILY_MAX` | Assistant quotas, default 120 and 1200 |
+| `CRON_SECRET` | Authenticates the daily guardian-digest cron (20:00 IST) |
 
 ## Deliberate limits
 

@@ -12,9 +12,18 @@
 डेटाबेस से जुड़े लोकल API पर जाँच करें, और seed scripts से सावधान रहें, क्योंकि
 वे डालने से पहले मिटाती हैं।
 
-वेब ऐप `main` से deploy होता है। API अपने आप deploy नहीं होता। `api/` में कुछ भी
-बदलने के बाद उसे जान-बूझकर deploy करें, और यह याद रखें कि Vercel के environment
-variables `.env` की अलग प्रति हैं: एक बदलने से दूसरा नहीं बदलता।
+वेब ऐप `main` से deploy होता है। API अपने आप deploy नहीं होता। `api/` या
+`server/` में कुछ भी बदलने के बाद उसे जान-बूझकर deploy करें, और यह याद रखें कि
+Vercel के environment variables `.env` की अलग प्रति हैं: एक बदलने से दूसरा नहीं
+बदलता। Windows पर Vercel CLI से कोई env value सेट करें तो उसे PowerShell नहीं,
+Node से pipe करें — PowerShell की pipeline आगे BOM और पीछे CRLF जोड़ देती है और
+हर value चुपचाप बिगड़ जाती है।
+
+Supabase की keys के अलावा production में दो env values मायने रखती हैं:
+`DEEPSEEK_MODEL` (OpenCode Go plan पर planner का model; अभी `kimi-k2.5`, क्योंकि
+deepseek-v4-flash वहाँ region-lock है) और `CRON_SECRET`, जिससे रोज़ का digest
+cron पहचाना जाता है। env var मौजूद हो तो Vercel उसे अपने आप
+`Authorization: Bearer <secret>` की तरह भेजता है।
 
 ## Migration लगाना
 
@@ -65,9 +74,26 @@ team समेत, मिटाकर दोबारा बनाती है�
 पासवर्ड अब भी चलते हैं। Meta Business खाता जुड़ने तक यही होना है।
 
 **सहायक जवाब तो देता है पर बेजान लगता है।** वह लोकल keyword planner पर उतर आया
-है, जो तब होता है जब model की key नहीं है, कोटा खत्म है, या कोटे का counter पढ़ा
-नहीं जा सका। आख़िरी हाल जान-बूझकर ऐसा है: counter न पढ़ा जाना यानी बिना हिसाब के
-खर्च, इसलिए यह fail closed होता है।
+है, जो तब होता है जब model की key नहीं है, कोटा खत्म है, model का JSON पढ़ा नहीं
+जा सका, या कोटे का counter पढ़ा नहीं जा सका। आख़िरी हाल जान-बूझकर ऐसा है:
+counter न पढ़ा जाना यानी बिना हिसाब के खर्च, इसलिए यह fail closed होता है। 31
+जुलाई की लहर से हर गिरावट अपनी वजह log करती है — अंदाज़ा लगाने से पहले function
+के log देखें। `403 RegionError` का मतलब है कि सेट किया हुआ model OpenCode plan
+पर region के पीछे चला गया; `GET /models` से देखें कि key को अब क्या मिलता है और
+`DEEPSEEK_MODEL` बदलें — `.env` में भी और Vercel में भी।
+
+**Push नोटिफ़िकेशन कभी पहुँचते ही नहीं।** इसी क्रम में देखें: डिवाइस dev build
+होना चाहिए (नए Android पर Expo Go push token बना ही नहीं सकता; web पर Expo push
+है ही नहीं); उपयोगकर्ता की `push_tokens` में row होनी चाहिए (दर्ज होना साइन-इन के
+बाद और best-effort है); भेजना HTTP जवाब खत्म होने से पहले होना चाहिए (उसके बाद
+Vercel function को जमा देता है)। जिन tokens को Expo `DeviceNotRegistered` बताता
+है वे अपने आप मिट जाते हैं — uninstall हुए डिवाइस का टेबल से गायब होना सामान्य
+है।
+
+**रोज़ का digest गया ही नहीं।** cron 14:30 UTC (रात 8 बजे IST) पर चलता है और
+`Authorization` में `CRON_SECRET` न हो तो 401 देता है। जिस पैरेंट के पास खिड़की
+में कोई reminder नहीं, उसके लिए चुप रहना design है — push न आना हमेशा खराबी नहीं।
+secret के साथ हाथ से चलाएँ और लौटे हुए `digests` की गिनती पढ़ें।
 
 **कोई दर-सीमा टिक नहीं रही।** सीमाएँ हर serverless instance की अपनी मेमोरी में
 रहती हैं, इसलिए cold start पर रीसेट हो जाती हैं और instances के बीच जुड़ती नहीं।

@@ -10,9 +10,17 @@ against a local API pointed at the same database, and be careful with the seed
 scripts, because they delete before they insert.
 
 The web app deploys from `main`. The API does not deploy automatically. After
-changing anything in `api/`, deploy it deliberately, and remember that the
-Vercel environment variables are a separate copy of `.env`: changing one does
-not change the other.
+changing anything in `api/` or `server/`, deploy it deliberately, and remember
+that the Vercel environment variables are a separate copy of `.env`: changing
+one does not change the other. When you set an env value with the Vercel CLI on
+Windows, pipe it from Node, not PowerShell — the PowerShell pipeline prepends a
+BOM and appends CRLF and every value silently corrupts.
+
+Two env values beyond the Supabase keys matter in production: `DEEPSEEK_MODEL`
+(the planner model on the OpenCode Go plan; currently `kimi-k2.5` because
+deepseek-v4-flash is region-locked there) and `CRON_SECRET`, which the daily
+digest cron authenticates with. Vercel sends it automatically as
+`Authorization: Bearer <secret>` when the env var exists.
 
 ## Applying a migration
 
@@ -63,9 +71,27 @@ password still work. This is expected until the Meta Business account is wired
 up.
 
 **The assistant answers but sounds generic.** It fell back to the local keyword
-planner, which happens when the model key is missing, the quota is spent, or the
-quota counter could not be read. That last case is deliberate: an unreadable
-counter means unmetered spend, so it fails closed.
+planner, which happens when the model key is missing, the quota is spent, the
+model's JSON could not be parsed, or the quota counter could not be read. That
+last case is deliberate: an unreadable counter means unmetered spend, so it
+fails closed. Since the July 31 wave every fallback logs its reason — check the
+function logs before guessing. A `403 RegionError` means the configured model
+moved behind a region gate on the OpenCode plan; list what the key can still
+reach with `GET /models` and change `DEEPSEEK_MODEL`, in `.env` and in Vercel.
+
+**Push notifications never arrive.** Check in this order: the device must be a
+dev build (Expo Go on newer Android cannot mint a push token; web has none);
+the user must have a row in `push_tokens` (registration happens after sign-in
+and is best-effort); the send must have happened before the response ended
+(Vercel freezes the function afterwards). Tokens that Expo reports as
+`DeviceNotRegistered` are pruned automatically, so an uninstalled device
+disappearing from the table is normal.
+
+**The daily digest did not go out.** The cron runs at 14:30 UTC (20:00 IST) and
+answers 401 unless the `Authorization` header carries `CRON_SECRET`. A digest
+is also silent by design for any parent with no reminders in the window — no
+push is not necessarily a failure. Trigger it by hand with the secret and read
+the returned `digests` count.
 
 **A rate limit is not holding.** Limits live in memory per serverless instance,
 so they reset on cold start and do not add up across instances. Real
