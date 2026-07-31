@@ -1,22 +1,92 @@
-# Expo HAS CHANGED
+# Saathi
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before writing any code.
+Local-services and family-care app for elderly people in Siliguri, West Bengal,
+operated remotely by their adult children. One Expo codebase serves iOS, Android
+and web. Product detail is in `README.md`; the deeper map is in `docs/`.
 
-# Saathi (suluguri)
+Read these before non-trivial work:
 
-Trusted local-services + community app for elderly parents in small towns (pilot: Siliguri, West Bengal), operated remotely by their children abroad. Universal app — iOS, Android, Web from one codebase. Product detail: `README.md`.
+- `docs/architecture.md` for how the pieces fit and which decisions look odd but are deliberate
+- `docs/contributing.md` for the rules that keep this app usable by its actual users
+- `docs/operations.md` for deploys, migrations and what a given failure means
+
+## Expo has changed
+
+Read the versioned docs at <https://docs.expo.dev/versions/v56.0.0/> before
+writing Expo code. Do not rely on memory of older SDKs.
 
 ## Stack
 
-Expo SDK 56 · React Native 0.85 · Expo Router (routes in `app/`, shared code in `src/`) · Supabase backend (schema at repo root: `supabase-schema.sql` + `supabase-*-migration*.sql`) · `api/` = Vercel serverless functions (`vercel.json`).
+Expo SDK 56, React Native 0.85, Expo Router (routes in `app/`, shared code in
+`src/`), Supabase Postgres, and serverless handlers in `api/` deployed as Vercel
+functions. Translations live in `src/locales/en.json` and `hi.json`, at parity.
 
 ## Commands
 
 ```bash
-npm run start      # expo start (also: android / ios / web variants)
-./start.ps1        # Windows convenience launcher
+npm run web
 ```
 
-## Warning — duplicate checkouts
+```bash
+node scripts/dev-api.js
+```
 
-Three sibling copies of this project exist: `Silliguri/`, `suluguri/`, and `Silliguri New/siliguri/` (most recently modified). Confirm with the user which copy is canonical before making edits that should propagate.
+```bash
+npx tsc --noEmit -p tsconfig.json
+```
+
+There is no test suite. The typecheck plus a manual walk through the affected
+portal is the whole gate, so do both and report what you actually observed.
+
+## Three portals, one binary
+
+A **parent** sees the tab bar. A **guardian** is anyone holding an active row in
+`family_links`, routed to `/guardian`. An **admin** has `role` of `admin` or
+`super_admin` and can open `/admin`. There is no guardian role in the database;
+looking for one wastes time.
+
+Demo accounts `demo.parent`, `demo.guardian` and `demo.admin` all use the
+password `saathi123`. Sign-in tries the backend first and falls back to an
+offline session, so they work with or without a database.
+
+## Rules that are not style preferences
+
+**Never fail quietly.** A swallowed error here can mean a missed dose of
+blood-pressure medicine. A `catch` returning a default needs a comment
+justifying the silence.
+
+**Never delete local data on an empty fetch.** A failed request and an empty
+list look identical. `mergeReminders` takes a `complete` flag for this reason.
+
+**Both languages, every time.** Add keys to `en.json` and `hi.json` together.
+A `defaultValue` in code is scaffolding, not a Hindi string.
+
+**`TAP` is 56 and it is a floor.** React Native Web ignores `hitSlop` for hit
+testing, so pad the real size. Body text is 16 or larger. Colour pairs pass AA.
+
+**Everything is IST.** Use `todayISO()` from `src/lib/notifications.ts`, never
+`new Date()`, or a guardian abroad sees the wrong day.
+
+**Server-side checks are the real checks.** Every admin route re-checks role,
+every family route re-checks the link, and citizen data is scoped by `city_id`
+on the server. Do not trust `x-forwarded-for[0]` for anything; use `requestIp()`.
+
+**Model output is not policy.** The assistant's disclaimer is fixed reviewed
+copy, and its actions are filtered against the service ids the client sent.
+
+## Working in this repo
+
+Three sibling checkouts exist on the original machine (`Silliguri/`,
+`suluguri/`, `Silliguri New/siliguri/`). This one is canonical. Confirm before
+assuming an edit landed where you think it did.
+
+Metro caches aggressively. If the browser shows old behaviour after an edit,
+restart the dev server rather than debugging a ghost.
+
+A paused Supabase project loses DNS entirely, so every call fails with a
+name-resolution error that looks exactly like deletion. Check the dashboard
+before concluding the data is gone.
+
+When several agents work at once, give each one its own dev server from
+`.claude/launch.json` rather than hand-typed loopback aliases. Only origins
+opened through the preview tooling are approved for browser control.

@@ -168,10 +168,6 @@ export async function scheduleReminderWithOutcome(event: ScheduleInput): Promise
   }
 }
 
-export async function scheduleReminder(event: ScheduleInput): Promise<string | null> {
-  const outcome = await scheduleReminderWithOutcome(event);
-  return outcome.ok ? outcome.notificationId : null;
-}
 
 export async function cancelReminder(notificationId?: string | null) {
   if (!supported || !notificationId) return;

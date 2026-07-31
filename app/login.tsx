@@ -10,6 +10,7 @@ import { useDisplayMode } from '../src/context/DisplayModeContext';
 import { supabaseConfigured } from '../src/lib/supabase';
 import { demoByKind, matchDemoUser, type DemoKind } from '../src/lib/demoAuth';
 import { listFamilyLinks } from '../src/lib/family';
+import { consumeLoginIntent } from '../src/lib/authNavigation';
 import { useTheme } from '../src/context/ThemeContext';
 
 type Mode = 'in' | 'up' | 'otp';
@@ -47,7 +48,14 @@ export default function Login() {
   // the user once the auth session lands in context.
   const [pendingRoute, setPendingRoute] = useState(false);
 
+  // Screens that bounce a signed-out user here call markLoginIntent first, so
+  // someone who tapped Reply on a community post lands back on that post rather
+  // than on Home wondering where their place went.
   function goHome() {
+    if (consumeLoginIntent() && router.canGoBack()) {
+      router.back();
+      return;
+    }
     router.replace('/');
   }
 
@@ -60,6 +68,14 @@ export default function Login() {
     setPendingRoute(false);
     let cancelled = false;
     (async () => {
+      // Coming back from a specific screen beats the default landing place, so
+      // this is checked before the guardian lookup. Consuming it here also
+      // clears the flag on the guardian path, which would otherwise carry a
+      // stale intent into the next sign-in.
+      if (consumeLoginIntent() && router.canGoBack()) {
+        router.back();
+        return;
+      }
       try {
         const { asGuardian } = await listFamilyLinks(session.access_token);
         if (cancelled) return;
@@ -70,7 +86,7 @@ export default function Login() {
       } catch {
         // Fall through to the parent home on any lookup failure.
       }
-      if (!cancelled) goHome();
+      if (!cancelled) router.replace('/');
     })();
     return () => {
       cancelled = true;
@@ -114,8 +130,11 @@ export default function Login() {
       // apps; parents get the regular home experience.
       const demo = matchDemoUser(username, password);
       if (demo) {
-        if (demo.kind === 'guardian') router.replace('/guardian');
-        else goHome();
+        // goHome consumes the return-here intent; the guardian path has to
+        // clear it too or it would fire on the next sign-in instead.
+        if (consumeLoginIntent() && router.canGoBack()) router.back();
+        else if (demo.kind === 'guardian') router.replace('/guardian');
+        else router.replace('/');
         return;
       }
       // Real account: defer routing to the session-watcher effect, which checks
