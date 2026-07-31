@@ -21,8 +21,20 @@ function shiftISO(dateISO: string, days: number) {
   return toLocalISODate(date);
 }
 
+// The parent always lives in Asia/Kolkata (UTC+5:30, no DST). Reminder dates
+// represent the parent's local day, so "today" — and every due/overdue
+// comparison built on it — is anchored there, not in a guardian's own
+// timezone abroad. Offsetting a UTC instant by +5:30 and reading its UTC parts
+// yields the Kolkata wall-clock date without needing Intl timeZone support.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function pad2(value: number) {
+  return String(value).padStart(2, '0');
+}
+
 export function todayISO() {
-  return toLocalISODate(new Date());
+  const k = new Date(Date.now() + IST_OFFSET_MS);
+  return `${k.getUTCFullYear()}-${pad2(k.getUTCMonth() + 1)}-${pad2(k.getUTCDate())}`;
 }
 
 export function formatEventWhen(dateISO: string, time?: string | null) {

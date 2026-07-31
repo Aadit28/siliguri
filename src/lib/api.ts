@@ -1,5 +1,5 @@
 import { supabase, supabaseConfigured } from './supabase';
-import { Service, CommunityPost, CommunityReply, PostCategory, CallbackRequestInput } from './types';
+import { Service, CommunityPost, CommunityReply, PostCategory, PostStatus, CallbackRequestInput } from './types';
 import { MOCK_SERVICES, MOCK_POSTS } from '../data/mockData';
 import { backendRequest } from './backend';
 
@@ -7,6 +7,68 @@ import { backendRequest } from './backend';
 // is always usable — even before the SQL schema is applied or while offline.
 
 export const usingMockFlag = { value: !supabaseConfigured };
+
+// ----- Shared network layer -----
+
+export type NetworkErrorKind = 'timeout' | 'network' | 'server';
+
+// Typed error so callers can tell a slow/absent connection (retryable, user's
+// fault) apart from a real backend failure, and show the right copy.
+export class ApiError extends Error {
+  readonly kind: NetworkErrorKind;
+  readonly status?: number;
+  constructor(kind: NetworkErrorKind, message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+const DEFAULT_TIMEOUT_MS = 15000;
+
+// Normalises anything thrown by fetch / supabase-js into an ApiError.
+function toApiError(e: any): ApiError {
+  if (e instanceof ApiError) return e;
+  if (e?.name === 'AbortError') return new ApiError('timeout', 'Request timed out');
+  // PostgrestError carries code/details/hint; a non-2xx HTTP status is a server fault.
+  if (e?.code || e?.details || typeof e?.status === 'number') {
+    return new ApiError('server', e?.message ?? 'Server error', e?.status);
+  }
+  return new ApiError('network', e?.message ?? 'Network error');
+}
+
+// AbortController pre-wired to a timeout. Call clear() once the work settles.
+function timeoutSignal(ms = DEFAULT_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
+// fetch() with a hard timeout and ApiError classification. The shared entry
+// point for any raw HTTP call in this layer.
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const t = timeoutSignal(timeoutMs);
+  try {
+    const res = await fetch(input, { ...init, signal: t.signal });
+    if (res.status >= 500) throw new ApiError('server', `Server error (${res.status})`, res.status);
+    return res;
+  } catch (e) {
+    throw toApiError(e);
+  } finally {
+    t.clear();
+  }
+}
+
+// A post is public when it has been approved. Legacy rows have no status at all,
+// so we treat missing/undefined/null as approved to avoid hiding old content.
+function isApproved(status?: PostStatus | null) {
+  return status == null || status === 'approved';
+}
 
 export async function fetchServices(): Promise<Service[]> {
   if (!supabaseConfigured) return localCatalogServices();
@@ -48,20 +110,31 @@ export async function fetchService(id: string): Promise<Service | null> {
   }
 }
 
+// In demo mode (no backend) returns seeded posts. When configured, a real
+// network/backend failure THROWS an ApiError so the feed can show a retryable
+// error state instead of silently masking it with mock data. Pending posts are
+// filtered out of the public feed; the signed-in author still sees their own.
 export async function fetchPosts(currentUserId?: string | null): Promise<CommunityPost[]> {
   if (!supabaseConfigured) return MOCK_POSTS;
+  const t = timeoutSignal();
   try {
     const { data: posts, error } = await supabase
       .from('community_posts')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .abortSignal(t.signal);
     if (error) throw error;
-    if (!posts || posts.length === 0) return MOCK_POSTS;
+    if (!posts || posts.length === 0) return [];
 
-    const ids = posts.map((p) => p.id);
+    const visiblePosts = (posts as CommunityPost[]).filter(
+      (p) => isApproved(p.status) || (p.status === 'pending' && !!currentUserId && p.author_id === currentUserId),
+    );
+    if (visiblePosts.length === 0) return [];
+
+    const ids = visiblePosts.map((p) => p.id);
     const [{ data: replies }, { data: likes }] = await Promise.all([
-      supabase.from('community_replies').select('post_id').in('post_id', ids),
-      supabase.from('post_likes').select('post_id, user_id').in('post_id', ids),
+      supabase.from('community_replies').select('post_id').in('post_id', ids).abortSignal(t.signal),
+      supabase.from('post_likes').select('post_id, user_id').in('post_id', ids).abortSignal(t.signal),
     ]);
 
     const replyCount = countBy(replies ?? [], 'post_id');
@@ -72,15 +145,16 @@ export async function fetchPosts(currentUserId?: string | null): Promise<Communi
         .map((l: any) => l.post_id),
     );
 
-    return (posts as CommunityPost[]).map((p) => ({
+    return visiblePosts.map((p) => ({
       ...p,
       reply_count: replyCount[p.id] ?? 0,
       like_count: likeCount[p.id] ?? 0,
       liked_by_me: likedByMe.has(p.id),
     }));
   } catch (e) {
-    console.warn('[Saathi] posts fell back to mock:', (e as Error).message);
-    return MOCK_POSTS;
+    throw toApiError(e);
+  } finally {
+    t.clear();
   }
 }
 

@@ -13,7 +13,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
-import { Card, H1, H2, Muted, Button, Chip, Dialog } from '../src/components/ui';
+import { Card, H1, H2, Muted, Button, Chip, Dialog, Badge } from '../src/components/ui';
 import { AppColors, family, font, radius, space, TAP, ROW_MIN_HEIGHT } from '../src/lib/theme';
 import { SERVICE_CATEGORIES } from '../src/lib/categories';
 import { Announcement, ServiceCategory } from '../src/lib/types';
@@ -30,6 +30,8 @@ function Field({
   multiline,
   keyboardType,
   autoCapitalize,
+  placeholder,
+  hint,
 }: {
   label: string;
   value: string;
@@ -37,6 +39,8 @@ function Field({
   multiline?: boolean;
   keyboardType?: TextInputProps['keyboardType'];
   autoCapitalize?: TextInputProps['autoCapitalize'];
+  placeholder?: string;
+  hint?: string;
 }) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
@@ -55,7 +59,7 @@ function Field({
         ]}
         value={value}
         onChangeText={onChangeText}
-        placeholder={label}
+        placeholder={placeholder ?? label}
         placeholderTextColor={colors.textMuted}
         multiline={multiline}
         keyboardType={keyboardType}
@@ -64,9 +68,24 @@ function Field({
         onBlur={() => setFocused(false)}
         accessibilityLabel={label}
       />
+      {hint ? <Text style={[fieldStyles.hint, { color: colors.textSubtle }]}>{hint}</Text> : null}
     </View>
   );
 }
+
+// Optional 10-digit Indian phone -> +91XXXXXXXXXX. Returns null when a value is
+// present but not a recognisable number; empty input is valid (field optional).
+function normalizeIndianPhone(input: string): string | null | undefined {
+  const raw = input.trim();
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return null;
+}
+
+const UPI_PATTERN = /^[a-z0-9.\-_]{2,}@[a-z]{2,}$/i;
 
 function Notice({ kind, message }: { kind: 'error' | 'success'; message: string }) {
   const { colors } = useTheme();
@@ -100,6 +119,12 @@ const fieldStyles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: 'top',
   },
+  hint: {
+    fontSize: font.xs,
+    fontFamily: family.regular,
+    lineHeight: Math.round(font.xs * 1.5),
+    marginTop: space.xs,
+  },
   notice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -121,10 +146,35 @@ type CityHelper = {
   created_at: string;
 };
 
+type AdminService = {
+  id: string;
+  name: string;
+  category: ServiceCategory;
+  phone: string | null;
+  address: string | null;
+  hours: string | null;
+  description: string | null;
+  upi_id: string | null;
+  verified: boolean;
+  city_id: string | null;
+  town: string | null;
+};
+
+type CallbackRequest = {
+  id: string;
+  name: string;
+  phone: string;
+  issue: string | null;
+  source: string;
+  status: string;
+  service_id: string | null;
+  created_at: string;
+};
+
 export default function AdminScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { session, user, isAdmin, isCityHelper, isCityStaff } = useAuth();
+  const { session, user, loading, isAdmin, isCityHelper, isCityStaff } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
@@ -155,6 +205,20 @@ export default function AdminScreen() {
   const [savingService, setSavingService] = useState(false);
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [serviceSuccess, setServiceSuccess] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Existing services (list / search / edit / delete).
+  const [services, setServices] = useState<AdminService[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [servicesError, setServicesError] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [serviceFilter, setServiceFilter] = useState<ServiceCategory | 'all'>('all');
+  const [serviceRemoveTarget, setServiceRemoveTarget] = useState<AdminService | null>(null);
+
+  // Callback requests queue.
+  const [callbacks, setCallbacks] = useState<CallbackRequest[]>([]);
+  const [loadingCallbacks, setLoadingCallbacks] = useState(false);
+  const [callbacksError, setCallbacksError] = useState(false);
 
   // City helper management state (admins only).
   const [helpers, setHelpers] = useState<CityHelper[]>([]);
@@ -164,6 +228,73 @@ export default function AdminScreen() {
   const [helperError, setHelperError] = useState<string | null>(null);
   const [helperSuccess, setHelperSuccess] = useState(false);
   const [helperRemoveTarget, setHelperRemoveTarget] = useState<CityHelper | null>(null);
+
+  // Map raw backend/network errors to friendly copy. On a 401 the session is
+  // gone, so send the user to sign in again (form drafts stay in state).
+  function friendlyMessage(error: unknown): string {
+    const status = (error as { status?: number }).status;
+    const raw = (error as Error)?.message || '';
+    if (status === 401) return t('admin.sessionExpired');
+    if (status === 403) return t('admin.noPermission');
+    if (/reach|not running|connection|network|timeout/i.test(raw)) return t('admin.offline');
+    return raw || t('admin.genericError');
+  }
+
+  function handleAuthError(error: unknown): boolean {
+    if ((error as { status?: number }).status === 401) {
+      markLoginIntent();
+      router.replace('/login');
+      return true;
+    }
+    return false;
+  }
+
+  async function loadServices() {
+    if (!session) return;
+    setLoadingServices(true);
+    setServicesError(false);
+    try {
+      const { services: rows } = await backendRequest<{ services: AdminService[] }>(
+        '/api/admin/service',
+        { method: 'POST', token: session.access_token, body: { action: 'list' } },
+      );
+      setServices(rows);
+    } catch (error) {
+      if (!handleAuthError(error)) setServicesError(true);
+    } finally {
+      setLoadingServices(false);
+    }
+  }
+
+  async function loadCallbacks() {
+    if (!session) return;
+    setLoadingCallbacks(true);
+    setCallbacksError(false);
+    try {
+      const { requests } = await backendRequest<{ requests: CallbackRequest[] }>(
+        '/api/admin/callback',
+        { method: 'POST', token: session.access_token, body: { action: 'list' } },
+      );
+      setCallbacks(requests);
+    } catch (error) {
+      if (!handleAuthError(error)) setCallbacksError(true);
+    } finally {
+      setLoadingCallbacks(false);
+    }
+  }
+
+  async function setCallbackStatus(id: string, status: string) {
+    try {
+      await backendRequest('/api/admin/callback', {
+        method: 'POST',
+        token: session!.access_token,
+        body: { action: 'status', id, status },
+      });
+      await loadCallbacks();
+    } catch (error) {
+      if (!handleAuthError(error)) setCallbacksError(true);
+    }
+  }
 
   async function loadAnnouncements() {
     if (!supabaseConfigured) {
@@ -203,10 +334,24 @@ export default function AdminScreen() {
   }
 
   useEffect(() => {
-    if (isCityStaff) loadAnnouncements();
+    if (isCityStaff) {
+      loadAnnouncements();
+      loadServices();
+      loadCallbacks();
+    }
     if (isAdmin) loadHelpers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCityStaff, isAdmin]);
+
+  if (loading) {
+    return (
+      <View style={[styles.gateLoading, { backgroundColor: colors.bg }]}>
+        <Stack.Screen options={{ title: t('admin.title') }} />
+        <ActivityIndicator color={colors.textMuted} />
+        <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+      </View>
+    );
+  }
 
   if (!session || !user) {
     return (
@@ -275,7 +420,7 @@ export default function AdminScreen() {
       setPublishSuccess(true);
       await loadAnnouncements();
     } catch (error) {
-      setPublishError((error as Error).message);
+      if (!handleAuthError(error)) setPublishError(friendlyMessage(error));
     } finally {
       setPublishing(false);
     }
@@ -291,32 +436,74 @@ export default function AdminScreen() {
       });
       await loadAnnouncements();
     } catch (error) {
-      setPublishError((error as Error).message);
+      if (!handleAuthError(error)) setPublishError(friendlyMessage(error));
     }
+  }
+
+  function startEditService(service: AdminService) {
+    setEditingId(service.id);
+    setServiceName(service.name);
+    setCategory(service.category);
+    setPhone(service.phone ?? '');
+    setAddress(service.address ?? '');
+    setHours(service.hours ?? '');
+    setDescription(service.description ?? '');
+    setUpiId(service.upi_id ?? '');
+    setVerified(Boolean(service.verified));
+    setServiceError(null);
+    setServiceSuccess(false);
+  }
+
+  function cancelEditService() {
+    setEditingId(null);
+    setServiceName('');
+    setPhone('');
+    setAddress('');
+    setHours('');
+    setDescription('');
+    setUpiId('');
+    setVerified(false);
+    setServiceError(null);
+    setServiceSuccess(false);
   }
 
   async function saveService() {
     setServiceError(null);
     setServiceSuccess(false);
     if (!serviceName.trim() || !category) return;
+
+    // Validate optional fields before touching the network (H2).
+    const normalizedPhone = normalizeIndianPhone(phone);
+    if (normalizedPhone === null) {
+      setServiceError(t('admin.invalidPhone'));
+      return;
+    }
+    const upi = upiId.trim();
+    if (upi && !UPI_PATTERN.test(upi)) {
+      setServiceError(t('admin.invalidUpi'));
+      return;
+    }
+
     setSavingService(true);
     try {
       await backendRequest('/api/admin/service', {
         method: 'POST',
         token: session!.access_token,
         body: {
+          id: editingId || undefined,
           name: serviceName.trim(),
           category,
-          phone: phone.trim() || undefined,
+          phone: normalizedPhone,
           address: address.trim() || undefined,
           hours: hours.trim() || undefined,
           description: description.trim() || undefined,
-          upi_id: upiId.trim() || undefined,
+          upi_id: upi || undefined,
           verified,
         },
       });
+      // Keep the last-used category so consecutive entries stay in flow.
+      setEditingId(null);
       setServiceName('');
-      setCategory('doctor');
       setPhone('');
       setAddress('');
       setHours('');
@@ -324,11 +511,36 @@ export default function AdminScreen() {
       setUpiId('');
       setVerified(false);
       setServiceSuccess(true);
+      await loadServices();
     } catch (error) {
-      setServiceError(`${t('admin.error')} ${(error as Error).message}`);
+      // Preserve the form draft on failure; only surface a friendly message.
+      if (!handleAuthError(error)) setServiceError(friendlyMessage(error));
     } finally {
       setSavingService(false);
     }
+  }
+
+  async function deleteService(id: string) {
+    setServiceError(null);
+    setServiceSuccess(false);
+    try {
+      await backendRequest('/api/admin/service', {
+        method: 'POST',
+        token: session!.access_token,
+        body: { action: 'delete', id },
+      });
+      if (editingId === id) cancelEditService();
+      await loadServices();
+    } catch (error) {
+      if (!handleAuthError(error)) setServiceError(friendlyMessage(error));
+    }
+  }
+
+  function confirmRemoveService() {
+    if (!serviceRemoveTarget) return;
+    const id = serviceRemoveTarget.id;
+    setServiceRemoveTarget(null);
+    deleteService(id);
   }
 
   function confirmRemove() {
@@ -341,19 +553,27 @@ export default function AdminScreen() {
   async function addHelper() {
     setHelperError(null);
     setHelperSuccess(false);
-    if (!helperUsername.trim()) return;
+    const username = helperUsername.trim();
+    if (!username) return;
+    if (username.length < 3) {
+      setHelperError(t('admin.helperUsernameTooShort'));
+      return;
+    }
     setAddingHelper(true);
     try {
       await backendRequest('/api/admin/helper', {
         method: 'POST',
         token: session!.access_token,
-        body: { action: 'add', username: helperUsername.trim() },
+        body: { action: 'add', username },
       });
       setHelperUsername('');
       setHelperSuccess(true);
       await loadHelpers();
     } catch (error) {
-      setHelperError((error as Error).message);
+      if (handleAuthError(error)) return;
+      const raw = (error as Error)?.message || '';
+      // Backend replies "No account with that username." — soften it (H9).
+      setHelperError(/no account/i.test(raw) ? t('admin.helperNotFound') : friendlyMessage(error));
     } finally {
       setAddingHelper(false);
     }
@@ -370,7 +590,7 @@ export default function AdminScreen() {
       });
       await loadHelpers();
     } catch (error) {
-      setHelperError((error as Error).message);
+      if (!handleAuthError(error)) setHelperError(friendlyMessage(error));
     }
   }
 
@@ -380,6 +600,24 @@ export default function AdminScreen() {
     setHelperRemoveTarget(null);
     removeHelper(id);
   }
+
+  // Per-category counts + text/category filtering for the existing-services list.
+  const serviceCounts = services.reduce<Record<string, number>>((acc, s) => {
+    acc[s.category] = (acc[s.category] ?? 0) + 1;
+    return acc;
+  }, {});
+  const serviceQuery = serviceSearch.trim().toLowerCase();
+  const filteredServices = services.filter((s) => {
+    if (serviceFilter !== 'all' && s.category !== serviceFilter) return false;
+    if (!serviceQuery) return true;
+    return (
+      s.name.toLowerCase().includes(serviceQuery) ||
+      (s.address ?? '').toLowerCase().includes(serviceQuery) ||
+      (s.phone ?? '').toLowerCase().includes(serviceQuery)
+    );
+  });
+
+  const roleBadgeLabel = isAdmin ? t('admin.title') : t('admin.helperTitle');
 
   return (
     <ScrollView
@@ -393,6 +631,9 @@ export default function AdminScreen() {
       <Stack.Screen options={{ title: screenTitle }} />
 
       <H1>{screenTitle}</H1>
+      <View style={styles.roleBadgeRow}>
+        <Badge label={roleBadgeLabel} color={isAdmin ? colors.accent : colors.chipBg} />
+      </View>
       <Muted style={styles.screenSubtitle}>
         {isCityHelper ? t('admin.helperSubtitle') : t('admin.subtitle')}
       </Muted>
@@ -481,7 +722,9 @@ export default function AdminScreen() {
       <H2 style={styles.sectionHeader}>{t('admin.services')}</H2>
 
       <Card>
-        <Text style={styles.cardTitle}>{t('admin.addService')}</Text>
+        <Text style={styles.cardTitle}>
+          {editingId ? t('admin.editService') : t('admin.addService')}
+        </Text>
         <Field label={t('admin.serviceName')} value={serviceName} onChangeText={setServiceName} />
 
         <View style={fieldStyles.wrap}>
@@ -505,6 +748,7 @@ export default function AdminScreen() {
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
+          hint={t('admin.phoneHint')}
         />
         <Field label={t('admin.address')} value={address} onChangeText={setAddress} />
         <Field label={t('admin.hours')} value={hours} onChangeText={setHours} />
@@ -519,46 +763,232 @@ export default function AdminScreen() {
           value={upiId}
           onChangeText={setUpiId}
           autoCapitalize="none"
+          placeholder={t('admin.upiPlaceholder')}
+          hint={t('admin.upiPlaceholder')}
         />
 
         {isAdmin ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ selected: verified }}
-          onPress={() => setVerified((v) => !v)}
-          style={({ pressed }) => [
-            styles.toggleChip,
-            verified
-              ? { backgroundColor: colors.accent, borderColor: colors.accent }
-              : {
-                  backgroundColor: pressed ? colors.cardStrong : colors.chipBg,
-                  borderColor: colors.border,
-                },
-          ]}
-        >
-          {verified ? <Feather name="check" size={16} color={colors.accentFg} /> : null}
-          <Text
-            style={[
-              styles.toggleChipText,
-              { color: verified ? colors.accentFg : colors.text },
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: verified }}
+            onPress={() => setVerified((v) => !v)}
+            style={({ pressed }) => [
+              styles.toggleChip,
+              verified
+                ? { backgroundColor: colors.accent, borderColor: colors.accent }
+                : {
+                    backgroundColor: pressed ? colors.cardStrong : colors.chipBg,
+                    borderColor: colors.border,
+                  },
             ]}
           >
-            {t('admin.verified')}
-          </Text>
-        </Pressable>
-        ) : null}
+            {verified ? <Feather name="check" size={16} color={colors.accentFg} /> : null}
+            <Text
+              style={[
+                styles.toggleChipText,
+                { color: verified ? colors.accentFg : colors.text },
+              ]}
+            >
+              {t('admin.verified')}
+            </Text>
+          </Pressable>
+        ) : (
+          // Helpers see verification state but cannot change it (H1).
+          <View style={styles.readonlyRow}>
+            <Feather
+              name={verified ? 'shield' : 'shield-off'}
+              size={16}
+              color={verified ? colors.success : colors.textSubtle}
+            />
+            <View style={styles.readonlyRowBody}>
+              <Text style={styles.readonlyRowLabel}>
+                {t('admin.verified')}: {verified ? t('common.verified') : t('admin.notVerified')}
+              </Text>
+              <Text style={styles.readonlyRowHint}>{t('admin.verifiedByAdmins')}</Text>
+            </View>
+          </View>
+        )}
 
         {serviceError ? <Notice kind="error" message={serviceError} /> : null}
         {serviceSuccess ? <Notice kind="success" message={t('admin.saved')} /> : null}
 
         <View style={styles.formAction}>
           <Button
-            label={t('admin.save')}
+            label={editingId ? t('common.save') : t('admin.save')}
             onPress={saveService}
             loading={savingService}
             disabled={!serviceName.trim()}
           />
+          {editingId ? (
+            <View style={styles.formActionSecondary}>
+              <Button
+                label={t('admin.cancelEdit')}
+                variant="secondary"
+                onPress={cancelEditService}
+              />
+            </View>
+          ) : null}
         </View>
+      </Card>
+
+      {/* Existing services — search, per-category counts, tap to edit, delete */}
+      <Card style={styles.searchCard}>
+        <Field
+          label={t('admin.searchServices')}
+          value={serviceSearch}
+          onChangeText={setServiceSearch}
+          placeholder={t('admin.searchServices')}
+          autoCapitalize="none"
+        />
+        <View style={[styles.chipRow, { marginTop: space.md }]}>
+          <Chip
+            label={t('common.all')}
+            count={services.length}
+            active={serviceFilter === 'all'}
+            onPress={() => setServiceFilter('all')}
+          />
+          {SERVICE_CATEGORIES.map((c) => (
+            <Chip
+              key={c.key}
+              label={t(`categories.${c.key}`)}
+              count={serviceCounts[c.key] ?? 0}
+              active={serviceFilter === c.key}
+              onPress={() => setServiceFilter(c.key)}
+            />
+          ))}
+        </View>
+      </Card>
+
+      <Card style={styles.listCard}>
+        {loadingServices ? (
+          <View style={styles.stateBlock}>
+            <ActivityIndicator color={colors.textMuted} />
+            <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+          </View>
+        ) : servicesError ? (
+          <View style={styles.stateBlock}>
+            <Feather name="alert-circle" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
+            <Pressable
+              accessibilityRole="button"
+              onPress={loadServices}
+              style={({ pressed }) => [pressed ? { opacity: 0.6 } : null]}
+            >
+              <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </Pressable>
+          </View>
+        ) : filteredServices.length === 0 ? (
+          <View style={styles.stateBlock}>
+            <Feather name="inbox" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('admin.servicesEmpty')}</Muted>
+          </View>
+        ) : (
+          filteredServices.map((item, index) => (
+            <View key={item.id}>
+              <View style={styles.listRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t('admin.editService')}: ${item.name}`}
+                  onPress={() => startEditService(item)}
+                  style={({ pressed }) => [styles.rowBody, pressed ? { opacity: 0.6 } : null]}
+                >
+                  <Text style={styles.rowTitle}>{item.name}</Text>
+                  <Text style={styles.rowSubtitle}>
+                    {t(`categories.${item.category}`)}
+                    {item.phone ? ` · ${item.phone}` : ''}
+                    {item.verified ? ` · ${t('common.verified')}` : ''}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('admin.deleteService')}
+                  onPress={() => setServiceRemoveTarget(item)}
+                  style={({ pressed }) => [
+                    styles.ghostDanger,
+                    pressed ? { backgroundColor: colors.dangerSoft } : null,
+                  ]}
+                >
+                  <Text style={styles.ghostDangerText}>{t('admin.deleteService')}</Text>
+                </Pressable>
+              </View>
+              {index < filteredServices.length - 1 ? <View style={styles.rowDivider} /> : null}
+            </View>
+          ))
+        )}
+      </Card>
+
+      {/* Callback requests queue */}
+      <H2 style={styles.sectionHeader}>{t('admin.callbacks')}</H2>
+      <Card style={styles.listCard}>
+        {loadingCallbacks ? (
+          <View style={styles.stateBlock}>
+            <ActivityIndicator color={colors.textMuted} />
+            <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+          </View>
+        ) : callbacksError ? (
+          <View style={styles.stateBlock}>
+            <Feather name="alert-circle" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
+            <Pressable
+              accessibilityRole="button"
+              onPress={loadCallbacks}
+              style={({ pressed }) => [pressed ? { opacity: 0.6 } : null]}
+            >
+              <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </Pressable>
+          </View>
+        ) : callbacks.length === 0 ? (
+          <View style={styles.stateBlock}>
+            <Feather name="phone-missed" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('admin.callbacksEmpty')}</Muted>
+          </View>
+        ) : (
+          callbacks.map((item, index) => (
+            <View key={item.id}>
+              <View style={styles.callbackRow}>
+                <View style={styles.callbackHeader}>
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowTitle}>{item.name}</Text>
+                    <Text style={styles.rowSubtitle}>{item.phone}</Text>
+                  </View>
+                  <Badge
+                    label={t(`admin.status_${item.status}`, { defaultValue: item.status })}
+                    color={
+                      item.status === 'closed'
+                        ? colors.success
+                        : item.status === 'contacted'
+                          ? colors.info
+                          : colors.star
+                    }
+                  />
+                </View>
+                {item.issue ? (
+                  <Text style={styles.callbackIssue}>{item.issue}</Text>
+                ) : null}
+                <Text style={styles.rowMeta}>
+                  {new Date(item.created_at).toLocaleString()}
+                </Text>
+                {item.status !== 'closed' ? (
+                  <View style={styles.callbackActions}>
+                    {item.status === 'new' ? (
+                      <Button
+                        label={t('admin.callbackMarkContacted')}
+                        variant="secondary"
+                        onPress={() => setCallbackStatus(item.id, 'contacted')}
+                      />
+                    ) : null}
+                    <Button
+                      label={t('admin.callbackMarkClosed')}
+                      variant="secondary"
+                      onPress={() => setCallbackStatus(item.id, 'closed')}
+                    />
+                  </View>
+                ) : null}
+              </View>
+              {index < callbacks.length - 1 ? <View style={styles.rowDivider} /> : null}
+            </View>
+          ))
+        )}
       </Card>
 
       {/* City helpers (admins appoint trusted locals) */}
@@ -574,6 +1004,7 @@ export default function AdminScreen() {
               value={helperUsername}
               onChangeText={setHelperUsername}
               autoCapitalize="none"
+              hint={t('admin.helperUsernameHint')}
             />
 
             {helperError ? <Notice kind="error" message={helperError} /> : null}
@@ -652,16 +1083,45 @@ export default function AdminScreen() {
         </View>
       </Dialog>
 
-      {/* Destructive confirmation */}
+      {/* Service delete confirmation */}
+      <Dialog
+        visible={serviceRemoveTarget !== null}
+        onClose={() => setServiceRemoveTarget(null)}
+        title={t('admin.deleteService')}
+      >
+        {serviceRemoveTarget ? (
+          <>
+            <Text style={styles.dialogTitleText}>{serviceRemoveTarget.name}</Text>
+            <Text style={styles.dialogBody}>{t('admin.deleteServiceConfirm')}</Text>
+          </>
+        ) : null}
+        <View style={styles.dialogActions}>
+          <Button
+            label={t('admin.deleteService')}
+            variant="danger"
+            onPress={confirmRemoveService}
+          />
+          <Button
+            label={t('common.cancel')}
+            variant="secondary"
+            onPress={() => setServiceRemoveTarget(null)}
+          />
+        </View>
+      </Dialog>
+
+      {/* Destructive confirmation — shows the full announcement being removed */}
       <Dialog
         visible={removeTarget !== null}
         onClose={() => setRemoveTarget(null)}
         title={t('admin.deactivate')}
       >
         {removeTarget ? (
-          <Text style={styles.dialogBody} numberOfLines={3}>
-            {removeTarget.title}
-          </Text>
+          <>
+            <Text style={styles.dialogTitleText}>{removeTarget.title}</Text>
+            <ScrollView style={styles.dialogScroll}>
+              <Text style={styles.dialogBody}>{removeTarget.body}</Text>
+            </ScrollView>
+          </>
         ) : null}
         <View style={styles.dialogActions}>
           <Button label={t('admin.deactivate')} variant="danger" onPress={confirmRemove} />
@@ -681,9 +1141,83 @@ function makeStyles(colors: AppColors) {
     screenSubtitle: {
       marginTop: space.xs,
     },
+    roleBadgeRow: {
+      flexDirection: 'row',
+      marginTop: space.sm,
+    },
     sectionHeader: {
       marginTop: space.lg,
       marginBottom: 12,
+    },
+    gateLoading: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.sm,
+      padding: space.lg,
+    },
+    searchCard: {
+      marginTop: 12,
+    },
+    formActionSecondary: {
+      marginTop: space.sm,
+    },
+    readonlyRow: {
+      marginTop: space.md,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.sm,
+      paddingVertical: 12,
+      paddingHorizontal: space.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceTint,
+    },
+    readonlyRowBody: {
+      flex: 1,
+    },
+    readonlyRowLabel: {
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      color: colors.text,
+    },
+    readonlyRowHint: {
+      fontSize: font.xs,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.xs * 1.5),
+      color: colors.textSubtle,
+      marginTop: 2,
+    },
+    callbackRow: {
+      paddingHorizontal: space.md,
+      paddingVertical: 12,
+    },
+    callbackHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+    },
+    callbackIssue: {
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+      color: colors.textMuted,
+      marginTop: space.sm,
+    },
+    callbackActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+      marginTop: space.md,
+    },
+    dialogTitleText: {
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      color: colors.text,
+      marginTop: space.sm,
+    },
+    dialogScroll: {
+      maxHeight: 200,
+      marginTop: space.xs,
     },
     cardTitle: {
       fontSize: font.md,

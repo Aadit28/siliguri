@@ -28,6 +28,7 @@ const routes = {
   '/api/community/like': '../api/community/like.js',
   '/api/admin/announcement': '../api/admin/announcement.js',
   '/api/admin/service': '../api/admin/service.js',
+  '/api/admin/callback': '../api/admin/callback.js',
   '/api/admin/helper': '../api/admin/helper.js',
   '/api/notify/whatsapp': '../api/notify/whatsapp.js',
   '/api/family/link': '../api/family/link.js',

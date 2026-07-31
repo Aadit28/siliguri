@@ -8,9 +8,26 @@ import type {
   FamilyReminderRepeat,
   ParentAnalytics,
 } from './types';
+import {
+  demoAddFavorite,
+  demoAddReminder,
+  demoListCareTeam,
+  demoListFavorites,
+  demoListLinks,
+  demoListReminders,
+  demoMarkReminderDone,
+  demoParentAnalytics,
+  demoRemoveCareTeamMember,
+  demoRemoveFavorite,
+  demoRemoveReminder,
+  demoSetCareTeamMember,
+  isDemoToken,
+} from './demoFamily';
 
 // Typed wrappers over the /api/family/* action endpoints. Each throws on
 // failure (backendRequest rejects with the server's { error } message).
+// Demo sessions (offline demo accounts) are served from the in-memory store in
+// demoFamily.ts instead of the network.
 
 // ----- Links -----
 
@@ -39,6 +56,7 @@ export async function verifyFamilyLink(
 export async function listFamilyLinks(
   token: string,
 ): Promise<{ asGuardian: FamilyLink[]; asParent: FamilyLink[] }> {
+  if (isDemoToken(token)) return demoListLinks(token);
   return backendRequest('/api/family/link', {
     method: 'POST',
     token,
@@ -63,6 +81,7 @@ export async function listFamilyReminders(
   token: string,
   parentId: string,
 ): Promise<{ reminders: FamilyReminder[] }> {
+  if (isDemoToken(token)) return demoListReminders(token, parentId);
   return backendRequest('/api/family/reminders', {
     method: 'POST',
     token,
@@ -81,6 +100,7 @@ export async function addFamilyReminder(
     repeat?: FamilyReminderRepeat;
   },
 ): Promise<{ reminder: FamilyReminder }> {
+  if (isDemoToken(token)) return demoAddReminder(token, input);
   return backendRequest('/api/family/reminders', {
     method: 'POST',
     token,
@@ -111,6 +131,7 @@ export async function markFamilyReminderDone(
   token: string,
   input: { parentId: string; id: string },
 ): Promise<{ reminder: FamilyReminder }> {
+  if (isDemoToken(token)) return demoMarkReminderDone(token, input.parentId, input.id);
   return backendRequest('/api/family/reminders', {
     method: 'POST',
     token,
@@ -122,6 +143,7 @@ export async function removeFamilyReminder(
   token: string,
   input: { parentId: string; id: string },
 ): Promise<{ ok: boolean }> {
+  if (isDemoToken(token)) return demoRemoveReminder(token, input.parentId, input.id);
   return backendRequest('/api/family/reminders', {
     method: 'POST',
     token,
@@ -135,6 +157,7 @@ export async function listCareTeam(
   token: string,
   parentId: string,
 ): Promise<{ members: CareTeamMember[] }> {
+  if (isDemoToken(token)) return demoListCareTeam(token, parentId);
   return backendRequest('/api/family/care-team', {
     method: 'POST',
     token,
@@ -154,6 +177,7 @@ export async function setCareTeamMember(
     serviceId?: string | null;
   },
 ): Promise<{ member: CareTeamMember }> {
+  if (isDemoToken(token)) return demoSetCareTeamMember(token, input);
   return backendRequest('/api/family/care-team', {
     method: 'POST',
     token,
@@ -165,6 +189,7 @@ export async function removeCareTeamMember(
   token: string,
   input: { parentId: string; id: string },
 ): Promise<{ ok: boolean }> {
+  if (isDemoToken(token)) return demoRemoveCareTeamMember(token, input.parentId, input.id);
   return backendRequest('/api/family/care-team', {
     method: 'POST',
     token,
@@ -178,6 +203,7 @@ export async function listFamilyFavorites(
   token: string,
   parentId: string,
 ): Promise<{ favorites: FamilyFavorite[] }> {
+  if (isDemoToken(token)) return demoListFavorites(token, parentId);
   return backendRequest('/api/family/favorites', {
     method: 'POST',
     token,
@@ -189,6 +215,7 @@ export async function addFamilyFavorite(
   token: string,
   input: { parentId: string; serviceId: string; note?: string | null },
 ): Promise<{ favorite: FamilyFavorite }> {
+  if (isDemoToken(token)) return demoAddFavorite(token, input);
   return backendRequest('/api/family/favorites', {
     method: 'POST',
     token,
@@ -200,6 +227,7 @@ export async function removeFamilyFavorite(
   token: string,
   input: { parentId: string; id: string },
 ): Promise<{ ok: boolean }> {
+  if (isDemoToken(token)) return demoRemoveFavorite(token, input.parentId, input.id);
   return backendRequest('/api/family/favorites', {
     method: 'POST',
     token,
@@ -213,6 +241,7 @@ export async function fetchParentAnalytics(
   token: string,
   parentId: string,
 ): Promise<ParentAnalytics> {
+  if (isDemoToken(token)) return demoParentAnalytics(token, parentId);
   return backendRequest('/api/family/analytics', {
     method: 'POST',
     token,

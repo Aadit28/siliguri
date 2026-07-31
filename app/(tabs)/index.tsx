@@ -18,14 +18,27 @@ import ServiceGlyph from '../../src/components/ServiceGlyph';
 import SiteFooter from '../../src/components/SiteFooter';
 import { H1, H2, Muted, Stars } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchFavoriteIds, fetchServices } from '../../src/lib/api';
 import { listEvents } from '../../src/lib/calendar';
-import { SERVICE_CATEGORIES } from '../../src/lib/categories';
+import { SERVICE_CATEGORIES, categoryColor } from '../../src/lib/categories';
 import { buildNotifications, formatEventWhen, todayISO, upcomingEvents } from '../../src/lib/notifications';
 import { syncFamilyForSelf } from '../../src/lib/familySync';
-import { AppColors, ROW_MIN_HEIGHT, TAB_BAR_CLEARANCE, TAP, family, font, radius, space } from '../../src/lib/theme';
+import {
+  AppColors,
+  PastelName,
+  PastelTone,
+  ROW_MIN_HEIGHT,
+  TAB_BAR_CLEARANCE,
+  TAP,
+  family,
+  font,
+  pastelForMode,
+  radius,
+  space,
+} from '../../src/lib/theme';
 import { CalendarEvent, CareTeamCategory, CareTeamMember, FamilyFavorite, Service, ServiceCategory } from '../../src/lib/types';
 
 const CARE_TEAM_ICONS: Record<CareTeamCategory, keyof typeof Feather.glyphMap> = {
@@ -35,6 +48,15 @@ const CARE_TEAM_ICONS: Record<CareTeamCategory, keyof typeof Feather.glyphMap> =
   hospital: 'plus-circle',
   helper: 'users',
   other: 'phone',
+};
+
+const CARE_TEAM_TONES: Record<CareTeamCategory, PastelName> = {
+  doctor: 'sky',
+  grocery: 'sage',
+  pharmacy: 'rose',
+  hospital: 'coral',
+  helper: 'lilac',
+  other: 'peach',
 };
 
 const TRUST_RAILS = [
@@ -118,9 +140,13 @@ export default function Home() {
   const { t } = useTranslation();
   const { lang } = useLocale();
   const { displayName, user, session } = useAuth();
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
+  const tones = pastelForMode(mode);
   const { width } = useWindowDimensions();
-  const isWide = width >= 900;
+  const { isComputerMode } = useDisplayMode();
+  // Phone display mode always gets the narrow layout, even when the browser
+  // window is wide — the shell is clamped to 480px in that mode.
+  const isWide = isComputerMode && width >= 900;
   const styles = makeStyles(colors, isWide);
   const homeScrollRef = useRef<ScrollView>(null);
   const [allServices, setAllServices] = useState<Service[]>([]);
@@ -192,10 +218,10 @@ export default function Home() {
   const dueSoonCount = useMemo(() => buildNotifications(events, today).length, [events, today]);
   const verifiedCount = useMemo(() => allServices.filter((service) => service.verified).length, [allServices]);
 
-  const stats: { icon: keyof typeof Feather.glyphMap; value: number; label: string; onPress: () => void }[] = [
-    { icon: 'bell', value: dueSoonCount, label: t('home.statUpcoming'), onPress: () => router.push('/calendar') },
-    { icon: 'heart', value: savedCount, label: t('home.statSaved'), onPress: () => router.push('/services') },
-    { icon: 'check-circle', value: verifiedCount, label: t('home.statVerified'), onPress: () => router.push('/services') },
+  const stats: { icon: keyof typeof Feather.glyphMap; value: number; label: string; tone: PastelTone; onPress: () => void }[] = [
+    { icon: 'bell', value: dueSoonCount, label: t('home.statUpcoming'), tone: tones.butter, onPress: () => router.push('/calendar') },
+    { icon: 'heart', value: savedCount, label: t('home.statSaved'), tone: tones.rose, onPress: () => router.push('/services') },
+    { icon: 'check-circle', value: verifiedCount, label: t('home.statVerified'), tone: tones.sage, onPress: () => router.push('/services') },
   ];
 
   return (
@@ -241,7 +267,7 @@ export default function Home() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Feather name={stat.icon} size={18} color={colors.textMuted} />
+                  <Feather name={stat.icon} size={18} color={stat.tone.fg} />
                   <Text style={[styles.statValue, { color: colors.text }]}>{stat.value}</Text>
                   <Text style={[styles.statLabel, { color: colors.textMuted }]} numberOfLines={2}>
                     {stat.label}
@@ -265,7 +291,7 @@ export default function Home() {
                     ]}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                      <Feather name="calendar" size={22} color={colors.text} />
+                      <Feather name="calendar" size={22} color={tones.sky.fg} />
                     </View>
                     <View style={styles.rowCopy}>
                       <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
@@ -288,7 +314,7 @@ export default function Home() {
                   style={({ pressed }) => [styles.row, pressed && styles.pressed]}
                 >
                   <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                    <Feather name="plus" size={22} color={colors.text} />
+                    <Feather name="plus" size={22} color={tones.sky.fg} />
                   </View>
                   <View style={styles.rowCopy}>
                     <Text style={[styles.rowLabel, { color: colors.text }]}>{t('home.remindersEmpty')}</Text>
@@ -319,7 +345,11 @@ export default function Home() {
                         ]}
                       >
                         <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                          <Feather name={CARE_TEAM_ICONS[member.category]} size={22} color={colors.text} />
+                          <Feather
+                            name={CARE_TEAM_ICONS[member.category]}
+                            size={22}
+                            color={tones[CARE_TEAM_TONES[member.category]].fg}
+                          />
                         </View>
                         <View style={styles.rowCopy}>
                           <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
@@ -372,7 +402,11 @@ export default function Home() {
                           pressed && styles.pressed,
                         ]}
                       >
-                        <ServiceGlyph category={pick.category ?? 'daily_service'} color={colors.text} size={22} />
+                        <ServiceGlyph
+                          category={pick.category ?? 'daily_service'}
+                          color={categoryColor(pick.category ?? 'daily_service', mode).fg}
+                          size={22}
+                        />
                         <Text style={[styles.pickName, { color: colors.text }]} numberOfLines={2}>
                           {pick.name}
                         </Text>
@@ -393,7 +427,7 @@ export default function Home() {
                 ]}
               >
                 <View style={[styles.rowIcon, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Feather name="users" size={20} color={colors.text} />
+                  <Feather name="users" size={20} color={tones.lilac.fg} />
                 </View>
                 <View style={styles.rowCopy}>
                   <Text style={[styles.rowLabel, { color: colors.text }]}>
@@ -417,7 +451,9 @@ export default function Home() {
             </View>
 
             <View style={styles.categoryGrid}>
-              {SERVICE_CATEGORIES.map((category) => (
+              {SERVICE_CATEGORIES.map((category) => {
+                const tone = categoryColor(category.key, mode);
+                return (
                 <Pressable
                   key={category.key}
                   accessibilityRole="button"
@@ -429,13 +465,14 @@ export default function Home() {
                   ]}
                 >
                   <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                    <ServiceGlyph category={category.key} color={colors.text} size={24} />
+                    <ServiceGlyph category={category.key} color={tone.fg} size={24} />
                   </View>
                   <Text style={[styles.categoryLabel, { color: colors.text }]} numberOfLines={2}>
                     {t(`categories.${category.key}`)}
                   </Text>
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           </AnimatedSection>
 
@@ -461,7 +498,7 @@ export default function Home() {
                     ]}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                      <ServiceGlyph category={service.category} color={colors.text} size={22} />
+                      <ServiceGlyph category={service.category} color={categoryColor(service.category, mode).fg} size={22} />
                     </View>
                     <View style={styles.rowCopy}>
                       <Text selectable style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>

@@ -15,13 +15,22 @@ import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Body, Button, Card, H1, H2, Muted, Badge, Stars } from '../../src/components/ui';
-import { AppColors, family, font, radius, space } from '../../src/lib/theme';
+import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
 import { fetchService, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
-import { canUseWhatsApp, openWhatsAppCall, openWhatsAppChat } from '../../src/lib/whatsapp';
+import { canUseWhatsApp, openWhatsAppChat } from '../../src/lib/whatsapp';
+
+// Primary "Call" places a real phone call via tel:. WhatsApp stays a labelled
+// secondary action so elders are never sent to WhatsApp when they tap "Call".
+function openPhoneCall(phone?: string | null) {
+  const digits = String(phone ?? '').replace(/[^\d+]/g, '');
+  if (!digits) return;
+  Linking.openURL(`tel:${digits}`).catch(() => undefined);
+}
 
 function formatTrustDate(value?: string | null) {
   if (!value) return null;
@@ -40,11 +49,13 @@ export default function ServiceDetail() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const isWide = width >= 920;
+  const { isComputerMode } = useDisplayMode();
+  const isWide = isComputerMode && width >= 920;
   const styles = makeStyles(colors, isWide);
 
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showTrustDetails, setShowTrustDetails] = useState(false);
   const isFav = id ? favoriteSet.has(id) : false;
 
   // localStorage is the offline source of truth; when signed in, mirror the
@@ -112,38 +123,46 @@ export default function ServiceDetail() {
   const claimStatus = service.claim_status ?? 'unclaimed';
   const verifiedAt = formatTrustDate(service.verified_at);
   const showWhatsApp = canUseWhatsApp(service.phone);
+  const hasPhone = Boolean(service.phone);
+  const phoneConfirmed = Boolean(service.phone_confirmed);
 
-  const checklist = [
-    {
-      label: t('common.verified'),
-      value: service.verified ? t('common.verified') : t('services.unverified'),
-      ok: service.verified,
-    },
+  // One elder-readable trust tier, derived from the same backend fields the old
+  // 6-row checklist exposed. source_url (source_linked) implies a legitimate
+  // public listing, so it is NOT treated as "unverified" — only the tier with
+  // neither team verification nor a source triggers the top warning.
+  const isSourceLinked = Boolean(service.source_url) || verificationStatus === 'source_linked';
+  const trustTier: 'verified' | 'source' | 'unverified' = service.verified
+    ? 'verified'
+    : isSourceLinked
+      ? 'source'
+      : 'unverified';
+
+  const trustSummary =
+    trustTier === 'verified'
+      ? t('services.trustSummaryVerified')
+      : trustTier === 'source'
+        ? t('services.trustSummarySource')
+        : t('services.trustSummaryUnverified');
+
+  const HELPLINE_SHORT = '14567';
+
+  // Kept behind a "Details" disclosure for anyone who wants the granular signals.
+  const trustDetails = [
     {
       label: t('services.verificationStatusLabel'),
       value: t(`services.verificationStatus.${verificationStatus}`),
-      ok: service.verified,
     },
     {
       label: t('services.lastVerified'),
       value: verifiedAt ?? t('services.notReverified'),
-      ok: Boolean(verifiedAt),
-    },
-    {
-      label: t('services.sourceLinked'),
-      value: service.source_url ? t('services.viewSource') : t('common.noResults'),
-      ok: Boolean(service.source_url),
     },
     {
       label: t('services.claimStatusLabel'),
       value: t(`services.claimStatus.${claimStatus}`),
-      ok: claimStatus === 'claimed',
     },
-    {
-      label: t('services.callFirst'),
-      value: service.phone ? service.phone : t('common.noResults'),
-      ok: Boolean(service.phone),
-    },
+    ...(service.verified_by
+      ? [{ label: t('services.verifiedBy'), value: service.verified_by }]
+      : []),
   ];
 
   return (
@@ -172,6 +191,18 @@ export default function ServiceDetail() {
       />
 
       <ScrollView contentContainerStyle={styles.content}>
+        {trustTier === 'unverified' ? (
+          <View style={[styles.warningBanner, { backgroundColor: colors.warningBg, borderColor: colors.warningText }]}>
+            <Feather name="alert-triangle" size={22} color={colors.warningText} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.warningTitle, { color: colors.warningText }]}>{t('services.unverified')}</Text>
+              <Text style={[styles.warningBody, { color: colors.warningText }]}>
+                {t('services.trustCallIfUnsure', { helpline: HELPLINE_SHORT })}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={[styles.hero, { backgroundColor: colors.cardStrong, borderColor: colors.border }]}>
           <View style={styles.heroTop}>
             <View style={[styles.heroIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
@@ -230,36 +261,70 @@ export default function ServiceDetail() {
 
           <Card style={styles.checkCard}>
             <H2>{t('services.trustChecklist')}</H2>
-            {checklist.map((item) => (
-              <View key={item.label} style={styles.checkRow}>
-                <View
-                  style={[
-                    styles.checkDot,
-                    { backgroundColor: item.ok ? colors.successSoft : colors.warningBg },
-                  ]}
-                >
-                  <Feather
-                    name={item.ok ? 'check' : 'alert-triangle'}
-                    size={16}
-                    color={item.ok ? colors.success : colors.warningText}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.checkLabel}>{item.label}</Text>
-                  <Muted style={styles.checkValue} numberOfLines={2}>
-                    {item.value}
-                  </Muted>
-                </View>
+            <View style={styles.trustSummaryRow}>
+              <View
+                style={[
+                  styles.checkDot,
+                  { backgroundColor: trustTier === 'verified' ? colors.successSoft : colors.warningBg },
+                ]}
+              >
+                <Feather
+                  name={trustTier === 'verified' ? 'check' : trustTier === 'source' ? 'info' : 'alert-triangle'}
+                  size={18}
+                  color={trustTier === 'verified' ? colors.success : colors.warningText}
+                />
               </View>
-            ))}
+              <Text style={styles.trustSummaryText}>{trustSummary}</Text>
+            </View>
+            {trustTier !== 'verified' ? (
+              <Muted style={styles.trustHelpline}>{t('services.trustCallIfUnsure', { helpline: HELPLINE_SHORT })}</Muted>
+            ) : null}
+
+            <TouchableOpacity
+              style={styles.detailsToggle}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={showTrustDetails ? t('services.trustHideDetails') : t('services.trustDetails')}
+              onPress={() => setShowTrustDetails((prev) => !prev)}
+            >
+              <Text style={styles.detailsToggleText}>
+                {showTrustDetails ? t('services.trustHideDetails') : t('services.trustDetails')}
+              </Text>
+              <Feather name={showTrustDetails ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            {showTrustDetails
+              ? trustDetails.map((item) => (
+                  <View key={item.label} style={styles.detailRow}>
+                    <Text style={styles.checkLabel}>{item.label}</Text>
+                    <Muted style={styles.checkValue} numberOfLines={2}>
+                      {item.value}
+                    </Muted>
+                  </View>
+                ))
+              : null}
+
             <Muted style={styles.careNote}>{t('services.careNote')}</Muted>
           </Card>
         </View>
 
-        {!service.verified ? (
-          <View style={[styles.callout, { backgroundColor: colors.warningBg, borderLeftColor: colors.warningText }]}>
-            <Feather name="alert-triangle" size={18} color={colors.warningText} />
-            <Text style={[styles.calloutText, { color: colors.warningText }]}>{t('services.unverified')}</Text>
+        {!phoneConfirmed ? (
+          <View style={[styles.noticeCard, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+            <Feather name="phone-off" size={18} color={colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>{t('services.phoneNotConfirmedTitle')}</Text>
+              <Muted style={styles.noticeBody}>{t('services.phoneNotConfirmedBody')}</Muted>
+              <TouchableOpacity
+                style={[styles.callbackBtn, { backgroundColor: colors.primary }]}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t('services.requestCallback')}
+                onPress={() => router.push('/help')}
+              >
+                <Feather name="headphones" size={16} color={colors.primaryFg} />
+                <Text style={[styles.callbackLabel, { color: colors.primaryFg }]}>{t('services.requestCallback')}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -283,22 +348,22 @@ export default function ServiceDetail() {
         <View style={[styles.footer, { backgroundColor: colors.nav, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
           <Muted style={styles.footerTitle}>{t('services.contactActions')}</Muted>
           <View style={styles.footerActions}>
+            {hasPhone ? (
+              <View style={{ flex: 1 }}>
+                <Button label={t('common.call')} variant="primary" onPress={() => openPhoneCall(service.phone)} />
+              </View>
+            ) : null}
             {showWhatsApp ? (
-              <>
-                <View style={{ flex: 1 }}>
-                  <Button label={t('common.call')} variant="primary" onPress={() => openWhatsAppCall(service.phone)} />
-                </View>
-                <TouchableOpacity
-                  style={[styles.waBtn, { backgroundColor: colors.whatsapp }]}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="WhatsApp"
-                  onPress={() => openWhatsAppChat(service.phone)}
-                >
-                  <Feather name="message-circle" size={18} color={colors.whatsappText} />
-                  <Text style={[styles.waText, { color: colors.whatsappText }]}>WhatsApp</Text>
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity
+                style={[styles.waBtn, { backgroundColor: colors.whatsapp }]}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="WhatsApp"
+                onPress={() => openWhatsAppChat(service.phone)}
+              >
+                <Feather name="message-circle" size={18} color={colors.whatsappText} />
+                <Text style={[styles.waText, { color: colors.whatsappText }]}>WhatsApp</Text>
+              </TouchableOpacity>
             ) : null}
             {service.map_url ? (
               <View style={{ flex: 1 }}>
@@ -386,6 +451,56 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     },
     checkLabel: { color: colors.text, fontFamily: family.semibold, fontSize: font.sm },
     checkValue: { fontFamily: family.regular, fontSize: font.xs },
+    trustSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    trustSummaryText: {
+      flex: 1,
+      color: colors.text,
+      fontFamily: family.semibold,
+      fontSize: font.md,
+      lineHeight: font.md * 1.35,
+    },
+    trustHelpline: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2 },
+    detailsToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      minHeight: 44,
+    },
+    detailsToggleText: { color: colors.textMuted, fontFamily: family.semibold, fontSize: font.sm },
+    detailRow: { paddingVertical: 4, gap: 2 },
+    warningBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.sm,
+      borderWidth: 1,
+      borderLeftWidth: 5,
+      borderRadius: radius.md,
+      padding: space.md,
+    },
+    warningTitle: { fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.3 },
+    warningBody: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2, lineHeight: font.sm * 1.35 },
+    noticeCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.sm,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: space.md,
+    },
+    noticeTitle: { color: colors.text, fontFamily: family.semibold, fontSize: font.sm },
+    noticeBody: { fontFamily: family.regular, fontSize: font.xs, marginTop: 2, lineHeight: font.xs * 1.4 },
+    callbackBtn: {
+      marginTop: space.sm,
+      alignSelf: 'flex-start',
+      minHeight: TAP - 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+    },
+    callbackLabel: { fontFamily: family.semibold, fontSize: font.sm },
     careNote: {
       marginTop: space.xs,
       paddingTop: space.sm,

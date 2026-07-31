@@ -58,6 +58,8 @@ export interface AssistantMessage {
   text: string;
   attachments?: AssistantAttachment[];
   plan?: AssistantPlan;
+  // Set on a failed turn so the bubble can offer a Retry that re-runs this input.
+  errorRetry?: { message: string; attachments?: AssistantAttachment[] };
 }
 
 export interface AssistantPlanContext {

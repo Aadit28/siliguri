@@ -13,8 +13,47 @@ module.exports = async function handler(req, res) {
     const staffError = requireCityStaff(auth);
     if (staffError) return send(res, 403, staffError);
     const isHelper = auth.user.role === 'city_helper';
+    const isSuperAdmin = auth.user.role === 'super_admin';
 
     const body = await readBody(req);
+    const action = body.action ? String(body.action) : 'save';
+
+    // List services for this city so admins/helpers can edit or delete them.
+    if (action === 'list') {
+      let query = auth.supabase
+        .from('services')
+        .select('id,name,category,phone,address,hours,description,upi_id,verified,city_id,town')
+        .order('name', { ascending: true });
+      if (!isSuperAdmin) {
+        query = query.or(`city_id.eq.${auth.user.city_id},city_id.is.null`);
+      }
+      const { data: services, error } = await query;
+      if (error) throw error;
+      return send(res, 200, { services: services || [] });
+    }
+
+    // Delete a service (with the same ownership rules as an edit).
+    if (action === 'delete') {
+      const delId = String(body.id || '');
+      if (!delId) return send(res, 400, { error: 'Service id is required.' });
+      const { data: existing, error: fetchError } = await auth.supabase
+        .from('services')
+        .select('id,city_id')
+        .eq('id', delId)
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+      if (!existing) return send(res, 404, { error: 'Service not found.' });
+      if (!isSuperAdmin && existing.city_id && existing.city_id !== auth.user.city_id) {
+        return send(res, 403, { error: 'Admin access required.' });
+      }
+      if (isHelper && !existing.city_id) {
+        return send(res, 403, { error: 'Admin access required.' });
+      }
+      const { error } = await auth.supabase.from('services').delete().eq('id', delId);
+      if (error) throw error;
+      return send(res, 200, { ok: true });
+    }
+
     const name = String(body.name || '').trim();
     const category = String(body.category || '');
     if (!CATEGORIES.has(category)) return send(res, 400, { error: 'Choose a valid category.' });

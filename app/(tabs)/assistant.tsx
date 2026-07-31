@@ -18,7 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Muted } from '../../src/components/ui';
+import { Muted, Dialog, Sheet, Button } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
@@ -28,6 +28,7 @@ import { addEvent, parseWhenToDate } from '../../src/lib/calendar';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { categoryColor } from '../../src/lib/categories';
+import { openUpiPayment } from '../../src/lib/payments';
 import { family, font, radius, space, shadow, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
 import { Service } from '../../src/lib/types';
 import { openWhatsAppCall, openWhatsAppShare } from '../../src/lib/whatsapp';
@@ -43,6 +44,11 @@ const MAX_IMAGE_ATTACHMENTS = 3;
 const MAX_CHAT_SESSIONS = 12;
 const CHAT_STORAGE_KEY = 'saathi-assistant-chats-v1';
 const MAX_STORED_MESSAGES_PER_CHAT = 40;
+// Covers the whole plan request incl. slow body reads (backendRequest only
+// times out the initial fetch, not res.json()), so "Typing…" can't hang forever.
+const PLAN_TIMEOUT_MS = 20000;
+
+type PayPrompt = { upiId: string; payeeName?: string | null; amount?: string | null };
 
 // Targets for the planner's open_screen action payloads (see src/lib/assistant.ts).
 const SCREEN_ROUTES: Record<string, string> = {
@@ -106,13 +112,15 @@ export default function AssistantScreen() {
   const [activeSessionId, setActiveSessionId] = useState(() => initialChatState.activeSessionId);
   const [loading, setLoading] = useState(false);
   const [servicesLoading, setServicesLoading] = useState(true);
+  const [chatSheetOpen, setChatSheetOpen] = useState(false);
+  const [payPrompt, setPayPrompt] = useState<PayPrompt | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const submitInFlightRef = useRef(false);
   const canAttachImages = getWebDocument() !== null;
   const activeSession = sessions.find((sessionItem) => sessionItem.id === activeSessionId) ?? sessions[0];
   const messages = activeSession.messages;
-  const showSideHistory = width >= 900;
   const { isComputerMode } = useDisplayMode();
+  const showSideHistory = isComputerMode && width >= 900;
 
   useEffect(() => {
     let mounted = true;
@@ -238,6 +246,7 @@ export default function AssistantScreen() {
     setActiveSessionId(nextSession.id);
     setInput('');
     setAttachments([]);
+    setChatSheetOpen(false);
   }
 
   function selectChat(id: string) {
@@ -245,6 +254,67 @@ export default function AssistantScreen() {
     setActiveSessionId(id);
     setInput('');
     setAttachments([]);
+    setChatSheetOpen(false);
+  }
+
+  async function confirmPay() {
+    const prompt = payPrompt;
+    if (!prompt) return;
+    setPayPrompt(null);
+    const opened = await openUpiPayment({
+      upiId: prompt.upiId,
+      name: prompt.payeeName,
+      amount: prompt.amount,
+    });
+    if (!opened) {
+      // No UPI app on this device (e.g. web): leave the id so they can pay by hand.
+      appendAssistantNote(`${t('pay.webFallback')} ${prompt.upiId}`);
+    }
+  }
+
+  async function runPlan(targetSessionId: string, body: string, currentAttachments: AssistantAttachment[]) {
+    setLoading(true);
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const plan = await Promise.race([
+        requestAssistantPlan({
+          message: body,
+          services,
+          lang: lang === 'hi' ? 'hi' : 'en',
+          imageAttachments: currentAttachments,
+          token: session?.access_token,
+        }),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('plan-timeout')), PLAN_TIMEOUT_MS);
+        }),
+      ]);
+
+      const reply = [plan.summary, plan.followUpQuestion].filter(Boolean).join('\n\n');
+      updateMessagesForSession(targetSessionId, (current) => [
+        ...current,
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: reply,
+          plan,
+        },
+      ]);
+    } catch {
+      updateMessagesForSession(targetSessionId, (current) => [
+        ...current,
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: t('common.errorLoading'),
+          errorRetry: { message: body, attachments: currentAttachments },
+        },
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      submitInFlightRef.current = false;
+      setLoading(false);
+    }
   }
 
   async function submit(text = input) {
@@ -267,40 +337,19 @@ export default function AssistantScreen() {
     ]);
     setInput('');
     setAttachments([]);
-    setLoading(true);
 
-    try {
-      const plan = await requestAssistantPlan({
-        message: body,
-        services,
-        lang: lang === 'hi' ? 'hi' : 'en',
-        imageAttachments: currentAttachments,
-        token: session?.access_token,
-      });
+    await runPlan(targetSessionId, body, currentAttachments);
+  }
 
-      const reply = [plan.summary, plan.followUpQuestion].filter(Boolean).join('\n\n');
-      updateMessagesForSession(targetSessionId, (current) => [
-        ...current,
-        {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          text: reply,
-          plan,
-        },
-      ]);
-    } catch {
-      updateMessagesForSession(targetSessionId, (current) => [
-        ...current,
-        {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          text: t('common.errorLoading'),
-        },
-      ]);
-    } finally {
-      submitInFlightRef.current = false;
-      setLoading(false);
-    }
+  function retryPlan(errorMessageId: string, payload: { message: string; attachments?: AssistantAttachment[] }) {
+    if (loading || servicesLoading || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    const targetSessionId = activeSessionId;
+    // Drop the failed bubble so the thread doesn't stack duplicate errors on retry.
+    updateMessagesForSession(targetSessionId, (current) =>
+      current.filter((message) => message.id !== errorMessageId),
+    );
+    void runPlan(targetSessionId, payload.message, payload.attachments ?? []);
   }
 
   function handleComposerKeyPress(event: ComposerKeyPressEvent) {
@@ -341,13 +390,18 @@ export default function AssistantScreen() {
       }
     }
     if (action.kind === 'pay' && action.value) {
-      const upiId = action.value;
       const payee = plan?.suggestedServices.find((item) => item.id === action.serviceId)?.name;
-      const params = new URLSearchParams({ pa: upiId });
-      if (payee) params.set('pn', payee);
-      Linking.openURL(`upi://pay?${params.toString()}`).catch(() =>
-        appendAssistantNote(`${t('pay.payUpi')}: ${upiId}`),
-      );
+      // The pay action value is normally the bare UPI id, but tolerate a JSON
+      // payload carrying an amount for when the planner starts sending one.
+      const payload = parseActionPayload(action.value);
+      const upiId = payload && typeof payload.upiId === 'string' ? payload.upiId : action.value;
+      const amount =
+        payload && (typeof payload.amount === 'string' || typeof payload.amount === 'number')
+          ? String(payload.amount)
+          : null;
+      // Never fire the UPI intent straight from a tap: confirm recipient first
+      // so an elderly user cannot pay a stranger by a mis-tap.
+      setPayPrompt({ upiId, payeeName: payee ?? null, amount });
       return;
     }
     if (action.kind === 'book_ride') {
@@ -465,16 +519,35 @@ export default function AssistantScreen() {
               {servicesLoading ? t('assistant.loadingServices') : t('assistant.botStatus')}
             </Muted>
             {!showSideHistory ? (
-              <TouchableOpacity
-                onPress={startNewChat}
-                disabled={loading}
-                accessibilityRole="button"
-                accessibilityLabel={t('assistant.newChat')}
-                activeOpacity={0.82}
-                style={[styles.mobileNewChat, { borderColor: colors.border, opacity: loading ? 0.5 : 1 }]}
-              >
-                <Text style={[styles.mobileNewChatText, { color: colors.text }]}>{t('assistant.newChat')}</Text>
-              </TouchableOpacity>
+              <View style={styles.statusActions}>
+                <TouchableOpacity
+                  onPress={() => setChatSheetOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('assistant.chatHistory')}
+                  activeOpacity={0.82}
+                  style={[styles.mobileNewChat, styles.chatsButton, { borderColor: colors.border }]}
+                >
+                  <Feather name="message-square" size={16} color={colors.text} />
+                  <Text style={[styles.mobileNewChatText, { color: colors.text }]}>
+                    {t('assistant.chatHistory')}
+                  </Text>
+                  {sessions.length > 1 ? (
+                    <View style={[styles.chatsCount, { backgroundColor: colors.primaryTint }]}>
+                      <Text style={[styles.chatsCountText, { color: colors.text }]}>{sessions.length}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={startNewChat}
+                  disabled={loading}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('assistant.newChat')}
+                  activeOpacity={0.82}
+                  style={[styles.mobileNewChat, { borderColor: colors.border, opacity: loading ? 0.5 : 1 }]}
+                >
+                  <Text style={[styles.mobileNewChatText, { color: colors.text }]}>{t('assistant.newChat')}</Text>
+                </TouchableOpacity>
+              </View>
             ) : null}
           </View>
 
@@ -490,6 +563,7 @@ export default function AssistantScreen() {
                 key={message.id}
                 message={message}
                 onAction={handleAction}
+                onRetry={retryPlan}
               />
             ))}
 
@@ -594,12 +668,15 @@ export default function AssistantScreen() {
                 style={[
                   styles.sendButton,
                   {
-                    backgroundColor: colors.primary,
-                    opacity: canSend ? 1 : 0.35,
+                    // Distinct disabled fill (not just faded primary) so the
+                    // inactive state reads clearly for low-vision users.
+                    backgroundColor: canSend ? colors.primary : colors.chipBg,
+                    borderColor: colors.border,
+                    borderWidth: canSend ? 0 : 1,
                   },
                 ]}
               >
-                <Feather name="arrow-up" size={20} color={colors.primaryFg} />
+                <Feather name="arrow-up" size={20} color={canSend ? colors.primaryFg : colors.textSubtle} />
               </TouchableOpacity>
             </View>
 
@@ -629,6 +706,78 @@ export default function AssistantScreen() {
           </View>
         </View>
       </View>
+
+      <Sheet visible={chatSheetOpen} onClose={() => setChatSheetOpen(false)} title={t('assistant.chatHistory')}>
+        <TouchableOpacity
+          onPress={startNewChat}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={t('assistant.newChat')}
+          activeOpacity={0.82}
+          style={[styles.sheetNewChat, { backgroundColor: colors.primary, opacity: loading ? 0.72 : 1 }]}
+        >
+          <Feather name="plus" size={18} color={colors.primaryFg} />
+          <Text style={[styles.sheetNewChatText, { color: colors.primaryFg }]}>{t('assistant.newChat')}</Text>
+        </TouchableOpacity>
+        <ScrollView
+          style={styles.sheetChatList}
+          contentContainerStyle={styles.sheetChatListContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {sessions.map((sessionItem) => {
+            const active = sessionItem.id === activeSessionId;
+            return (
+              <TouchableOpacity
+                key={sessionItem.id}
+                onPress={() => selectChat(sessionItem.id)}
+                disabled={loading && !active}
+                accessibilityRole="button"
+                accessibilityLabel={sessionItem.title}
+                activeOpacity={0.82}
+                style={[
+                  styles.historyItem,
+                  {
+                    backgroundColor: active ? colors.primaryTint : colors.bgAlt,
+                    borderColor: active ? colors.primary : colors.border,
+                    opacity: loading && !active ? 0.55 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.historyItemTitle, { color: active ? colors.primaryDark : colors.text }]} numberOfLines={1}>
+                  {sessionItem.title}
+                </Text>
+                <Text style={[styles.historyPreview, { color: colors.textMuted }]} numberOfLines={2}>
+                  {sessionItem.preview}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </Sheet>
+
+      <Dialog visible={payPrompt !== null} onClose={() => setPayPrompt(null)} title={t('pay.payUpi')}>
+        {payPrompt?.payeeName ? (
+          <Text style={[styles.payPayee, { color: colors.text }]}>{payPrompt.payeeName}</Text>
+        ) : null}
+        <View style={[styles.payDetails, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+          <Text style={[styles.payUpiId, { color: colors.text }]} selectable>{payPrompt?.upiId}</Text>
+          {payPrompt?.amount ? (
+            <Text style={[styles.payAmount, { color: colors.text }]}>{`₹${payPrompt.amount}`}</Text>
+          ) : null}
+        </View>
+        <Text style={[styles.payHint, { color: colors.textMuted }]}>{t('pay.upiHint')}</Text>
+        <View style={styles.payActions}>
+          <View style={styles.payActionButton}>
+            <Button label={t('common.cancel')} variant="secondary" onPress={() => setPayPrompt(null)} />
+          </View>
+          <View style={styles.payActionButton}>
+            <Button
+              label={payPrompt?.payeeName ? t('pay.payTo', { name: payPrompt.payeeName }) : t('pay.payUpi')}
+              onPress={() => void confirmPay()}
+            />
+          </View>
+        </View>
+      </Dialog>
     </View>
   );
 }
@@ -636,19 +785,21 @@ export default function AssistantScreen() {
 function MessageBubble({
   message,
   onAction,
+  onRetry,
 }: {
   message: AssistantMessage;
   onAction: (action: AssistantAction, plan?: AssistantPlan) => void;
+  onRetry: (errorMessageId: string, payload: { message: string; attachments?: AssistantAttachment[] }) => void;
 }) {
   const { t } = useTranslation();
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
   const { favoriteSet, toggleFavorite } = useServicePreferences();
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
   const isUser = message.role === 'user';
   const suggested = message.plan?.suggestedServices[0];
-  const suggestedTone = suggested ? categoryColor(suggested.category) : null;
+  const suggestedTone = suggested ? categoryColor(suggested.category, mode) : null;
   const isStarred = suggested ? favoriteSet.has(suggested.id) : false;
 
   function starSuggested() {
@@ -699,6 +850,19 @@ function MessageBubble({
         <Text selectable style={[styles.messageText, { color: colors.text }]}>
           {message.text}
         </Text>
+
+        {message.errorRetry ? (
+          <TouchableOpacity
+            onPress={() => onRetry(message.id, message.errorRetry!)}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.retry')}
+            activeOpacity={0.82}
+            style={[styles.retryButton, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
+          >
+            <Feather name="refresh-cw" size={16} color={colors.primaryDark} />
+            <Text style={[styles.retryText, { color: colors.primaryDark }]}>{t('common.retry')}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {message.plan ? (
           <View style={[styles.simplePlan, { borderTopColor: colors.border }]}>
@@ -1167,6 +1331,71 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mobileNewChatText: { fontSize: font.sm, fontFamily: family.semibold },
+  statusActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  chatsButton: {
+    flexDirection: 'row',
+    gap: space.xs,
+  },
+  chatsCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  chatsCountText: { fontSize: font.xs, fontFamily: family.semibold },
+  sheetNewChat: {
+    minHeight: TAP,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    marginBottom: space.sm,
+  },
+  sheetNewChatText: { fontSize: font.md, fontFamily: family.semibold },
+  sheetChatList: { flexShrink: 1 },
+  sheetChatListContent: { gap: space.sm, paddingBottom: space.sm },
+  retryButton: {
+    marginTop: space.sm,
+    minHeight: 40,
+    alignSelf: 'flex-start',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.md,
+  },
+  retryText: { fontSize: font.sm, fontFamily: family.semibold },
+  payPayee: { fontSize: font.lg, fontFamily: family.bold, marginBottom: space.sm },
+  payDetails: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: 4,
+  },
+  payUpiId: { fontSize: font.md, fontFamily: family.semibold },
+  payAmount: { fontSize: font.lg, fontFamily: family.bold },
+  payHint: {
+    fontFamily: family.regular,
+    fontSize: font.sm,
+    lineHeight: font.sm * 1.35,
+    marginTop: space.sm,
+  },
+  payActions: {
+    flexDirection: 'row',
+    gap: space.sm,
+    marginTop: space.lg,
+  },
+  payActionButton: { flex: 1 },
   thread: { flex: 1 },
   threadContent: {
     paddingVertical: space.md,

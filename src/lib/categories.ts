@@ -1,3 +1,4 @@
+import { pastel, PastelName, ThemeMode } from './theme';
 import { ServiceCategory, PostCategory } from './types';
 
 export const SERVICE_CATEGORIES: { key: ServiceCategory; emoji: string }[] = [
@@ -10,22 +11,43 @@ export const SERVICE_CATEGORIES: { key: ServiceCategory; emoji: string }[] = [
   { key: 'daily_service', emoji: '🧹' },
 ];
 
-// Subtle, adult-leaning tones keep categories distinct without feeling playful.
-// bg = badge background, fg = badge text, border = card accent/badge outline.
-export const CATEGORY_COLORS: Record<ServiceCategory, { bg: string; fg: string; border: string }> = {
-  elder_home: { bg: '#EEF2E9', fg: '#324436', border: '#C8D5C4' },
-  doctor: { bg: '#EAF0F4', fg: '#294659', border: '#C7D6E1' },
-  hospital: { bg: '#F2ECE4', fg: '#5A4433', border: '#DCCCBD' },
-  medical_shop: { bg: '#F4E8E6', fg: '#6A4036', border: '#E2C8C1' },
-  travel_agent: { bg: '#E8EFEB', fg: '#355145', border: '#C7D6CD' },
-  home_service: { bg: '#EFEDE6', fg: '#49463A', border: '#D4CEC2' },
-  daily_service: { bg: '#EFEAE2', fg: '#5A493B', border: '#D7C9BB' },
+// Each category owns one pastel tone (chips/badges only; see theme.pastel).
+export const CATEGORY_TONES: Record<ServiceCategory, PastelName> = {
+  elder_home: 'sage',
+  doctor: 'sky',
+  hospital: 'coral',
+  medical_shop: 'rose',
+  travel_agent: 'peach',
+  home_service: 'lilac',
+  daily_service: 'butter',
 };
 
+// Per-category searchable keywords. Includes Hindi/Bengali transliterations
+// (romanised) so an elder typing "daktar" or "bijli" still matches the English
+// listing text. Keep transliterations lowercase and space/hyphen tolerant.
 export const SERVICE_SEARCH_ALIASES: Record<ServiceCategory, string[]> = {
-  elder_home: ['elder home', 'elder care', 'old age home', 'senior care', 'attendant', 'nursing care'],
-  doctor: ['doctor', 'clinic', 'appointment', 'specialist', 'physician', 'opd'],
-  hospital: ['hospital', 'emergency', 'ambulance', 'nursing home', 'icu'],
+  elder_home: [
+    'elder home',
+    'elder care',
+    'old age home',
+    'senior care',
+    'attendant',
+    'nursing care',
+    'briddhashram',
+    'buzurg',
+  ],
+  doctor: [
+    'doctor',
+    'clinic',
+    'appointment',
+    'specialist',
+    'physician',
+    'opd',
+    'daktar',
+    'daktor',
+    'chikitsak',
+  ],
+  hospital: ['hospital', 'emergency', 'ambulance', 'nursing home', 'icu', 'aspatal', 'haspatal'],
   medical_shop: [
     'medical shop',
     'medicine shop',
@@ -34,8 +56,22 @@ export const SERVICE_SEARCH_ALIASES: Record<ServiceCategory, string[]> = {
     'medicines',
     'prescription',
     'drugstore',
+    'dawai',
+    'dawa',
+    'oshudh',
   ],
-  travel_agent: ['travel', 'transport', 'taxi', 'ride', 'bus', 'train', 'flight', 'airport', 'station'],
+  travel_agent: [
+    'travel',
+    'transport',
+    'taxi',
+    'ride',
+    'bus',
+    'train',
+    'flight',
+    'airport',
+    'station',
+    'gaadi',
+  ],
   home_service: [
     'home service',
     'home services',
@@ -45,6 +81,10 @@ export const SERVICE_SEARCH_ALIASES: Record<ServiceCategory, string[]> = {
     'doorstep service',
     'repair technician',
     'repair',
+    'mistri',
+    'mistiri',
+    'bijli mistri',
+    'nal mistri',
   ],
   daily_service: [
     'daily service',
@@ -63,11 +103,63 @@ export const SERVICE_SEARCH_ALIASES: Record<ServiceCategory, string[]> = {
     'carpenter',
     'pest control',
     'handyman',
+    'bijli',
+    'nal',
+    'mistri',
+    'barhai',
+    'jhadu',
   ],
 };
 
-export function categoryColor(cat: ServiceCategory) {
-  return CATEGORY_COLORS[cat] ?? { bg: '#EAEAE6', fg: '#111111', border: '#D8D8D2' };
+// Query-text expansion: maps common misspellings and Hindi/Bengali
+// transliterations a user might type into the canonical English terms present
+// in SERVICE_SEARCH_ALIASES / listing text. Single source of truth — the
+// Services screen imports expandServiceQuery rather than keeping its own copy.
+export const SERVICE_QUERY_ALIASES: Record<string, string[]> = {
+  'medical store': ['medical shop', 'pharmacy'],
+  'medicine store': ['medical shop', 'pharmacy'],
+  chemist: ['medical shop', 'pharmacy'],
+  dawai: ['medical shop', 'pharmacy', 'medicine'],
+  dawa: ['medical shop', 'pharmacy', 'medicine'],
+  oshudh: ['medical shop', 'pharmacy', 'medicine'],
+  'wheel chair': ['wheelchair'],
+  plumber: ['plumber'],
+  pluber: ['plumber'],
+  plummer: ['plumber'],
+  plumbers: ['plumber'],
+  nal: ['plumber'],
+  'nal mistri': ['plumber'],
+  'nal-mistri': ['plumber'],
+  mistri: ['plumber', 'electrician', 'carpenter'],
+  electrician: ['electrician', 'electrical'],
+  electricians: ['electrician', 'electrical'],
+  electricans: ['electrician', 'electrical'],
+  electrican: ['electrician', 'electrical'],
+  electroicoams: ['electrician', 'electrical'],
+  electronician: ['electrician', 'electrical'],
+  bijli: ['electrician', 'electrical'],
+  'bijli mistri': ['electrician', 'electrical'],
+  doctor: ['doctor'],
+  daktar: ['doctor'],
+  daktor: ['doctor'],
+  aspatal: ['hospital'],
+  haspatal: ['hospital'],
+  barhai: ['carpenter'],
+  'civil help': ['civic help', 'daily service'],
+  'civil services': ['civic help', 'daily service'],
+};
+
+// Kept as a named alias so any older import path still resolves.
+export const SERVICE_QUERY_ALIAS_MAP = SERVICE_QUERY_ALIASES;
+
+export function expandServiceQuery(query: string): string[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return Array.from(new Set([q, ...(SERVICE_QUERY_ALIASES[q] ?? [])]));
+}
+
+export function categoryColor(cat: ServiceCategory, mode: ThemeMode = 'light') {
+  return pastel[mode][CATEGORY_TONES[cat] ?? 'butter'];
 }
 
 export const POST_CATEGORIES: { key: PostCategory; emoji: string }[] = [

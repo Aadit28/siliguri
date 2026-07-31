@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { CalendarEvent, ReminderRepeat } from './types';
+import { ReminderRepeat } from './types';
 
 const ANDROID_CHANNEL_ID = 'saathi-reminders';
 // Reminders with no time still deserve an alert; 9am reads as "morning of".
@@ -50,7 +50,7 @@ async function ensurePermission(): Promise<boolean> {
   return permissionPromise;
 }
 
-function eventDate(event: Pick<CalendarEvent, 'dateISO' | 'time'>) {
+function eventDate(event: { dateISO: string; time?: string | null }) {
   const [year, month, day] = event.dateISO.split('-').map(Number);
   const [hour, minute] = event.time
     ? event.time.split(':').map(Number)
@@ -61,7 +61,7 @@ function eventDate(event: Pick<CalendarEvent, 'dateISO' | 'time'>) {
 // Widened repeat: local CalendarEvent never stores 'monthly', but family
 // reminders can carry it, so scheduling handles it without editing types.
 function triggerFor(
-  event: Pick<CalendarEvent, 'dateISO' | 'time'> & { repeat?: ReminderRepeat | 'monthly' },
+  event: { dateISO: string; time?: string | null; repeat?: ReminderRepeat | 'monthly' },
 ) {
   const date = eventDate(event);
   const channelId = Platform.OS === 'android' ? ANDROID_CHANNEL_ID : undefined;
@@ -130,7 +130,21 @@ function triggerFor(
   };
 }
 
-export async function scheduleReminder(event: CalendarEvent): Promise<string | null> {
+// Accepts personal CalendarEvents (repeat is once/daily/weekly) and mirrored
+// family reminders, which additionally carry 'monthly'. A plain object shape —
+// not CalendarEvent — lets callers schedule a monthly reminder that the local
+// calendar store can't represent.
+export type ScheduleInput = {
+  id: string;
+  title: string;
+  dateISO: string;
+  time?: string | null;
+  note?: string | null;
+  serviceName?: string | null;
+  repeat?: ReminderRepeat | 'monthly';
+};
+
+export async function scheduleReminder(event: ScheduleInput): Promise<string | null> {
   if (!supported) return null;
   const trigger = triggerFor(event);
   if (!trigger) return null;

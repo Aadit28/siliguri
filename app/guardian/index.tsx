@@ -16,16 +16,70 @@ import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import { Button, Card, Dialog, H1, H2, Muted } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
-import { FamilyLink, FamilyLinkStatus } from '../../src/lib/types';
+import { FamilyLink, FamilyLinkStatus, ParentAnalytics } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import {
+  fetchParentAnalytics,
   listFamilyLinks,
   requestFamilyLink,
   revokeFamilyLink,
   verifyFamilyLink,
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
+
+// Local translator type — avoids importing i18next's TFunction generics.
+type T = (key: string, opts?: Record<string, unknown>) => string;
+
+// Replicated from AuthContext (not exported there): +91 auto-prefix for the
+// common 10-digit local number, tolerant of spaces/dashes the user types.
+function normalizePhone(phone: string) {
+  const raw = phone.trim();
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : raw;
+}
+
+function isValidPhone(phone: string) {
+  return /^\+\d{8,15}$/.test(phone);
+}
+
+// Maps raw backend errors to friendly, actionable guidance. backendRequest
+// attaches an HTTP status; network/server-down failures arrive without one.
+function friendlyLinkError(e: unknown, t: T, phase: 'request' | 'verify'): string {
+  const err = e as Error & { status?: number };
+  const status = err.status;
+  const msg = err.message || '';
+  if (status === undefined) return t('family.errorNetwork');
+  if (status === 404) {
+    return phase === 'request' ? t('family.errorParentNotFound') : t('family.errorBadCode');
+  }
+  if (status === 401) return t('family.errorBadCode');
+  if (status === 429) return t('family.errorTooManyTries');
+  if (status === 400) {
+    if (/already/i.test(msg)) return t('family.errorAlreadyLinked');
+    if (/own account/i.test(msg)) return t('family.errorSelfLink');
+    return msg || t('family.errorGeneric');
+  }
+  return msg || t('family.errorGeneric');
+}
+
+function formatLastActive(iso: string | null | undefined, t: T): string {
+  if (!iso) return t('family.neverActive');
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return t('family.neverActive');
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfThen = new Date(then);
+  startOfThen.setHours(0, 0, 0, 0);
+  const days = Math.round((startOfToday.getTime() - startOfThen.getTime()) / 86400000);
+  if (days <= 0) return t('family.activeToday');
+  if (days === 1) return t('family.activeYesterday');
+  return t('family.activeDaysAgo', { count: days });
+}
 
 function Field({
   label,
@@ -147,11 +201,13 @@ export default function GuardianDashboard() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isWide = width >= 900;
+  const { isComputerMode } = useDisplayMode();
+  const isWide = isComputerMode && width >= 900;
   const styles = makeStyles(colors, isWide);
 
   const [links, setLinks] = useState<FamilyLink[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
+  const [analytics, setAnalytics] = useState<Record<string, ParentAnalytics>>({});
 
   // Link flow state.
   const [linkOpen, setLinkOpen] = useState(false);
@@ -172,11 +228,27 @@ export default function GuardianDashboard() {
     try {
       const { asGuardian } = await listFamilyLinks(session.access_token);
       setLinks(asGuardian);
+      loadAnalytics(asGuardian);
     } catch {
       setLinks([]);
     } finally {
       setLoadingLinks(false);
     }
+  }
+
+  // Per-card health summary (last active + overdue count). Best-effort and
+  // non-blocking: cards render immediately, the badge fills in when each
+  // parent's analytics arrives. No new endpoint — reuses /api/family/analytics.
+  function loadAnalytics(list: FamilyLink[]) {
+    if (!session) return;
+    const token = session.access_token;
+    list.forEach((link) => {
+      if (link.status !== 'active' || !link.parentId) return;
+      const pid = link.parentId;
+      fetchParentAnalytics(token, pid)
+        .then((a) => setAnalytics((prev) => ({ ...prev, [pid]: a })))
+        .catch(() => undefined);
+    });
   }
 
   useEffect(() => {
@@ -249,18 +321,25 @@ export default function GuardianDashboard() {
       setError(t('family.errorPhoneRequired'));
       return;
     }
+    const normalized = normalizePhone(phone);
+    if (!isValidPhone(normalized)) {
+      setError(t('family.errorPhoneInvalid'));
+      return;
+    }
     setBusy(true);
     try {
       const { devCode: dc } = await requestFamilyLink(session.access_token, {
-        parentPhone: phone.trim(),
+        parentPhone: normalized,
         relationship: relationship.trim() || null,
       });
+      // Keep the normalized number so the code dialog and verify step agree.
+      setPhone(normalized);
       setDevCode(dc ?? null);
       setPhase('code');
       setCode('');
       await loadLinks();
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyLinkError(e, t, 'request'));
     } finally {
       setBusy(false);
     }
@@ -276,7 +355,7 @@ export default function GuardianDashboard() {
     setBusy(true);
     try {
       const { link } = await verifyFamilyLink(session.access_token, {
-        parentPhone: phone.trim(),
+        parentPhone: normalizePhone(phone),
         code: code.replace(/\D/g, ''),
       });
       setLinkOpen(false);
@@ -285,7 +364,7 @@ export default function GuardianDashboard() {
         router.push({ pathname: '/guardian/[parentId]', params: { parentId: link.parentId } });
       }
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyLinkError(e, t, 'verify'));
     } finally {
       setBusy(false);
     }
@@ -358,6 +437,25 @@ export default function GuardianDashboard() {
                     </View>
                   </View>
 
+                  {canOpen && pid ? (
+                    <View style={styles.healthRow}>
+                      <View style={styles.healthItem}>
+                        <Feather name="clock" size={14} color={colors.textSubtle} />
+                        <Text style={styles.healthText} numberOfLines={1}>
+                          {formatLastActive(analytics[pid]?.lastActiveAt, t)}
+                        </Text>
+                      </View>
+                      {analytics[pid] && analytics[pid].reminders.overdue > 0 ? (
+                        <View style={[styles.overdueBadge, { backgroundColor: colors.dangerSoft }]}>
+                          <Feather name="alert-triangle" size={12} color={colors.danger} />
+                          <Text style={[styles.overdueBadgeText, { color: colors.danger }]}>
+                            {t('family.overdueBadge', { count: analytics[pid].reminders.overdue })}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+
                   <View style={styles.parentActions}>
                     {canOpen && pid ? (
                       <Button
@@ -409,11 +507,21 @@ export default function GuardianDashboard() {
               autoCapitalize="none"
             />
             <Field
-              label={t('family.relationship')}
+              label={t('family.relationshipOptional')}
               value={relationship}
               onChangeText={setRelationship}
               placeholder={t('family.relationshipPlaceholder')}
             />
+            <View style={[styles.consentBox, { backgroundColor: colors.surfaceTint, borderColor: colors.border }]}>
+              <Text style={styles.consentTitle}>{t('family.consentTitle')}</Text>
+              {['consentReminders', 'consentCareTeam', 'consentActivity'].map((key) => (
+                <View key={key} style={styles.consentItem}>
+                  <Feather name="check" size={15} color={colors.success} style={styles.consentIcon} />
+                  <Text style={styles.consentText}>{t(`family.${key}`)}</Text>
+                </View>
+              ))}
+              <Text style={styles.consentMechanic}>{t('family.codeMechanic')}</Text>
+            </View>
             {error ? <Notice kind="error" message={error} /> : null}
             <View style={styles.dialogActions}>
               <Button label={t('family.sendCode')} onPress={sendCode} loading={busy} disabled={!phone.trim()} />
@@ -467,11 +575,16 @@ export default function GuardianDashboard() {
         title={t('family.revoke')}
       >
         {revokeTarget ? (
-          <Text style={styles.dialogBody}>
-            {t('family.confirmRevoke', {
-              name: revokeTarget.parentName || revokeTarget.parentPhone || '',
-            })}
-          </Text>
+          <>
+            <Text style={styles.dialogBody}>
+              {t('family.confirmRevoke', {
+                name: revokeTarget.parentName || revokeTarget.parentPhone || '',
+              })}
+            </Text>
+            <Text style={[styles.dialogBody, styles.revokeConsequences]}>
+              {t('family.revokeConsequences')}
+            </Text>
+          </>
         ) : null}
         <View style={styles.dialogActions}>
           <Button label={t('family.revoke')} variant="danger" onPress={confirmRevoke} />
@@ -539,6 +652,28 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       marginTop: 2,
     },
     parentRelationship: { fontSize: font.xs, fontFamily: family.medium, color: colors.textSubtle },
+    healthRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    healthItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flexShrink: 1,
+    },
+    healthText: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
+    overdueBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: space.sm,
+      paddingVertical: 4,
+      borderRadius: radius.sm,
+    },
+    overdueBadgeText: { fontSize: font.xs, fontFamily: family.semibold },
     parentActions: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -558,6 +693,31 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       color: colors.textMuted,
     },
     dialogHint: { marginTop: space.sm },
+    consentBox: {
+      marginTop: space.md,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: space.md,
+      gap: space.sm,
+    },
+    consentTitle: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text },
+    consentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+    consentIcon: { marginTop: 2 },
+    consentText: {
+      flex: 1,
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      lineHeight: Math.round(font.sm * 1.45),
+      color: colors.textMuted,
+    },
+    consentMechanic: {
+      fontSize: font.sm,
+      fontFamily: family.medium,
+      lineHeight: Math.round(font.sm * 1.5),
+      color: colors.textMuted,
+      marginTop: space.xs,
+    },
+    revokeConsequences: { color: colors.textSubtle },
     dialogBody: {
       fontSize: font.md,
       fontFamily: family.regular,

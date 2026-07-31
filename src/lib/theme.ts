@@ -62,8 +62,10 @@ export const lightColors = {
   warningText: '#6B5200',
 
   text: '#0A0A0A',
-  textMuted: '#5E5E5E',
-  textSubtle: '#8A8A8A',
+  // Darkened to clear WCAG AA (4.5:1) on white/#F6F6F6 for low vision. Prior
+  // #8A8A8A (~3.5:1) failed; #6B6B6B is ~5:1. textMuted #4F4F4F is ~8.5:1.
+  textMuted: '#4F4F4F',
+  textSubtle: '#6B6B6B',
   textOnDark: '#FFFFFF',
 
   border: '#E8E8E8',
@@ -80,7 +82,7 @@ export const lightColors = {
   navEdgeLo: 'rgba(120,126,138,0.35)',
   navPill: 'rgba(255,255,255,0.66)',
   navPillEdge: 'rgba(255,255,255,0.95)',
-  panelGlass: 'rgba(255,255,255,0.86)',
+  panelGlass: 'rgba(255,255,255,0.94)',
   whatsapp: '#128C7E',
   whatsappText: '#FFFFFF',
   handle: '#D6D6D6',
@@ -125,8 +127,10 @@ export const darkColors: typeof lightColors = {
   warningText: '#F5D77B',
 
   text: '#F5F5F5',
+  // On near-black bg dark text must lighten to keep 4.5:1. Prior subtle #6E6E6E
+  // (~4:1) failed; #8C8C8C is ~5.9:1. Muted #A3A3A3 (~9:1) already passes.
   textMuted: '#A3A3A3',
-  textSubtle: '#6E6E6E',
+  textSubtle: '#8C8C8C',
   textOnDark: '#0A0A0A',
 
   border: '#262626',
@@ -143,7 +147,7 @@ export const darkColors: typeof lightColors = {
   navEdgeLo: 'rgba(255,255,255,0.05)',
   navPill: 'rgba(255,255,255,0.10)',
   navPillEdge: 'rgba(255,255,255,0.22)',
-  panelGlass: 'rgba(20,20,20,0.84)',
+  panelGlass: 'rgba(20,20,20,0.92)',
   whatsapp: '#25D366',
   whatsappText: '#062315',
   handle: '#3A3A3A',
@@ -155,16 +159,51 @@ export function paletteForMode(mode: ThemeMode) {
   return mode === 'dark' ? darkColors : lightColors;
 }
 
+// Pastel tints live in one slot only — icon chips. Surfaces, text and CTAs
+// stay monochrome. fg is a deep same-hue ink so glyphs keep >=4.5:1 on the
+// tint; dark mode swaps tints for low-alpha washes so chips sit on any surface.
+export type PastelName = 'sage' | 'sky' | 'coral' | 'rose' | 'peach' | 'lilac' | 'butter';
+
+export type PastelTone = { bg: string; fg: string; border: string };
+
+export const pastel: Record<ThemeMode, Record<PastelName, PastelTone>> = {
+  light: {
+    sage: { bg: '#E3F0E4', fg: '#2E5D3C', border: '#CDE3D0' },
+    sky: { bg: '#E1EEFA', fg: '#22537F', border: '#C9E0F4' },
+    coral: { bg: '#FBE5E4', fg: '#8E3630', border: '#F4CFCC' },
+    rose: { bg: '#FAE4EF', fg: '#8C2F5D', border: '#F2CCE0' },
+    peach: { bg: '#FDEBDC', fg: '#8A4A1B', border: '#F6D8BF' },
+    lilac: { bg: '#ECE6F8', fg: '#4E3A80', border: '#DCD2F1' },
+    butter: { bg: '#FBF0D4', fg: '#6F5716', border: '#F0E1B2' },
+  },
+  dark: {
+    sage: { bg: 'rgba(110,190,130,0.16)', fg: '#A8D8B4', border: 'rgba(110,190,130,0.30)' },
+    sky: { bg: 'rgba(100,170,240,0.16)', fg: '#A9CFF5', border: 'rgba(100,170,240,0.30)' },
+    coral: { bg: 'rgba(240,120,110,0.16)', fg: '#F3B3AE', border: 'rgba(240,120,110,0.30)' },
+    rose: { bg: 'rgba(235,110,175,0.16)', fg: '#F0B4D4', border: 'rgba(235,110,175,0.30)' },
+    peach: { bg: 'rgba(245,150,80,0.16)', fg: '#F4C79E', border: 'rgba(245,150,80,0.30)' },
+    lilac: { bg: 'rgba(150,120,235,0.18)', fg: '#C9BCF0', border: 'rgba(150,120,235,0.32)' },
+    butter: { bg: 'rgba(235,190,80,0.16)', fg: '#E8D397', border: 'rgba(235,190,80,0.30)' },
+  },
+};
+
+export function pastelForMode(mode: ThemeMode) {
+  return pastel[mode];
+}
+
 // Legacy default for files that have not yet been made theme-aware.
 export const colors = lightColors;
 
+// Scale floor raised for low-vision elders (70+, cataracts): xs/sm were 13/15,
+// too small for tab labels, tags, metadata and form labels. Bumped in measured
+// 1-2px steps so layouts hold.
 export const font = {
-  xs: 13,
-  sm: 15,
-  md: 17,
-  lg: 22,
-  xl: 28,
-  xxl: 36,
+  xs: 15,
+  sm: 16,
+  md: 18,
+  lg: 23,
+  xl: 29,
+  xxl: 37,
 };
 
 export const tracking = {

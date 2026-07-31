@@ -251,12 +251,19 @@ export function Sheet({
         </Animated.View>
         <Animated.View entering={sheetIn} style={[styles.sheetShell, { borderColor: colors.glassBorder, maxHeight: height * 0.88 }]}>
           <BlurView
-            intensity={44}
+            intensity={22}
             tint={mode}
             experimentalBlurMethod="dimezisBlurView"
             style={[styles.sheetPanel, { backgroundColor: colors.panelGlass }]}
           >
-            <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              onPress={onClose}
+              style={styles.sheetHandleTap}
+            >
+              <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
+            </Pressable>
             <ModalHeading title={title} />
             {children}
           </BlurView>
@@ -290,7 +297,7 @@ export function Dialog({
           style={[styles.dialogShell, { borderColor: colors.glassBorder, width: Math.min(width - 32, 440) }]}
         >
           <BlurView
-            intensity={44}
+            intensity={22}
             tint={mode}
             experimentalBlurMethod="dimezisBlurView"
             style={[styles.dialogPanel, { backgroundColor: colors.panelGlass }]}
@@ -366,7 +373,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingBottom: space.xl,
   },
-  sheetHandle: { width: 42, height: 5, borderRadius: 999, alignSelf: 'center', marginTop: space.sm, marginBottom: space.md },
+  // 44px+ grab zone around the visual handle so elders can tap-to-close.
+  sheetHandleTap: { minHeight: 44, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  sheetHandle: { width: 48, height: 5, borderRadius: 999 },
   dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
   dialogShell: {
     borderRadius: radius.xl,

@@ -2,6 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { backendRequest } from '../lib/backend';
 import { clearMemory } from '../lib/memory';
+import { matchDemoUser } from '../lib/demoAuth';
+
+const DEMO_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 type SaathiUser = {
   id: string;
@@ -134,6 +137,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signIn(identifier: string, password: string, method?: AuthMethod) {
     if (!identifier.trim()) return { error: 'Enter your username or phone number.' };
+
+    // Offline demo accounts: sign in without a backend. Real rows with the same
+    // credentials exist once the backend is wired up (scripts/seed-demo-accounts.mjs).
+    const demo = matchDemoUser(identifier, password);
+    if (demo) {
+      const demoSession: SaathiSession = {
+        access_token: `demo.${demo.id}`,
+        expires_at: new Date(Date.now() + DEMO_SESSION_TTL_MS).toISOString(),
+        user: {
+          id: demo.id,
+          user_metadata: {
+            username: demo.username,
+            full_name: demo.fullName,
+            phone_number: demo.phone,
+            role: demo.role,
+            city_id: null,
+          },
+        },
+      };
+      setSession(demoSession);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(demoSession));
+      return {};
+    }
+
     const resolvedMethod = inferAuthMethod(identifier, method);
     const normalizedIdentifier =
       resolvedMethod === 'phone' ? normalizePhone(identifier) : normalizeUsername(identifier);

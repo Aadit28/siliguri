@@ -22,6 +22,7 @@ export default function NewPost() {
   const [category, setCategory] = useState<PostCategory>('general');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   async function submit() {
     if (!user) {
@@ -41,9 +42,12 @@ export default function NewPost() {
     setSaving(false);
     if (res.ok) {
       if (Platform.OS === 'web') {
-        router.back();
+        // Web has no reliable Alert — show an inline "awaiting review" notice.
+        setSubmitted(true);
       } else {
-        Alert.alert(t('community.submittedForReview'), '', [{ text: 'OK', onPress: () => router.back() }]);
+        Alert.alert(t('community.submittedForReview'), t('community.reviewNotice'), [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
       }
     } else {
       const message = res.error ?? 'Could not post';
@@ -53,6 +57,21 @@ export default function NewPost() {
         Alert.alert('Error', message);
       }
     }
+  }
+
+  if (submitted) {
+    return (
+      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.md }}>
+        <Stack.Screen options={{ title: t('community.newPost') }} />
+        <View style={[styles.noticeBanner, { backgroundColor: colors.successSoft }]}>
+          <H2>{t('community.submittedForReview')}</H2>
+          <Muted style={{ marginTop: space.sm }}>{t('community.reviewNotice')}</Muted>
+        </View>
+        <View style={{ marginTop: space.lg }}>
+          <Button label={t('common.back')} onPress={() => router.back()} />
+        </View>
+      </ScrollView>
+    );
   }
 
   return (
@@ -114,6 +133,11 @@ export default function NewPost() {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    noticeBanner: {
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.md,
+    },
     errorBanner: {
       marginTop: space.md,
       borderRadius: radius.md,

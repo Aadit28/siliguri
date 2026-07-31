@@ -18,7 +18,7 @@ export default function AppHeader({ title }: { title?: string }) {
   const { lang, toggle } = useLocale();
   const { displayName, user, signOut } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
-  const { isComputerMode } = useDisplayMode();
+  const { isComputerMode, toggleDisplayMode } = useDisplayMode();
 
   const accountLabel = user ? displayName?.split(' ')[0] || t('common.signOut') : t('common.signIn');
   const navItems = [
@@ -42,6 +42,18 @@ export default function AppHeader({ title }: { title?: string }) {
       ]);
     }
   };
+
+  const DisplayModeToggle =
+    Platform.OS === 'web' ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={isComputerMode ? 'Switch to mobile view' : 'Switch to desktop view'}
+        onPress={toggleDisplayMode}
+        style={({ pressed }) => [styles.utilityButton, { borderColor: colors.border }, pressed && styles.pressed]}
+      >
+        <Text style={[styles.utilityText, { color: colors.text }]}>{isComputerMode ? 'Mobile' : 'Desktop'}</Text>
+      </Pressable>
+    ) : null;
 
   const AccountButton = (
     <Pressable
@@ -135,11 +147,13 @@ export default function AppHeader({ title }: { title?: string }) {
               <Text style={[styles.utilityText, { color: colors.text }]}>{isDark ? 'Light' : 'Dark'}</Text>
             </Pressable>
 
+            {DisplayModeToggle}
             <NotificationBell />
             {AccountButton}
           </View>
         ) : (
           <View style={styles.mobileActions}>
+            {DisplayModeToggle}
             <NotificationBell />
             {AccountButton}
           </View>

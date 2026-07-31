@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -16,10 +16,11 @@ import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
 import { Chip, Muted } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
-import { fetchPosts } from '../../src/lib/api';
+import { fetchPosts, ApiError } from '../../src/lib/api';
 import { tContent } from '../../src/lib/contentI18n';
 import { CommunityPost } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 
@@ -59,17 +60,31 @@ export default function Community() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const isWide = width >= 920;
+  const { isComputerMode } = useDisplayMode();
+  const isWide = isComputerMode && width >= 920;
   const styles = makeStyles(colors, isWide);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
   const [query, setQuery] = useState('');
+  // Search runs off a debounced copy so ranking doesn't re-run every keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [sort, setSort] = useState<SortMode>('smart');
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 350);
+    return () => clearTimeout(id);
+  }, [query]);
 
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     fetchPosts(user?.id)
-      .then(setPosts)
+      .then((p) => {
+        setPosts(p);
+        setError(null);
+      })
+      .catch((e) => setError(e instanceof ApiError ? e : new ApiError('network', String(e))))
       .finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -77,7 +92,7 @@ export default function Community() {
 
   const visible = useMemo(() => {
     const now = Date.now();
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const terms = debouncedQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const scored = posts
       .map((post) => ({ post, match: relevance(post, terms, lang), hot: hotScore(post, now) }))
       .filter((entry) => entry.match > 0)
@@ -89,7 +104,16 @@ export default function Community() {
       return b.match * b.hot - a.match * a.hot;
     });
     return scored.map((entry) => entry.post);
-  }, [posts, query, sort, lang]);
+  }, [posts, debouncedQuery, sort, lang]);
+
+  const isSearching = debouncedQuery.trim().length > 0;
+  const errorMessage = error
+    ? error.kind === 'timeout'
+      ? t('community.errorTimeout', {
+          defaultValue: 'This is taking longer than usual. Check your connection and try again.',
+        })
+      : t('common.errorLoading')
+    : '';
 
   const sortOptions: Array<{ key: SortMode; label: string }> = [
     { key: 'smart', label: t('community.filterSmart') },
@@ -147,7 +171,29 @@ export default function Community() {
 
         <View style={[styles.listPanel, { backgroundColor: colors.cardStrong, borderColor: colors.border }]}>
           {loading ? (
-            <ActivityIndicator style={{ marginVertical: space.xl }} color={colors.primary} size="large" />
+            <View style={styles.stateBox}>
+              <ActivityIndicator color={colors.primary} size="large" />
+              <Muted style={styles.stateText}>
+                {t('community.loadingPosts', { defaultValue: 'Loading community posts…' })}
+              </Muted>
+            </View>
+          ) : error ? (
+            <View style={styles.stateBox}>
+              <View style={[styles.stateDisc, { backgroundColor: colors.dangerSoft }]}>
+                <Feather name="wifi-off" size={22} color={colors.danger} />
+              </View>
+              <Text style={[styles.stateTitle, { color: colors.text }]}>{errorMessage}</Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+                activeOpacity={0.85}
+                onPress={load}
+                style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+              >
+                <Feather name="refresh-cw" size={16} color={colors.primaryFg} />
+                <Text style={[styles.retryLabel, { color: colors.primaryFg }]}>{t('common.retry')}</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <FlatList
               data={visible}
@@ -156,8 +202,54 @@ export default function Community() {
               keyboardShouldPersistTaps="handled"
               ItemSeparatorComponent={() => <View style={[styles.separator, { backgroundColor: colors.border }]} />}
               ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Muted>{t('common.noResults')}</Muted>
+                <View style={styles.stateBox}>
+                  <View style={[styles.stateDisc, { backgroundColor: colors.surfaceTint }]}>
+                    <Feather name={isSearching ? 'search' : 'message-circle'} size={22} color={colors.textMuted} />
+                  </View>
+                  {isSearching ? (
+                    <>
+                      <Text style={[styles.stateTitle, { color: colors.text }]}>
+                        {t('community.noSearchResults', {
+                          defaultValue: 'No questions match your search.',
+                        })}
+                      </Text>
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={t('community.clearSearch', { defaultValue: 'Clear search' })}
+                        activeOpacity={0.85}
+                        onPress={() => setQuery('')}
+                        style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+                      >
+                        <Feather name="x" size={16} color={colors.primaryFg} />
+                        <Text style={[styles.retryLabel, { color: colors.primaryFg }]}>
+                          {t('community.clearSearch', { defaultValue: 'Clear search' })}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.stateTitle, { color: colors.text }]}>
+                        {t('community.emptyTitle', { defaultValue: 'No questions yet.' })}
+                      </Text>
+                      <Muted style={styles.stateText}>
+                        {t('community.emptyHint', {
+                          defaultValue: 'Be the first to ask neighbours for local advice.',
+                        })}
+                      </Muted>
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={t('community.askQuestion')}
+                        activeOpacity={0.85}
+                        onPress={() => (user ? router.push('/new-post') : router.push('/login'))}
+                        style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+                      >
+                        <Feather name="edit-3" size={16} color={colors.primaryFg} />
+                        <Text style={[styles.retryLabel, { color: colors.primaryFg }]}>
+                          {t('community.askShort')}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
               }
               renderItem={({ item }) => (
@@ -167,6 +259,11 @@ export default function Community() {
                       <Text style={[styles.tag, { color: colors.textMuted }]}>
                         {t(`postCategories.${item.category}`)}
                       </Text>
+                      {item.status === 'pending' ? (
+                        <Text style={[styles.pendingTag, { color: colors.danger, backgroundColor: colors.dangerSoft }]}>
+                          {t('community.pendingReview', { defaultValue: 'Awaiting review' })}
+                        </Text>
+                      ) : null}
                       {item.author_name ? <Muted numberOfLines={1}>· {item.author_name}</Muted> : null}
                     </View>
                     <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
@@ -251,8 +348,47 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       borderWidth: 1,
       overflow: 'hidden',
     },
-    list: { paddingVertical: space.xs },
-    empty: { paddingVertical: space.xl, alignItems: 'center' },
+    list: { paddingVertical: space.xs, flexGrow: 1 },
+    stateBox: {
+      flexGrow: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: space.xl,
+      paddingHorizontal: space.lg,
+      gap: space.sm,
+    },
+    stateDisc: {
+      width: 52,
+      height: 52,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 2,
+    },
+    stateTitle: {
+      fontFamily: family.semibold,
+      fontSize: font.md,
+      textAlign: 'center',
+    },
+    stateText: { textAlign: 'center' },
+    retryBtn: {
+      marginTop: space.sm,
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: space.lg,
+      borderRadius: radius.pill,
+    },
+    retryLabel: { fontFamily: family.semibold, fontSize: font.sm },
+    pendingTag: {
+      fontSize: font.xs,
+      fontFamily: family.semibold,
+      overflow: 'hidden',
+      borderRadius: radius.sm,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+    },
     separator: { height: StyleSheet.hairlineWidth, marginHorizontal: space.md },
     row: {
       paddingHorizontal: space.md,

@@ -12,38 +12,35 @@ import {
   View,
 } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Badge, Card, Chip, H1, Muted, Stars } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
-import { SERVICE_CATEGORIES, serviceSearchAliases } from '../../src/lib/categories';
+import { SERVICE_CATEGORIES, expandServiceQuery, serviceSearchAliases } from '../../src/lib/categories';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service, ServiceCategory } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
-import { canUseWhatsApp, openWhatsAppCall, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
+import { canUseWhatsApp, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
+
+// Primary "Call" must place a real phone call. tel: is the elder-safe default;
+// WhatsApp stays a clearly-labelled secondary action, never mislabelled "Call".
+function openPhoneCall(phone?: string | null) {
+  const digits = String(phone ?? '').replace(/[^\d+]/g, '');
+  if (!digits) return;
+  Linking.openURL(`tel:${digits}`).catch(() => undefined);
+}
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
 
-const SERVICE_QUERY_ALIASES: Record<string, string[]> = {
-  'medical store': ['medical shop', 'pharmacy'],
-  'medicine store': ['medical shop', 'pharmacy'],
-  chemist: ['medical shop', 'pharmacy'],
-  'wheel chair': ['wheelchair'],
-  pluber: ['plumber'],
-  plummer: ['plumber'],
-  plumbers: ['plumber'],
-  electricians: ['electrician', 'electrical'],
-  electricans: ['electrician', 'electrical'],
-  electrican: ['electrician', 'electrical'],
-  electroicoams: ['electrician', 'electrical'],
-  electronician: ['electrician', 'electrical'],
-  'civil help': ['civic help', 'daily service'],
-  'civil services': ['civic help', 'daily service'],
-};
+// Elder helpline surfaced in empty/fallback states (Elderline, national).
+const HELPLINE_SHORT = '14567';
 
 export default function Services() {
   const { t } = useTranslation();
@@ -53,14 +50,23 @@ export default function Services() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const isWide = width >= 920;
+  const { isComputerMode } = useDisplayMode();
+  const isWide = isComputerMode && width >= 920;
   const styles = makeStyles(colors, isWide);
 
   const [all, setAll] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  // Filtering runs on the debounced value so each keystroke doesn't re-scan the
+  // full list — smoother for elders typing slowly on older phones.
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [cat, setCat] = useState<DirectoryView>((params.category as ServiceCategory) || 'all');
   const pageScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(query), 350);
+    return () => clearTimeout(handle);
+  }, [query]);
 
   const resetDirectoryScroll = useCallback(() => {
     requestAnimationFrame(() => {
@@ -84,6 +90,7 @@ export default function Services() {
 
     setCat(nextCategory);
     setQuery('');
+    setDebouncedQuery('');
   }, [params.category, params.view]);
 
   useEffect(() => {
@@ -91,7 +98,7 @@ export default function Services() {
   }, [cat, resetDirectoryScroll]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     const queryTerms = expandServiceQuery(q);
     const recentOrder = new Map(recentIds.map((id, index) => [id, index]));
     const matching = all.filter((s) => {
@@ -122,7 +129,7 @@ export default function Services() {
             (recentOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER),
         )
       : matching;
-  }, [all, query, cat, favoriteSet, recentIds, t]);
+  }, [all, debouncedQuery, cat, favoriteSet, recentIds, t]);
 
   // localStorage is the offline source of truth; when signed in, mirror the
   // toggle to Supabase so the Home "saved" stat matches, reverting on failure.
@@ -170,6 +177,7 @@ export default function Services() {
   const chooseView = (nextCategory: DirectoryView) => {
     setCat(nextCategory);
     setQuery('');
+    setDebouncedQuery('');
     router.setParams({
       category:
         nextCategory === 'all' || nextCategory === 'favorites' || nextCategory === 'recent'
@@ -195,7 +203,7 @@ export default function Services() {
         </View>
 
         <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.cardStrong }]}>
-          <Feather name="search" size={20} color={colors.textMuted} />
+          <Feather name="search" size={20} color={colors.textMuted} accessible accessibilityLabel={t('common.search')} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder={`${t('common.search')} ${t('tabs.services').toLowerCase()}`}
@@ -207,22 +215,33 @@ export default function Services() {
           />
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterRail}
-          contentContainerStyle={styles.filterRailContent}
-        >
-          {directoryViews.map((item) => (
-            <Chip
-              key={item.key}
-              label={item.label}
-              count={item.count}
-              active={cat === item.key}
-              onPress={() => chooseView(item.key)}
-            />
-          ))}
-        </ScrollView>
+        <View style={styles.filterRailWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterRail}
+            contentContainerStyle={styles.filterRailContent}
+          >
+            {directoryViews.map((item) => (
+              <Chip
+                key={item.key}
+                label={item.label}
+                count={item.count}
+                active={cat === item.key}
+                onPress={() => chooseView(item.key)}
+              />
+            ))}
+          </ScrollView>
+          {/* Overflow hint: the rail scrolls past the screen edge, so fade the
+              trailing chips to signal there is more to the right. */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={['rgba(0,0,0,0)', colors.bg]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.filterRailFade}
+          />
+        </View>
 
         <View style={styles.resultBar}>
           <Text style={styles.resultCount}>
@@ -236,10 +255,18 @@ export default function Services() {
         </View>
 
         {loading ? (
-          <ActivityIndicator style={styles.loadingIndicator} color={colors.primary} size="large" />
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator color={colors.primary} size="large" />
+            <Muted style={styles.loadingText}>{t('services.loading')}</Muted>
+          </View>
         ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>{t('common.noResults')}</Text>
+            <Muted style={styles.emptyHint}>
+              {debouncedQuery.trim()
+                ? t('services.emptySearchHint', { query: debouncedQuery.trim(), helpline: HELPLINE_SHORT })
+                : t('services.emptyBrowseHint', { helpline: HELPLINE_SHORT })}
+            </Muted>
           </View>
         ) : (
           <View style={styles.list}>
@@ -368,31 +395,36 @@ function ServiceRow({
               style={[styles.callBtn, { backgroundColor: colors.primary }]}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel={`${t('common.call')} ${item.name} on WhatsApp`}
+              accessibilityLabel={`${t('common.call')} ${item.name}`}
               onPress={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                openWhatsAppCall(item.phone);
+                openPhoneCall(item.phone);
               }}
             >
               <Feather name="phone" size={18} color={colors.primaryFg} />
               <Text style={[styles.callLabel, { color: colors.primaryFg }]}>{t('common.call')}</Text>
             </TouchableOpacity>
           ) : (
-            <View style={[styles.aboutBtn, { borderColor: colors.border, backgroundColor: colors.bgAlt }]}>
+            <TouchableOpacity
+              style={[styles.aboutBtn, { borderColor: colors.border, backgroundColor: colors.bgAlt }]}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${t('services.about')} ${item.name}`}
+              onPress={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpen();
+              }}
+            >
               <Feather name="info" size={16} color={colors.textMuted} />
               <Text style={[styles.aboutLabel, { color: colors.textMuted }]}>{t('services.about')}</Text>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
       </Card>
     </Pressable>
   );
-}
-
-function expandServiceQuery(query: string) {
-  if (!query) return [];
-  return Array.from(new Set([query, ...(SERVICE_QUERY_ALIASES[query] ?? [])]));
 }
 
 function makeStyles(colors: AppColors, isWide: boolean) {
@@ -426,18 +458,29 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       fontSize: font.md,
     },
     // Single-line rail bleeding to the screen edge; counts live inside the chips.
-    filterRail: {
+    filterRailWrap: {
       marginHorizontal: isWide ? -space.xl : -space.md,
+      position: 'relative',
     },
+    filterRail: {},
     filterRailContent: {
       paddingHorizontal: isWide ? space.xl : space.md,
+    },
+    filterRailFade: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: space.xl,
     },
     resultBar: { gap: 2 },
     resultCount: { color: colors.text, fontFamily: family.semibold, fontSize: font.md },
     resultMeta: { fontFamily: family.regular, fontSize: font.xs },
-    loadingIndicator: { marginVertical: space.xl },
-    emptyState: { paddingVertical: space.xl, alignItems: 'center' },
+    loadingBlock: { marginVertical: space.xl, alignItems: 'center', gap: space.sm },
+    loadingText: { fontFamily: family.regular, fontSize: font.sm },
+    emptyState: { paddingVertical: space.xl, alignItems: 'center', gap: space.sm },
     emptyTitle: { color: colors.text, fontFamily: family.semibold, fontSize: font.lg },
+    emptyHint: { fontFamily: family.regular, fontSize: font.sm, textAlign: 'center', maxWidth: 360 },
     list: { gap: space.md },
     row: { gap: space.md },
     rowTop: {

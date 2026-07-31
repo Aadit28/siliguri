@@ -175,6 +175,10 @@ export type PostCategory =
   | 'daily_life'
   | 'best_practice';
 
+// Moderation state. Rows created before moderation existed have no status —
+// treat missing/undefined/null as 'approved' so legacy posts stay visible.
+export type PostStatus = 'pending' | 'approved' | 'rejected';
+
 export interface CommunityPost {
   id: string;
   author_id: string | null;
@@ -182,6 +186,7 @@ export interface CommunityPost {
   title: string;
   body: string;
   created_at: string;
+  status?: PostStatus | null;
   // joined / computed
   author_name?: string | null;
   reply_count?: number;

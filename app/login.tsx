@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Feather } from '@expo/vector-icons';
 import { Button, H1, Muted } from '../src/components/ui';
-import { AppColors, family, font, radius, space } from '../src/lib/theme';
+import { AppColors, family, font, radius, space, TAP } from '../src/lib/theme';
 import { useAuth } from '../src/context/AuthContext';
+import { useDisplayMode } from '../src/context/DisplayModeContext';
 import { supabaseConfigured } from '../src/lib/supabase';
+import { demoByKind, matchDemoUser, type DemoKind } from '../src/lib/demoAuth';
+import { listFamilyLinks } from '../src/lib/family';
 import { useTheme } from '../src/context/ThemeContext';
 
 type Mode = 'in' | 'up' | 'otp';
@@ -13,10 +17,11 @@ type Mode = 'in' | 'up' | 'otp';
 export default function Login() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { signIn, signUp, requestOtp, verifyOtp } = useAuth();
+  const { session, signIn, signUp, requestOtp, verifyOtp } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const isWide = width >= 900;
+  const { isComputerMode } = useDisplayMode();
+  const isWide = isComputerMode && width >= 900;
   const styles = makeStyles(colors, isWide);
 
   const [mode, setMode] = useState<Mode>('in');
@@ -29,10 +34,42 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
+  // Set after a real (non-demo) sign-in so the session-watcher effect can route
+  // the user once the auth session lands in context.
+  const [pendingRoute, setPendingRoute] = useState(false);
 
   function goHome() {
     router.replace('/');
   }
+
+  // Real accounts have no distinct "guardian" role (parents and guardians both
+  // sign up as role 'user'); a guardian is defined by holding an active family
+  // link. So after a real sign-in we look up the fresh session's guardian links
+  // and route to the guardian dashboard when one exists, mirroring the demo path.
+  useEffect(() => {
+    if (!pendingRoute || !session) return;
+    setPendingRoute(false);
+    let cancelled = false;
+    (async () => {
+      try {
+        const { asGuardian } = await listFamilyLinks(session.access_token);
+        if (cancelled) return;
+        if (asGuardian.some((link) => link.status !== 'revoked')) {
+          router.replace('/guardian');
+          return;
+        }
+      } catch {
+        // Fall through to the parent home on any lookup failure.
+      }
+      if (!cancelled) goHome();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRoute, session]);
 
   function switchMode(nextMode: Mode) {
     setMsg(null);
@@ -44,23 +81,47 @@ export default function Login() {
     setPhone('');
     setOtpCode('');
     setOtpSent(false);
+    setShowPassword(false);
+  }
+
+  function fillDemo(kind: DemoKind) {
+    const demo = demoByKind(kind);
+    setMsg(null);
+    setUsername(demo.username);
+    setPassword(demo.password);
   }
 
   async function submit() {
     setMsg(null);
-    if (!supabaseConfigured) {
-      setMsg('Backend not configured. Add Supabase keys to .env.');
-      return;
-    }
     setBusy(true);
+    // Sign-in goes through signIn, which handles the offline demo accounts even
+    // when the backend is not configured. Sign-up still needs the backend.
     if (mode === 'in') {
       const { error } = await signIn(username, password);
       setBusy(false);
-      if (error) setMsg(error);
-      else goHome();
+      if (error) {
+        setMsg(error);
+        return;
+      }
+      // Guardians land on the management dashboard, like other family-care
+      // apps; parents get the regular home experience.
+      const demo = matchDemoUser(username, password);
+      if (demo) {
+        if (demo.kind === 'guardian') router.replace('/guardian');
+        else goHome();
+        return;
+      }
+      // Real account: defer routing to the session-watcher effect, which checks
+      // for guardian links once the new session is in context.
+      setPendingRoute(true);
       return;
     }
 
+    if (!supabaseConfigured) {
+      setBusy(false);
+      setMsg('Backend not configured. Add Supabase keys to .env.');
+      return;
+    }
     const { error } = await signUp(username, password, fullName.trim(), 'username', phone);
     setBusy(false);
     if (error) setMsg(error);
@@ -227,20 +288,67 @@ export default function Login() {
                   onChangeText={setPhone}
                 />
               ) : null}
-              <TextInput
-                style={styles.input}
-                placeholder={t('common.password')}
-                placeholderTextColor={colors.textSubtle}
-                autoComplete={isSignIn ? 'password' : 'new-password'}
-                textContentType={isSignIn ? 'password' : 'newPassword'}
-                importantForAutofill={isSignIn ? 'yes' : 'no'}
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-              />
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={[styles.input, styles.passwordInput]}
+                  placeholder={t('common.password')}
+                  placeholderTextColor={colors.textSubtle}
+                  autoComplete={isSignIn ? 'password' : 'new-password'}
+                  textContentType={isSignIn ? 'password' : 'newPassword'}
+                  importantForAutofill={isSignIn ? 'yes' : 'no'}
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? t('common.hidePassword') : t('common.showPassword')}
+                  onPress={() => setShowPassword((v) => !v)}
+                  style={styles.passwordToggle}
+                  hitSlop={8}
+                >
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textMuted} />
+                </Pressable>
+              </View>
             </View>
 
             {msg ? <Muted style={[styles.message, { color: colors.danger }]}>{msg}</Muted> : null}
+
+            {isSignIn ? (
+              <View style={styles.demoRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showDemo }}
+                  onPress={() => setShowDemo((v) => !v)}
+                  style={styles.demoHeader}
+                  hitSlop={6}
+                >
+                  <Feather name="tool" size={13} color={colors.textSubtle} />
+                  <Muted style={styles.demoLabel}>Demo / test accounts</Muted>
+                  <Feather name={showDemo ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSubtle} />
+                </Pressable>
+                {showDemo ? (
+                  <>
+                    <Muted style={styles.demoNote}>Sample logins for testing only — not real accounts.</Muted>
+                    <View style={styles.demoChips}>
+                      {(['parent', 'guardian'] as DemoKind[]).map((kind) => (
+                        <Pressable
+                          key={kind}
+                          accessibilityRole="button"
+                          onPress={() => fillDemo(kind)}
+                          style={[styles.demoChip, { borderColor: colors.border, backgroundColor: colors.bgAlt }]}
+                          hitSlop={6}
+                        >
+                          <Text style={[styles.demoChipText, { color: colors.textMuted }]}>
+                            {demoByKind(kind).fullName} · {kind === 'parent' ? 'Parent' : 'Guardian'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
 
             <View style={styles.actions}>
               <Button label={isSignIn ? t('common.signIn') : t('auth.createAccount')} onPress={submit} loading={busy} />
@@ -313,6 +421,30 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     codeInput: { letterSpacing: 6, fontFamily: family.semibold, fontSize: font.lg },
     hint: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.4 },
     message: { fontFamily: family.semibold },
+    passwordRow: { position: 'relative', justifyContent: 'center' },
+    passwordInput: { paddingRight: 52 },
+    passwordToggle: {
+      position: 'absolute',
+      right: space.sm,
+      height: TAP,
+      width: TAP,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    demoRow: { gap: space.xs, marginTop: space.sm },
+    demoHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
+    demoLabel: { fontFamily: family.semibold, fontSize: font.sm, flex: 1 },
+    demoNote: { fontFamily: family.regular, fontSize: font.xs, lineHeight: font.xs * 1.4 },
+    demoChips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    demoChip: {
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    demoChipText: { fontFamily: family.medium, fontSize: font.sm },
     actions: { gap: space.md, marginTop: space.sm },
     secondaryAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     secondaryText: { fontFamily: family.semibold, fontSize: font.md },

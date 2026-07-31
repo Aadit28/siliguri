@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -26,6 +27,7 @@ import {
   Service,
 } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
+import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchServices } from '../../src/lib/api';
 import {
@@ -41,19 +43,164 @@ import {
   removeFamilyFavorite,
   removeFamilyReminder,
   setCareTeamMember,
+  updateFamilyReminder,
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
+import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
+import { todayISO } from '../../src/lib/notifications';
 
 type SectionKey = 'overview' | 'reminders' | 'places' | 'care';
 
 const REMINDER_REPEATS: FamilyReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
 const CARE_CATEGORIES: CareTeamCategory[] = ['doctor', 'grocery', 'pharmacy', 'hospital', 'helper', 'other'];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE = /^\d{2}:\d{2}$/;
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function pad(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+function toISO(year: number, month: number, day: number) {
+  return `${year}-${pad(month + 1)}-${pad(day)}`;
+}
+
+// Reminder times are the parent's local (Asia/Kolkata) wall clock. Guardians
+// abroad see the same numbers relabelled so there's no ambiguity — "8:30 AM IST".
+function formatISTTime(time?: string | null) {
+  if (!time) return null;
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return time;
+  const period = h < 12 ? 'AM' : 'PM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${pad(m)} ${period} IST`;
+}
+
+// lastActiveAt is an absolute server timestamp; render it as the parent's own
+// Kolkata wall time rather than the guardian's local zone.
+function formatISTStamp(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const k = new Date(d.getTime() + IST_OFFSET_MS);
+  const period = k.getUTCHours() < 12 ? 'AM' : 'PM';
+  const hour12 = k.getUTCHours() % 12 === 0 ? 12 : k.getUTCHours() % 12;
+  return `${k.getUTCDate()} ${MONTHS_SHORT[k.getUTCMonth()]} ${k.getUTCFullYear()}, ${hour12}:${pad(
+    k.getUTCMinutes(),
+  )} ${period} IST`;
+}
+
+function monthName(year: number, month: number) {
+  return `${MONTHS_SHORT[((month % 12) + 12) % 12]} ${year + Math.floor(month / 12)}`;
+}
+
+// Weeks of day numbers for the given month; null = blank leading/trailing cell.
+function monthMatrix(year: number, month: number): (number | null)[][] {
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = Array(firstWeekday).fill(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+// Inline month-grid date picker, mirroring the calendar screen's pattern so a
+// guardian taps a real day instead of typing a raw YYYY-MM-DD string.
+function DatePicker({
+  valueISO,
+  onChange,
+  colors,
+  styles,
+}: {
+  valueISO: string;
+  onChange: (iso: string) => void;
+  colors: AppColors;
+  styles: Styles;
+}) {
+  const [cursor, setCursor] = useState(() => {
+    const [y, m] = valueISO.split('-').map(Number);
+    const base = y && m ? new Date(y, m - 1, 1) : new Date();
+    return { year: base.getFullYear(), month: base.getMonth() };
+  });
+  const weeks = useMemo(() => monthMatrix(cursor.year, cursor.month), [cursor]);
+  const weekdayLabels = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + i).toLocaleDateString(undefined, { weekday: 'narrow' })),
+    [],
+  );
+  const today = todayISO();
+
+  function goMonth(delta: number) {
+    setCursor(({ year, month }) => {
+      const next = new Date(year, month + delta, 1);
+      return { year: next.getFullYear(), month: next.getMonth() };
+    });
+  }
+
+  return (
+    <View style={[styles.pickerCard, { borderColor: colors.border, backgroundColor: colors.surfaceTint }]}>
+      <View style={styles.pickerHeader}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={monthName(cursor.year, cursor.month - 1)}
+          onPress={() => goMonth(-1)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.pickerNav, pressed ? { backgroundColor: colors.overlay } : null]}
+        >
+          <Feather name="chevron-left" size={20} color={colors.text} />
+        </Pressable>
+        <Text style={styles.pickerMonth}>{monthName(cursor.year, cursor.month)}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={monthName(cursor.year, cursor.month + 1)}
+          onPress={() => goMonth(1)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.pickerNav, pressed ? { backgroundColor: colors.overlay } : null]}
+        >
+          <Feather name="chevron-right" size={20} color={colors.text} />
+        </Pressable>
+      </View>
+      <View style={styles.pickerWeekRow}>
+        {weekdayLabels.map((label, i) => (
+          <View key={`wd-${i}`} style={styles.pickerCell}>
+            <Text style={styles.pickerWeekday}>{label}</Text>
+          </View>
+        ))}
+      </View>
+      {weeks.map((week, wi) => (
+        <View key={`w-${wi}`} style={styles.pickerWeekRow}>
+          {week.map((day, di) => {
+            if (!day) return <View key={`d-${wi}-${di}`} style={styles.pickerCell} />;
+            const iso = toISO(cursor.year, cursor.month, day);
+            const isSelected = iso === valueISO;
+            const isToday = iso === today;
+            return (
+              <Pressable
+                key={`d-${wi}-${di}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                onPress={() => onChange(iso)}
+                style={styles.pickerCell}
+              >
+                <View
+                  style={[
+                    styles.pickerDay,
+                    isSelected
+                      ? { backgroundColor: colors.accent }
+                      : isToday
+                        ? { borderWidth: 1.5, borderColor: colors.accent }
+                        : null,
+                  ]}
+                >
+                  <Text style={[styles.pickerDayNum, { color: isSelected ? colors.accentFg : colors.text }]}>{day}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function Field({
@@ -153,7 +300,8 @@ export default function ParentDetail() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isWide = width >= 900;
+  const { isComputerMode } = useDisplayMode();
+  const isWide = isComputerMode && width >= 900;
   const styles = makeStyles(colors, isWide);
 
   const [parentName, setParentName] = useState('');
@@ -247,7 +395,7 @@ export default function ParentDetail() {
         ) : section === 'overview' ? (
           <OverviewSection token={token} parentId={parentId} styles={styles} colors={colors} isWide={isWide} />
         ) : section === 'reminders' ? (
-          <RemindersSection token={token} parentId={parentId} styles={styles} colors={colors} />
+          <RemindersSection token={token} parentId={parentId} styles={styles} colors={colors} currentUserId={user.id} />
         ) : section === 'places' ? (
           <PlacesSection token={token} parentId={parentId} styles={styles} colors={colors} />
         ) : (
@@ -317,7 +465,7 @@ function OverviewSection({
   }
 
   const lastActive = data.lastActiveAt
-    ? new Date(data.lastActiveAt).toLocaleDateString()
+    ? formatISTStamp(data.lastActiveAt)
     : t('family.neverActive');
 
   const stats: { label: string; value: string | number }[] = [
@@ -375,16 +523,19 @@ function RemindersSection({
   parentId,
   styles,
   colors,
+  currentUserId,
 }: {
   token: string;
   parentId: string;
   styles: Styles;
   colors: AppColors;
+  currentUserId: string;
 }) {
   const { t } = useTranslation();
   const [reminders, setReminders] = useState<FamilyReminder[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [editId, setEditId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(todayISO());
@@ -392,6 +543,8 @@ function RemindersSection({
   const [repeat, setRepeat] = useState<FamilyReminderRepeat>('once');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dateError, setDateError] = useState(false);
+  const [timeError, setTimeError] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const [removeTarget, setRemoveTarget] = useState<FamilyReminder | null>(null);
@@ -423,33 +576,71 @@ function RemindersSection({
     };
   }, [reminders]);
 
-  async function add() {
+  function resetForm() {
+    setEditId(null);
+    setTitle('');
+    setNote('');
+    setDate(todayISO());
+    setTime('');
+    setRepeat('once');
+    setDateError(false);
+    setTimeError(false);
+  }
+
+  function startEdit(r: FamilyReminder) {
+    setError(null);
+    setSuccess(false);
+    setEditId(r.id);
+    setTitle(r.title);
+    setNote(r.note ?? '');
+    setDate(r.dateISO);
+    setTime(r.time ?? '');
+    setRepeat(r.repeat);
+    setDateError(false);
+    setTimeError(false);
+  }
+
+  async function save() {
     setError(null);
     setSuccess(false);
     if (!title.trim()) return;
-    if (!DATE_RE.test(date.trim())) {
+    if (!isValidISODate(date)) {
+      setDateError(true);
       setError(t('family.badDate'));
       return;
     }
-    if (time.trim() && !TIME_RE.test(time.trim())) {
+    const trimmedTime = time.trim();
+    const normalizedTime = trimmedTime ? normalizeTimeInput(trimmedTime) : null;
+    if (trimmedTime && !normalizedTime) {
+      setTimeError(true);
       setError(t('family.badTime'));
       return;
     }
+    setDateError(false);
+    setTimeError(false);
     setSaving(true);
     try {
-      await addFamilyReminder(token, {
-        parentId,
-        title: title.trim(),
-        note: note.trim() || null,
-        dateISO: date.trim(),
-        time: time.trim() || null,
-        repeat,
-      });
-      setTitle('');
-      setNote('');
-      setDate(todayISO());
-      setTime('');
-      setRepeat('once');
+      if (editId) {
+        await updateFamilyReminder(token, {
+          parentId,
+          id: editId,
+          title: title.trim(),
+          note: note.trim() || null,
+          dateISO: date,
+          time: normalizedTime,
+          repeat,
+        });
+      } else {
+        await addFamilyReminder(token, {
+          parentId,
+          title: title.trim(),
+          note: note.trim() || null,
+          dateISO: date,
+          time: normalizedTime,
+          repeat,
+        });
+      }
+      resetForm();
       setSuccess(true);
       await load();
     } catch (e) {
@@ -480,16 +671,28 @@ function RemindersSection({
     }
   }
 
-  function renderReminder(r: FamilyReminder, done: boolean) {
+  function renderReminder(r: FamilyReminder, done: boolean, overdue = false) {
+    const createdByYou = r.createdBy === currentUserId;
     return (
-      <Card key={r.id} style={styles.itemCard}>
+      <Card key={r.id} style={[styles.itemCard, overdue ? styles.itemCardOverdue : null]}>
         <View style={styles.itemMain}>
+          {overdue ? (
+            <View style={styles.overdueTag}>
+              <Feather name="alert-triangle" size={13} color={colors.danger} />
+              <Text style={[styles.overdueTagText, { color: colors.danger }]}>{t('family.overdueReminders')}</Text>
+            </View>
+          ) : null}
           <Text style={[styles.itemTitle, done ? styles.itemTitleDone : null]}>{r.title}</Text>
           {r.note ? <Text style={styles.itemNote}>{r.note}</Text> : null}
-          <Text style={styles.itemMeta}>
+          <Text style={[styles.itemMeta, overdue ? { color: colors.danger } : null]}>
             {r.dateISO}
-            {r.time ? ` · ${r.time}` : ''}
+            {r.time ? ` · ${formatISTTime(r.time)}` : ''}
             {r.repeat !== 'once' ? ` · ${t(`family.repeat.${r.repeat}`)}` : ''}
+          </Text>
+          <Text style={styles.itemByline}>
+            {createdByYou
+              ? t('family.createdByYou', { defaultValue: 'Added by you' })
+              : t('family.createdByOther', { defaultValue: 'Added by a family member' })}
           </Text>
         </View>
         <View style={styles.itemActions}>
@@ -502,6 +705,17 @@ function RemindersSection({
             >
               <Feather name="check" size={16} color={colors.success} />
               <Text style={[styles.ghostActionText, { color: colors.success }]}>{t('family.markDone')}</Text>
+            </Pressable>
+          ) : null}
+          {!done ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('family.editReminder')}
+              onPress={() => startEdit(r)}
+              style={({ pressed }) => [styles.ghostAction, pressed ? { backgroundColor: colors.surfaceTint } : null]}
+            >
+              <Feather name="edit-2" size={16} color={colors.textMuted} />
+              <Text style={[styles.ghostActionText, { color: colors.textMuted }]}>{t('family.edit')}</Text>
             </Pressable>
           ) : null}
           <Pressable
@@ -521,7 +735,7 @@ function RemindersSection({
   return (
     <View style={styles.sectionBody}>
       <Card>
-        <Text style={styles.cardTitle}>{t('family.addReminder')}</Text>
+        <Text style={styles.cardTitle}>{editId ? t('family.editReminder') : t('family.addReminder')}</Text>
         <Field
           label={t('family.reminderTitleLabel')}
           value={title}
@@ -534,23 +748,31 @@ function RemindersSection({
           onChangeText={setNote}
           placeholder={t('family.reminderNotePlaceholder')}
         />
-        <Field
-          label={t('family.reminderDateLabel')}
-          value={date}
-          onChangeText={setDate}
-          placeholder="YYYY-MM-DD"
-          keyboardType="numbers-and-punctuation"
-          autoCapitalize="none"
-          maxLength={10}
-        />
+        <View style={fieldStyles.wrap}>
+          <Text style={[fieldStyles.label, { color: dateError ? colors.danger : colors.textMuted }]}>
+            {t('family.reminderDateLabel')}
+          </Text>
+          <DatePicker
+            valueISO={date}
+            onChange={(iso) => {
+              setDate(iso);
+              setDateError(false);
+            }}
+            colors={colors}
+            styles={styles}
+          />
+        </View>
         <Field
           label={t('family.reminderTimeLabel')}
           value={time}
-          onChangeText={setTime}
-          placeholder="HH:MM"
+          onChangeText={(value) => {
+            setTime(value);
+            setTimeError(false);
+          }}
+          placeholder={t('family.reminderTimePlaceholder', { defaultValue: 'e.g. 8:30 am' })}
           keyboardType="numbers-and-punctuation"
           autoCapitalize="none"
-          maxLength={5}
+          maxLength={8}
         />
         <View style={fieldStyles.wrap}>
           <Text style={[fieldStyles.label, { color: colors.textMuted }]}>{t('family.reminderRepeatLabel')}</Text>
@@ -563,7 +785,17 @@ function RemindersSection({
         {error ? <Notice kind="error" message={error} /> : null}
         {success ? <Notice kind="success" message={t('family.saved')} /> : null}
         <View style={styles.formAction}>
-          <Button label={t('family.saveReminder')} onPress={add} loading={saving} disabled={!title.trim()} />
+          <Button
+            label={editId ? t('family.save') : t('family.saveReminder')}
+            onPress={save}
+            loading={saving}
+            disabled={!title.trim()}
+          />
+          {editId ? (
+            <View style={{ marginTop: 12 }}>
+              <Button label={t('family.cancel')} variant="secondary" onPress={resetForm} />
+            </View>
+          ) : null}
         </View>
       </Card>
 
@@ -581,7 +813,7 @@ function RemindersSection({
           {groups.overdue.length > 0 ? (
             <>
               <H2 style={styles.subHeader}>{t('family.overdueReminders')}</H2>
-              {groups.overdue.map((r) => renderReminder(r, false))}
+              {groups.overdue.map((r) => renderReminder(r, false, true))}
             </>
           ) : null}
           {groups.upcoming.length > 0 ? (
@@ -631,6 +863,7 @@ function PlacesSection({
   const [note, setNote] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<FamilyFavorite | null>(null);
 
   async function loadFavorites() {
@@ -661,7 +894,7 @@ function PlacesSection({
 
   const savedIds = useMemo(() => new Set(favorites.map((f) => f.serviceId)), [favorites]);
 
-  const matches = useMemo(() => {
+  const allMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return services
@@ -669,17 +902,21 @@ function PlacesSection({
       .filter((s) => {
         const text = [s.name, s.address, s.town, t(`categories.${s.category}`)].filter(Boolean).join(' ').toLowerCase();
         return text.includes(q);
-      })
-      .slice(0, 12);
+      });
   }, [query, services, savedIds, t]);
+
+  const MATCH_LIMIT = 12;
+  const matches = allMatches.slice(0, MATCH_LIMIT);
 
   async function add(service: Service) {
     setError(null);
+    setSuccess(false);
     setBusyId(service.id);
     try {
       await addFamilyFavorite(token, { parentId, serviceId: service.id, note: note.trim() || null });
       setNote('');
       setQuery('');
+      setSuccess(true);
       await loadFavorites();
     } catch (e) {
       setError((e as Error).message);
@@ -722,31 +959,50 @@ function PlacesSection({
           </View>
         </View>
         {error ? <Notice kind="error" message={error} /> : null}
-        {query.trim() && matches.length > 0 ? (
-          <View style={styles.resultList}>
-            {matches.map((s) => (
-              <Pressable
-                key={s.id}
-                accessibilityRole="button"
-                onPress={() => add(s)}
-                disabled={busyId !== null}
-                style={({ pressed }) => [styles.resultRow, pressed ? { backgroundColor: colors.surfaceTint } : null]}
-              >
-                <View style={styles.rowBody}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>{s.name}</Text>
-                  <Text style={styles.rowMeta} numberOfLines={1}>
-                    {t(`categories.${s.category}`)}
-                    {s.town ? ` · ${s.town}` : ''}
-                  </Text>
-                </View>
-                {busyId === s.id ? (
-                  <ActivityIndicator color={colors.textMuted} />
-                ) : (
-                  <Feather name="plus-circle" size={20} color={colors.accent} />
-                )}
-              </Pressable>
-            ))}
-          </View>
+        {success ? <Notice kind="success" message={t('family.saved')} /> : null}
+        {query.trim() ? (
+          allMatches.length === 0 ? (
+            <View style={styles.searchEmpty}>
+              <Feather name="search" size={18} color={colors.textSubtle} />
+              <Muted style={styles.stateText}>
+                {t('family.noMatches', { defaultValue: 'No services match your search.' })}
+              </Muted>
+            </View>
+          ) : (
+            <View style={styles.resultList}>
+              {matches.map((s) => (
+                <Pressable
+                  key={s.id}
+                  accessibilityRole="button"
+                  onPress={() => add(s)}
+                  disabled={busyId !== null}
+                  style={({ pressed }) => [styles.resultRow, pressed ? { backgroundColor: colors.surfaceTint } : null]}
+                >
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{s.name}</Text>
+                    <Text style={styles.rowMeta} numberOfLines={1}>
+                      {t(`categories.${s.category}`)}
+                      {s.town ? ` · ${s.town}` : ''}
+                    </Text>
+                  </View>
+                  {busyId === s.id ? (
+                    <ActivityIndicator color={colors.textMuted} />
+                  ) : (
+                    <Feather name="plus-circle" size={20} color={colors.accent} />
+                  )}
+                </Pressable>
+              ))}
+              {allMatches.length > MATCH_LIMIT ? (
+                <Text style={styles.resultCount}>
+                  {t('family.showingMatches', {
+                    count: matches.length,
+                    total: allMatches.length,
+                    defaultValue: 'Showing {{count}} of {{total}} matches. Refine your search to narrow it down.',
+                  })}
+                </Text>
+              ) : null}
+            </View>
+          )
         ) : null}
       </Card>
 
@@ -813,6 +1069,7 @@ function CareTeamSection({
   const [members, setMembers] = useState<CareTeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [editId, setEditId] = useState<string | null>(null);
   const [category, setCategory] = useState<CareTeamCategory>('doctor');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -839,7 +1096,25 @@ function CareTeamSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, parentId]);
 
-  async function add() {
+  function resetForm() {
+    setEditId(null);
+    setCategory('doctor');
+    setName('');
+    setPhone('');
+    setNote('');
+  }
+
+  function startEdit(m: CareTeamMember) {
+    setError(null);
+    setSuccess(false);
+    setEditId(m.id);
+    setCategory(m.category);
+    setName(m.name);
+    setPhone(m.phone ?? '');
+    setNote(m.note ?? '');
+  }
+
+  async function save() {
     setError(null);
     setSuccess(false);
     if (!name.trim()) return;
@@ -847,14 +1122,13 @@ function CareTeamSection({
     try {
       await setCareTeamMember(token, {
         parentId,
+        id: editId ?? undefined,
         category,
         name: name.trim(),
         phone: phone.trim() || null,
         note: note.trim() || null,
       });
-      setName('');
-      setPhone('');
-      setNote('');
+      resetForm();
       setSuccess(true);
       await load();
     } catch (e) {
@@ -881,7 +1155,7 @@ function CareTeamSection({
       <Muted style={styles.sectionIntro}>{t('family.careTeamIntro')}</Muted>
 
       <Card>
-        <Text style={styles.cardTitle}>{t('family.addContact')}</Text>
+        <Text style={styles.cardTitle}>{editId ? t('family.editContact') : t('family.addContact')}</Text>
         <View style={fieldStyles.wrap}>
           <Text style={[fieldStyles.label, { color: colors.textMuted }]}>{t('family.categoryLabel')}</Text>
           <View style={styles.wrapChipRow}>
@@ -907,7 +1181,17 @@ function CareTeamSection({
         {error ? <Notice kind="error" message={error} /> : null}
         {success ? <Notice kind="success" message={t('family.saved')} /> : null}
         <View style={styles.formAction}>
-          <Button label={t('family.saveContact')} onPress={add} loading={saving} disabled={!name.trim()} />
+          <Button
+            label={editId ? t('family.save') : t('family.saveContact')}
+            onPress={save}
+            loading={saving}
+            disabled={!name.trim()}
+          />
+          {editId ? (
+            <View style={{ marginTop: 12 }}>
+              <Button label={t('family.cancel')} variant="secondary" onPress={resetForm} />
+            </View>
+          ) : null}
         </View>
       </Card>
 
@@ -926,10 +1210,32 @@ function CareTeamSection({
             <View style={styles.itemMain}>
               <Text style={styles.itemCategory}>{t(`family.categories.${m.category}`)}</Text>
               <Text style={styles.itemTitle} numberOfLines={1}>{m.name}</Text>
-              {m.phone ? <Text style={styles.itemMeta} numberOfLines={1}>{m.phone}</Text> : null}
+              {m.phone ? (
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={`${t('family.callContact')} ${m.phone}`}
+                  onPress={() => Linking.openURL(`tel:${m.phone!.replace(/\s+/g, '')}`)}
+                  hitSlop={6}
+                  style={styles.phoneRow}
+                >
+                  <Feather name="phone" size={14} color={colors.accent} />
+                  <Text style={[styles.itemMeta, styles.phoneLink, { color: colors.accent }]} numberOfLines={1}>
+                    {m.phone}
+                  </Text>
+                </Pressable>
+              ) : null}
               {m.note ? <Text style={styles.itemNote}>{m.note}</Text> : null}
             </View>
             <View style={styles.itemActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('family.editContact')}
+                onPress={() => startEdit(m)}
+                style={({ pressed }) => [styles.ghostAction, pressed ? { backgroundColor: colors.surfaceTint } : null]}
+              >
+                <Feather name="edit-2" size={16} color={colors.textMuted} />
+                <Text style={[styles.ghostActionText, { color: colors.textMuted }]}>{t('family.edit')}</Text>
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('family.deleteContact')}
@@ -1022,6 +1328,99 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
+    resultCount: {
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      color: colors.textSubtle,
+      lineHeight: Math.round(font.xs * 1.5),
+      paddingTop: space.sm,
+    },
+    searchEmpty: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      marginTop: space.md,
+      paddingVertical: space.md,
+    },
+    itemCardOverdue: {
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: colors.dangerSoft,
+    },
+    overdueTag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginBottom: 2,
+    },
+    overdueTagText: {
+      fontSize: font.xs,
+      fontFamily: family.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    itemByline: {
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      color: colors.textSubtle,
+      marginTop: 4,
+    },
+    phoneRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 2,
+      alignSelf: 'flex-start',
+    },
+    phoneLink: {
+      marginTop: 0,
+      textDecorationLine: 'underline',
+    },
+    pickerCard: {
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: space.sm,
+    },
+    pickerHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      marginBottom: space.xs,
+    },
+    pickerNav: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pickerMonth: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      color: colors.text,
+    },
+    pickerWeekRow: { flexDirection: 'row' },
+    pickerCell: {
+      flex: 1,
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pickerWeekday: {
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      color: colors.textSubtle,
+    },
+    pickerDay: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pickerDayNum: { fontSize: font.sm, fontFamily: family.medium },
     dialogBody: {
       fontSize: font.md,
       fontFamily: family.regular,

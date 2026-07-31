@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ColorValue, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ColorValue, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -55,7 +55,6 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   const { colors, mode } = useTheme();
   const { isComputerMode } = useDisplayMode();
   const [innerWidth, setInnerWidth] = useState(0);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const slide = useSharedValue(state.index);
 
   const itemWidth = innerWidth > 0 ? innerWidth / state.routes.length : 0;
@@ -71,20 +70,15 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
     });
   }, [state.index, slide]);
 
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
   const pillStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: slide.value * itemWidth }],
   }));
 
-  if (isComputerMode || keyboardOpen) return null;
+  // B10: never hide the tab bar on keyboard open — elders lose all navigation.
+  // The bar is absolutely positioned at bottom:14; on Android (adjustResize, the
+  // pilot platform) the window resizes on keyboard show so it floats just above
+  // the keyboard. Only computer mode (desktop chrome supplies its own nav) hides it.
+  if (isComputerMode) return null;
 
   return (
     <View style={[styles.tabBar, shadow.md]}>
@@ -258,5 +252,5 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 6,
   },
-  label: { fontFamily: family.medium, fontSize: font.xs, lineHeight: 16 },
+  label: { fontFamily: family.medium, fontSize: font.sm, lineHeight: 18 },
 });
