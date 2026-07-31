@@ -1,7 +1,9 @@
 const {
   adminClient,
+  allowDurable,
   createSession,
   hashesMatch,
+  recordDurable,
   localPhoneUserId,
   makeRateLimiter,
   normalizePhone,
@@ -41,6 +43,23 @@ module.exports = async function handler(req, res) {
     }
 
     const supabase = adminClient();
+
+    // Durable caps on FAILED attempts only (migration 12): the in-memory
+    // limiter above resets on every cold start, so it is burst protection, not
+    // an actual ceiling. Successful sign-ins are never counted — a family
+    // sharing one tablet must not lock themselves out by using it.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const failBuckets = [
+      `signin-fail:id:${phone || username}`,
+      `signin-fail:ip:${requestIp(req)}`,
+    ];
+    const [idAllowed, ipAllowed] = await Promise.all([
+      allowDurable(supabase, failBuckets[0], { max: 15, windowMs: DAY_MS }),
+      allowDurable(supabase, failBuckets[1], { max: 60, windowMs: DAY_MS }),
+    ]);
+    if (!idAllowed || !ipAllowed) {
+      return send(res, 429, { error: 'Too many failed sign-in attempts. Try again tomorrow.' });
+    }
     let { data: user, error } = await (phone
       ? supabase
           .from('user_accounts')
@@ -70,6 +89,7 @@ module.exports = async function handler(req, res) {
       if (error) throw error;
     }
     if (!user || !hashesMatch(passwordHash(password, user.password_salt), user.password_hash)) {
+      await recordDurable(supabase, failBuckets);
       return send(res, 401, {
         error: phone ? 'Invalid phone number or password.' : 'Invalid username or password.',
       });

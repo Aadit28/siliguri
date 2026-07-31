@@ -26,6 +26,18 @@ module.exports = async function handler(req, res) {
 
   try {
     const client = adminClient();
+
+    // Housekeeping riding the daily wake-up: durable rate-limit events older
+    // than two days are outside every window in use and only slow the counts.
+    // Runs before the digest work so an early "no links" return still prunes.
+    await client
+      .from('rate_events')
+      .delete()
+      .lt('created_at', new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString())
+      .then(({ error }) => {
+        if (error) console.warn('rate_events purge failed:', error.message);
+      });
+
     const todayISO = istTodayISO();
     // Bound the scan: a reminder more than 30 days overdue has been reported
     // for a month already and only adds noise.

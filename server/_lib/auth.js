@@ -98,6 +98,41 @@ function makeRateLimiter({ max, windowMs }) {
   };
 }
 
+// Durable limiter backed by rate_events (migration 12): counts survive cold
+// starts and hold across instances, which the in-memory limiter cannot do.
+// Callers check with allowDurable and record with recordDurable, so only the
+// events worth counting (e.g. FAILED sign-ins) spend the budget.
+//
+// Fails OPEN with a log: the limiter reads the same database the guarded
+// operation writes, so when the database is down the operation fails anyway,
+// and a broken limiter must not lock everyone out on a blip.
+async function allowDurable(client, bucket, { max, windowMs }) {
+  try {
+    const since = new Date(Date.now() - windowMs).toISOString();
+    const { count, error } = await client
+      .from('rate_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('bucket', bucket)
+      .gte('created_at', since);
+    if (error) throw error;
+    return (count || 0) < max;
+  } catch (error) {
+    console.warn('Durable rate check failed (open):', error?.message || error);
+    return true;
+  }
+}
+
+async function recordDurable(client, buckets) {
+  try {
+    const rows = (Array.isArray(buckets) ? buckets : [buckets]).map((bucket) => ({ bucket }));
+    if (!rows.length) return;
+    const { error } = await client.from('rate_events').insert(rows);
+    if (error) throw error;
+  } catch (error) {
+    console.warn('Durable rate record failed:', error?.message || error);
+  }
+}
+
 // Anything a client can set is not an identity. x-forwarded-for is
 // client-writable: taking its FIRST entry lets an attacker mint a fresh
 // rate-limit bucket per request. Prefer the platform's own header, then the
@@ -266,6 +301,7 @@ async function requireFamilyLink(auth, parentId) {
 
 module.exports = {
   adminClient,
+  allowDurable,
   authenticate,
   createSession,
   hashesMatch,
@@ -276,6 +312,7 @@ module.exports = {
   passwordHash,
   publicUser,
   readBody,
+  recordDurable,
   requestIp,
   requireAdmin,
   requireCityStaff,
