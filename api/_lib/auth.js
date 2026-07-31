@@ -98,9 +98,21 @@ function makeRateLimiter({ max, windowMs }) {
   };
 }
 
+// Anything a client can set is not an identity. x-forwarded-for is
+// client-writable: taking its FIRST entry lets an attacker mint a fresh
+// rate-limit bucket per request. Prefer the platform's own header, then the
+// LAST forwarded entry (appended by the proxy closest to us, so the earlier
+// spoofed entries cannot displace it), and fall back to the socket.
 function requestIp(req) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return fwd || req.socket?.remoteAddress || 'unknown';
+  const platform =
+    req.headers['x-vercel-forwarded-for'] || req.headers['x-real-ip'] || '';
+  const trusted = String(platform).split(',').pop()?.trim();
+  if (trusted) return trusted;
+  const chain = String(req.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return chain[chain.length - 1] || req.socket?.remoteAddress || 'unknown';
 }
 
 function normalizeUsername(username) {

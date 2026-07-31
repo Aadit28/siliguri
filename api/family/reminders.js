@@ -3,6 +3,29 @@ const { authenticate, readBody, requireFamilyLink, send, withCors,
 
 const REPEATS = ['once', 'daily', 'weekly', 'monthly'];
 
+// A wrongly-ordered date ("31-07-2026") used to be stored verbatim, after which
+// the recurrence helpers passed it through unchanged and the reminder never
+// fired — a silent failure on the one feature elders depend on.
+function invalidDate(dateISO) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return 'Use a date like 2026-08-15.';
+  const parsed = new Date(`${dateISO}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dateISO) {
+    return 'That date does not exist.';
+  }
+  return undefined;
+}
+
+function invalidTime(time) {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return 'Use a time like 08:30.';
+  // Shape alone is not enough: "25:99" matches the pattern and would schedule
+  // a notification that can never fire.
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return 'Use a time between 00:00 and 23:59.';
+  return undefined;
+}
+
 function toReminder(row) {
   return {
     id: row.id,
@@ -43,6 +66,13 @@ module.exports = async function handler(req, res) {
       const dateISO = String(body.dateISO || '').trim();
       if (!title) return send(res, 400, { error: 'A title is required.' });
       if (!dateISO) return send(res, 400, { error: 'A date is required.' });
+      const dateError = invalidDate(dateISO);
+      if (dateError) return send(res, 400, { error: dateError });
+      const time = body.time ? String(body.time).trim() : '';
+      if (time) {
+        const timeError = invalidTime(time);
+        if (timeError) return send(res, 400, { error: timeError });
+      }
       const repeat = REPEATS.includes(body.repeat) ? body.repeat : 'once';
 
       const { data, error } = await auth.supabase
@@ -53,7 +83,7 @@ module.exports = async function handler(req, res) {
           title,
           note: body.note ? String(body.note).trim() : null,
           date_iso: dateISO,
-          time: body.time ? String(body.time).trim() : null,
+          time: time || null,
           repeat,
         })
         .select(COLS)
@@ -68,8 +98,20 @@ module.exports = async function handler(req, res) {
       const patch = { updated_at: new Date().toISOString() };
       if (body.title !== undefined) patch.title = String(body.title || '').trim();
       if (body.note !== undefined) patch.note = body.note ? String(body.note).trim() : null;
-      if (body.dateISO !== undefined) patch.date_iso = String(body.dateISO || '').trim();
-      if (body.time !== undefined) patch.time = body.time ? String(body.time).trim() : null;
+      if (body.dateISO !== undefined) {
+        const nextDate = String(body.dateISO || '').trim();
+        const dateError = invalidDate(nextDate);
+        if (dateError) return send(res, 400, { error: dateError });
+        patch.date_iso = nextDate;
+      }
+      if (body.time !== undefined) {
+        const nextTime = body.time ? String(body.time).trim() : '';
+        if (nextTime) {
+          const timeError = invalidTime(nextTime);
+          if (timeError) return send(res, 400, { error: timeError });
+        }
+        patch.time = nextTime || null;
+      }
       if (body.repeat !== undefined && REPEATS.includes(body.repeat)) patch.repeat = body.repeat;
 
       const { data, error } = await auth.supabase

@@ -97,18 +97,19 @@ module.exports = async function handler(req, res) {
         return send(res, 503, { error: 'WhatsApp is not set up yet. Try again later.' });
       }
 
+      // Cooldown first: it is per (guardian, phone), so a repeat request for the
+      // SAME number is what it throttles, and a typo cannot consume it.
       if (!allowSendNow(`${auth.user.id}:${phone}`)) {
         return send(res, 429, { error: 'Code already sent. Wait a minute before asking again.' });
-      }
-      if (!allowSendDaily(auth.user.id)) {
-        return send(res, 429, { error: 'Too many codes today. Try again tomorrow.' });
       }
 
       const parent = await findParentByPhone(auth.supabase, phone);
       if (!parent) {
         // Deliberately vague: a specific "no account" answer would let anyone
-        // with a sign-in probe which phone numbers use Saathi.
-        return send(res, 404, { error: 'That number cannot be linked right now. Check it with your parent and try again.' });
+        // with a sign-in probe which phone numbers use Saathi. The status is
+        // deliberately 200 for the same reason — a unique 404 is just as good
+        // an oracle as a unique message.
+        return send(res, 200, { ok: true });
       }
       if (parent.id === auth.user.id) {
         return send(res, 400, { error: 'You cannot link your own account.' });
@@ -123,6 +124,13 @@ module.exports = async function handler(req, res) {
       if (existingError) throw existingError;
       if (existing && existing.status === 'active') {
         return send(res, 400, { error: 'You are already linked to this parent.' });
+      }
+
+      // Daily cap last: it must only count messages we are actually about to
+      // send, or eight mistyped numbers would lock a guardian out for a day
+      // without a single OTP leaving the building.
+      if (!allowSendDaily(auth.user.id)) {
+        return send(res, 429, { error: 'Too many codes today. Try again tomorrow.' });
       }
 
       const code = String(crypto.randomInt(100000, 1000000));

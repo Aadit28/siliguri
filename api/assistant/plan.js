@@ -29,7 +29,9 @@ const CATEGORY_KEYWORDS = {
     'dawa',
     'dawai',
   ],
-  travel_agent: ['travel', 'ticket', 'train', 'flight', 'bus', 'taxi', 'ride', 'airport', 'station', 'टिकट', 'ट्रेन', 'बस', 'टैक्सी', 'यात्रा', 'स्टेशन', 'हवाई'],
+  // No bare 'बस' — it is far more often the adverb "just/enough" than "bus",
+  // so it stole requests like "बस एक डॉक्टर चाहिए" from the medical intent.
+  travel_agent: ['travel', 'ticket', 'train', 'flight', 'bus', 'taxi', 'ride', 'airport', 'station', 'टिकट', 'ट्रेन', 'बस स्टैंड', 'बस अड्डा', 'टैक्सी', 'यात्रा', 'स्टेशन', 'हवाई'],
   elder_home: ['elder', 'old age', 'care home', 'attendant', 'nursing', 'parent', 'senior', 'बुजुर्ग', 'वृद्धाश्रम', 'नर्सिंग', 'देखभाल'],
   home_service: [
     'home service',
