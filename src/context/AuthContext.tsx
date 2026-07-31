@@ -47,6 +47,8 @@ interface AuthState {
   requestOtp: (phone: string) => Promise<{ error?: string; devCode?: string }>;
   verifyOtp: (phone: string, code: string, fullName?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
+  /** Drops the local session without a backend round trip or memory wipe. */
+  clearSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -101,6 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         setSession(saved);
+        // Offline demo sessions (`demo.<id>`) are device-local by design: the
+        // backend has no such token and would answer 401, which used to wipe a
+        // still-valid demo session on every launch. Keep it and let the screens
+        // that need a real token handle their own 401 (audit finding 7).
+        if (saved.access_token.startsWith('demo.')) return;
         try {
           const { user: freshUser } = await backendRequest<{ user: SaathiUser }>(
             '/api/auth/me',
@@ -138,56 +145,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signIn(identifier: string, password: string, method?: AuthMethod) {
     if (!identifier.trim()) return { error: 'Enter your username or phone number.' };
 
-    // Offline demo accounts: sign in without a backend. Real rows with the same
-    // credentials exist once the backend is wired up (scripts/seed-demo-accounts.mjs).
+    // Demo accounts also exist as real backend rows (scripts/seed-demo-accounts.mjs).
+    // Try the backend first so demo users get real tokens (family/admin APIs work);
+    // fall back to the offline demo session only when the backend cannot sign
+    // them in (unreachable, or rows not seeded yet).
     const demo = matchDemoUser(identifier, password);
-    if (demo) {
-      const demoSession: SaathiSession = {
-        access_token: `demo.${demo.id}`,
-        expires_at: new Date(Date.now() + DEMO_SESSION_TTL_MS).toISOString(),
-        user: {
-          id: demo.id,
-          user_metadata: {
-            username: demo.username,
-            full_name: demo.fullName,
-            phone_number: demo.phone,
-            role: demo.role,
-            city_id: null,
-          },
-        },
-      };
-      setSession(demoSession);
-      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(demoSession));
-      return {};
-    }
 
     const resolvedMethod = inferAuthMethod(identifier, method);
     const normalizedIdentifier =
       resolvedMethod === 'phone' ? normalizePhone(identifier) : normalizeUsername(identifier);
     const validationError =
       resolvedMethod === 'phone' ? validatePhone(normalizedIdentifier) : validateUsername(normalizedIdentifier);
-    if (validationError) return { error: validationError };
+    if (validationError && !demo) return { error: validationError };
 
-    try {
-      const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
-        '/api/auth/signin',
-        {
-          method: 'POST',
-          body:
-            resolvedMethod === 'phone'
-              ? { phone: normalizedIdentifier, password }
-              : { username: normalizedIdentifier, password },
-        },
-      );
-      if (!nextSession?.access_token || !nextSession.user) {
-        throw new Error('Sign in did not return an account session.');
+    if (!validationError) {
+      try {
+        const { session: nextSession } = await backendRequest<{ session: SaathiSession }>(
+          '/api/auth/signin',
+          {
+            method: 'POST',
+            body:
+              resolvedMethod === 'phone'
+                ? { phone: normalizedIdentifier, password }
+                : { username: normalizedIdentifier, password },
+          },
+        );
+        if (!nextSession?.access_token || !nextSession.user) {
+          throw new Error('Sign in did not return an account session.');
+        }
+        setSession(nextSession);
+        await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+        return {};
+      } catch (error) {
+        if (!demo) return { error: (error as Error).message };
       }
-      setSession(nextSession);
-      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
-      return {};
-    } catch (error) {
-      return { error: (error as Error).message };
     }
+
+    // Offline demo fallback — same credentials, device-local session.
+    if (!demo) return { error: 'Sign in failed.' };
+    const demoSession: SaathiSession = {
+      access_token: `demo.${demo.id}`,
+      expires_at: new Date(Date.now() + DEMO_SESSION_TTL_MS).toISOString(),
+      user: {
+        id: demo.id,
+        user_metadata: {
+          username: demo.username,
+          full_name: demo.fullName,
+          phone_number: demo.phone,
+          role: demo.role,
+          city_id: null,
+        },
+      },
+    };
+    setSession(demoSession);
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(demoSession));
+    return {};
   }
 
   async function signUp(
@@ -268,6 +280,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function clearSession() {
+    setSession(null);
+    await AsyncStorage.removeItem(SESSION_KEY);
+  }
+
   async function signOut() {
     const token = session?.access_token;
     setSession(null);
@@ -282,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, loading, displayName, isAdmin, isCityHelper, isCityStaff, role, signIn, signUp, requestOtp, verifyOtp, signOut }}
+      value={{ session, user, loading, displayName, isAdmin, isCityHelper, isCityStaff, role, signIn, signUp, requestOtp, verifyOtp, signOut, clearSession }}
     >
       {children}
     </AuthContext.Provider>

@@ -28,9 +28,14 @@ function demoUserByToken(token: string) {
 const PARENT = demoByKind('parent');
 const GUARDIAN = demoByKind('guardian');
 
+// Demo data belongs to a parent living in Asia/Kolkata, and reminder dates are
+// that parent's local day — so "today" is anchored to IST (UTC+5:30, no DST),
+// not to UTC or the viewer's zone. Reading the UTC parts of a +5:30 shifted
+// instant yields the Kolkata wall-clock date without Intl timeZone support.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
 function iso(daysFromNow: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + daysFromNow);
+  const d = new Date(Date.now() + IST_OFFSET_MS + daysFromNow * 86400000);
   return d.toISOString().slice(0, 10);
 }
 
@@ -174,25 +179,43 @@ const favorites: FamilyFavorite[] = [
 // All demo family data belongs to the parent account. Both the parent (self)
 // and the linked guardian may touch it; any other parentId simply has no data
 // (canAccess false -> lists return empty, mutations throw).
+// Demo failures carry an HTTP-shaped status so the shared UI error mapping
+// (friendlyFamilyError) reads them as a server reply rather than a dead network.
+function fail(message: string, status = 400): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
 function canAccess(token: string, parentId: string): boolean {
   const user = demoUserByToken(token);
-  if (!user) throw new Error('Sign in again.');
+  if (!user) throw fail('Sign in again.', 401);
   return parentId === PARENT.id && (user.id === PARENT.id || user.id === GUARDIAN.id);
 }
 
 function requireAccess(token: string, parentId: string) {
-  if (!canAccess(token, parentId)) throw new Error('Not allowed.');
+  if (!canAccess(token, parentId)) throw fail('Not allowed.', 403);
 }
 
 // ----- Handlers (mirror src/lib/family.ts return shapes) --------------------
 
 export function demoListLinks(token: string): { asGuardian: FamilyLink[]; asParent: FamilyLink[] } {
   const user = demoUserByToken(token);
-  if (!user) throw new Error('Sign in again.');
+  if (!user) throw fail('Sign in again.', 401);
   return {
+    // Mirrors api/family/link.js: the guardian list keeps revoked rows (so the
+    // card can show "Removed"), the parent list only shows live access.
     asGuardian: user.id === GUARDIAN.id ? [link] : [],
-    asParent: user.id === PARENT.id ? [link] : [],
+    asParent: user.id === PARENT.id && link.status === 'active' ? [link] : [],
   };
+}
+
+export function demoRevokeLink(token: string, id: string): { ok: boolean } {
+  const user = demoUserByToken(token);
+  if (!user) throw fail('Sign in again.', 401);
+  if (link.id !== id || (user.id !== GUARDIAN.id && user.id !== PARENT.id)) {
+    throw fail('Link not found.', 404);
+  }
+  link.status = 'revoked';
+  return { ok: true };
 }
 
 export function demoListReminders(token: string, parentId: string): { reminders: FamilyReminder[] } {
@@ -229,10 +252,35 @@ export function demoAddReminder(
   return { reminder };
 }
 
+export function demoUpdateReminder(
+  token: string,
+  input: {
+    parentId: string;
+    id: string;
+    title?: string;
+    note?: string | null;
+    dateISO?: string;
+    time?: string | null;
+    repeat?: FamilyReminderRepeat;
+  },
+): { reminder: FamilyReminder } {
+  requireAccess(token, input.parentId);
+  const reminder = reminders.find((r) => r.id === input.id);
+  if (!reminder) throw fail('Reminder not found.', 404);
+  // Only fields the caller sent are touched; the rest keep their value.
+  if (input.title !== undefined) reminder.title = input.title;
+  if (input.note !== undefined) reminder.note = input.note ?? null;
+  if (input.dateISO !== undefined) reminder.dateISO = input.dateISO;
+  if (input.time !== undefined) reminder.time = input.time ?? null;
+  if (input.repeat !== undefined) reminder.repeat = input.repeat;
+  reminder.updatedAt = new Date().toISOString();
+  return { reminder };
+}
+
 export function demoMarkReminderDone(token: string, parentId: string, id: string): { reminder: FamilyReminder } {
   requireAccess(token, parentId);
   const reminder = reminders.find((r) => r.id === id);
-  if (!reminder) throw new Error('Reminder not found.');
+  if (!reminder) throw fail('Reminder not found.', 404);
   reminder.status = 'done';
   return { reminder };
 }
@@ -265,7 +313,7 @@ export function demoSetCareTeamMember(
   const user = demoUserByToken(token)!;
   if (input.id) {
     const existing = careTeam.find((m) => m.id === input.id);
-    if (!existing) throw new Error('Contact not found.');
+    if (!existing) throw fail('Contact not found.', 404);
     existing.category = input.category;
     existing.name = input.name;
     existing.phone = input.phone ?? null;
@@ -305,7 +353,7 @@ export async function demoAddFavorite(
   requireAccess(token, input.parentId);
   const user = demoUserByToken(token)!;
   if (favorites.some((f) => f.serviceId === input.serviceId)) {
-    throw new Error('Already saved.');
+    throw fail('Already saved.');
   }
   // Resolve display fields from the (mock) services catalog.
   const services = await fetchServices().catch(() => []);

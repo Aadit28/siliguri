@@ -1,10 +1,13 @@
 const crypto = require('crypto');
 const {
   authenticate,
+  hashesMatch,
   localPhoneUserId,
+  makeRateLimiter,
   normalizePhone,
   readBody,
   send,
+  sendServerError,
   tokenHash,
   validatePhone,
   withCors,
@@ -13,6 +16,12 @@ const { sendOtp, whatsappConfigured } = require('../_lib/whatsapp');
 
 const OTP_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
+
+// Mirror api/auth/otp-request.js pacing (60s cooldown, 8/day) so a guardian
+// cannot OTP-bomb a parent's WhatsApp. In-memory: burst protection only —
+// family_links has no send-count columns yet (roadmap: DB-backed).
+const allowSendNow = makeRateLimiter({ max: 1, windowMs: 60 * 1000 });
+const allowSendDaily = makeRateLimiter({ max: 8, windowMs: 24 * 60 * 60 * 1000 });
 
 function guardianLink(row) {
   const parent = row.parent || null;
@@ -80,14 +89,26 @@ module.exports = async function handler(req, res) {
       const validationError = validatePhone(phone);
       if (validationError) return send(res, 400, { error: validationError });
 
-      const devEcho = !whatsappConfigured() && process.env.OTP_DEV_ECHO === '1';
+      // Never echo codes in production (Vercel), regardless of env misconfig —
+      // same guard as api/auth/otp-request.js.
+      const isProd = Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+      const devEcho = !isProd && !whatsappConfigured() && process.env.OTP_DEV_ECHO === '1';
       if (!whatsappConfigured() && !devEcho) {
         return send(res, 503, { error: 'WhatsApp is not set up yet. Try again later.' });
       }
 
+      if (!allowSendNow(`${auth.user.id}:${phone}`)) {
+        return send(res, 429, { error: 'Code already sent. Wait a minute before asking again.' });
+      }
+      if (!allowSendDaily(auth.user.id)) {
+        return send(res, 429, { error: 'Too many codes today. Try again tomorrow.' });
+      }
+
       const parent = await findParentByPhone(auth.supabase, phone);
       if (!parent) {
-        return send(res, 404, { error: 'No Saathi account uses that number yet. Ask your parent to sign in first.' });
+        // Deliberately vague: a specific "no account" answer would let anyone
+        // with a sign-in probe which phone numbers use Saathi.
+        return send(res, 404, { error: 'That number cannot be linked right now. Check it with your parent and try again.' });
       }
       if (parent.id === auth.user.id) {
         return send(res, 400, { error: 'You cannot link your own account.' });
@@ -154,7 +175,7 @@ module.exports = async function handler(req, res) {
           .eq('id', linkRow.id);
         return send(res, 429, { error: 'Too many wrong tries. Ask for a new code.' });
       }
-      if (tokenHash(code) !== linkRow.otp_hash) {
+      if (!hashesMatch(tokenHash(code), linkRow.otp_hash)) {
         const nextAttempts = (linkRow.attempts || 0) + 1;
         const patch = { attempts: nextAttempts };
         if (nextAttempts >= MAX_ATTEMPTS) {
@@ -242,6 +263,6 @@ module.exports = async function handler(req, res) {
       asParent: (parentRows || []).map(parentLink),
     });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not update family links.' });
+    return sendServerError(res, error, 'Could not update family links.');
   }
 };

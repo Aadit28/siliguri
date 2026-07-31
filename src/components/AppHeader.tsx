@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,10 +31,25 @@ export default function AppHeader({ title }: { title?: string }) {
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
 
+  // Two-tap confirm on web: native confirm() is blocked in embedded webviews
+  // and cannot be styled for elder-sized touch targets.
+  const [signOutArmed, setSignOutArmed] = useState(false);
+  useEffect(() => {
+    if (!signOutArmed) return;
+    // Long enough for an unhurried reader to notice the prompt and decide.
+    const timer = setTimeout(() => setSignOutArmed(false), 10000);
+    return () => clearTimeout(timer);
+  }, [signOutArmed]);
+
   const confirmSignOut = () => {
     const question = `${t('common.signOut')}?`;
     if (Platform.OS === 'web') {
-      if (window.confirm(question)) signOut();
+      if (signOutArmed) {
+        setSignOutArmed(false);
+        signOut();
+      } else {
+        setSignOutArmed(true);
+      }
     } else {
       Alert.alert(question, undefined, [
         { text: t('common.cancel'), style: 'cancel' },
@@ -59,10 +74,17 @@ export default function AppHeader({ title }: { title?: string }) {
     <Pressable
       accessibilityRole="button"
       onPress={() => (user ? confirmSignOut() : router.push('/login'))}
-      style={({ pressed }) => [styles.accountButton, { borderColor: colors.border }, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.accountButton,
+        { borderColor: signOutArmed ? colors.danger : colors.border },
+        pressed && styles.pressed,
+      ]}
     >
-      <Text style={[styles.accountText, { color: colors.text }]} numberOfLines={1}>
-        {accountLabel}
+      <Text
+        style={[styles.accountText, { color: signOutArmed ? colors.danger : colors.text }]}
+        numberOfLines={1}
+      >
+        {signOutArmed ? `${t('common.signOut')}?` : accountLabel}
       </Text>
     </Pressable>
   );

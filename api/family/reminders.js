@@ -1,4 +1,5 @@
-const { authenticate, readBody, requireFamilyLink, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireFamilyLink, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 const REPEATS = ['once', 'daily', 'weekly', 'monthly'];
 
@@ -120,6 +121,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { reminders: (data || []).map(toReminder) });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not update reminders.' });
+    return sendServerError(res, error, 'Could not update reminders.');
   }
 };

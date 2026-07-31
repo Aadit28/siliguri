@@ -6,6 +6,7 @@ const {
   send,
   validatePhone,
   withCors,
+  sendServerError
 } = require('../_lib/auth');
 const { sendOtp, whatsappConfigured } = require('../_lib/whatsapp');
 
@@ -95,6 +96,6 @@ module.exports = async function handler(req, res) {
     await sendOtp(phone, code);
     return send(res, 200, { sent: true });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not send the code.' });
+    return sendServerError(res, error, 'Could not send the code.');
   }
 };

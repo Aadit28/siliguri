@@ -1,8 +1,8 @@
-const { authenticate, readBody, requireCityStaff, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireCityStaff, send, sendServerError, withCors } = require('../_lib/auth');
 
 // Callback requests are city-level operational work. City staff can list them
-// and move them through the queue: new -> contacted -> closed.
-const STATUSES = new Set(['new', 'contacted', 'closed']);
+// and move them through the queue: new -> contacted -> closed (or spam).
+const STATUSES = new Set(['new', 'queued', 'contacted', 'closed', 'spam']);
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -18,6 +18,11 @@ module.exports = async function handler(req, res) {
     const body = await readBody(req);
     const action = body.action ? String(body.action) : 'list';
 
+    // Citizen names/phones are PII: staff see only their own city's queue.
+    // Super admins (and legacy no-city admins) see everything.
+    const isSuperAdmin = auth.user.role === 'super_admin';
+    const cityScoped = !isSuperAdmin && auth.user.city_id;
+
     if (action === 'status') {
       const id = String(body.id || '');
       const status = String(body.status || '');
@@ -25,22 +30,24 @@ module.exports = async function handler(req, res) {
       if (!STATUSES.has(status)) return send(res, 400, { error: 'Choose a valid status.' });
       const patch = { status };
       if (status === 'closed') patch.resolved_at = new Date().toISOString();
-      const { error } = await auth.supabase
-        .from('callback_requests')
-        .update(patch)
-        .eq('id', id);
+      let update = auth.supabase.from('callback_requests').update(patch).eq('id', id);
+      if (cityScoped) update = update.or(`city_id.eq.${auth.user.city_id},city_id.is.null`);
+      const { data: updated, error } = await update.select('id');
       if (error) throw error;
+      if (!updated || updated.length === 0) return send(res, 404, { error: 'Request not found.' });
       return send(res, 200, { ok: true });
     }
 
-    const { data: requests, error } = await auth.supabase
+    let query = auth.supabase
       .from('callback_requests')
-      .select('id,name,phone,issue,source,status,service_id,created_at')
+      .select('id,name,phone,issue,source,status,service_id,city_id,created_at')
       .order('created_at', { ascending: false })
       .limit(50);
+    if (cityScoped) query = query.or(`city_id.eq.${auth.user.city_id},city_id.is.null`);
+    const { data: requests, error } = await query;
     if (error) throw error;
     return send(res, 200, { requests: requests || [] });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not load callback requests.' });
+    return sendServerError(res, error, 'Could not load callback requests.');
   }
 };

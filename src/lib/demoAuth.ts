@@ -7,7 +7,7 @@
 
 export const DEMO_PASSWORD = 'saathi123';
 
-export type DemoKind = 'parent' | 'guardian';
+export type DemoKind = 'parent' | 'guardian' | 'admin';
 
 export interface DemoUser {
   kind: DemoKind;
@@ -37,6 +37,15 @@ export const DEMO_USERS: DemoUser[] = [
     password: DEMO_PASSWORD,
     fullName: 'Rahul Sen',
     role: 'user',
+  },
+  {
+    kind: 'admin',
+    id: 'demo-admin-0001',
+    username: 'demo.admin',
+    phone: '+919800000003',
+    password: DEMO_PASSWORD,
+    fullName: 'Saathi Admin',
+    role: 'admin',
   },
 ];
 

@@ -32,13 +32,74 @@ function send(res, status, body) {
   res.status(status).json(body);
 }
 
+const MAX_BODY_BYTES = 64 * 1024;
+
 async function readBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
-  if (typeof req.body === 'string') return JSON.parse(req.body || '{}');
+  if (typeof req.body === 'string') {
+    if (req.body.length > MAX_BODY_BYTES) {
+      const err = new Error('Request too large.');
+      err.status = 413;
+      throw err;
+    }
+    return JSON.parse(req.body || '{}');
+  }
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) {
+      const err = new Error('Request too large.');
+      err.status = 413;
+      throw err;
+    }
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString('utf8');
   return raw ? JSON.parse(raw) : {};
+}
+
+// Generic 500 that never leaks driver/env internals to the client.
+function sendServerError(res, error, publicMessage) {
+  console.error(publicMessage, error);
+  return send(res, error && error.status === 413 ? 413 : 500, {
+    error: error && error.status === 413 ? 'Request too large.' : publicMessage,
+  });
+}
+
+// Constant-time comparison for password/OTP hash strings.
+function hashesMatch(a, b) {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+// Sliding-window in-memory limiter. Serverless instances reset it on cold
+// start, so this is burst protection, not a durable quota (roadmap: DB-backed).
+function makeRateLimiter({ max, windowMs }) {
+  const hits = new Map();
+  return function allow(key) {
+    const now = Date.now();
+    const list = (hits.get(key) || []).filter((ts) => now - ts < windowMs);
+    if (list.length >= max) {
+      hits.set(key, list);
+      return false;
+    }
+    list.push(now);
+    hits.set(key, list);
+    if (hits.size > 2000) {
+      for (const [k, timestamps] of hits) {
+        if (!timestamps.some((ts) => now - ts < windowMs)) hits.delete(k);
+      }
+    }
+    return true;
+  };
+}
+
+function requestIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.socket?.remoteAddress || 'unknown';
 }
 
 function normalizeUsername(username) {
@@ -194,17 +255,21 @@ module.exports = {
   adminClient,
   authenticate,
   createSession,
+  hashesMatch,
   localPhoneUserId,
+  makeRateLimiter,
   normalizePhone,
   normalizeUsername,
   passwordHash,
   publicUser,
   readBody,
+  requestIp,
   requireAdmin,
   requireCityStaff,
   requireFamilyLink,
   saveLocalPhoneAuth,
   send,
+  sendServerError,
   tokenHash,
   validatePassword,
   validatePhone,

@@ -172,7 +172,12 @@ export default function PostDetail() {
               <Text style={styles.metaLine} numberOfLines={1}>
                 {postEmoji(post.category)} {t(`postCategories.${post.category}`)}
                 {' · '}
-                {new Date(post.created_at).toLocaleDateString()}
+                {new Date(post.created_at).toLocaleString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
               </Text>
             </View>
           </View>
@@ -233,7 +238,12 @@ export default function PostDetail() {
                         </Text>
                       ) : null}
                       <Text style={styles.metaLine} numberOfLines={1}>
-                        {new Date(r.created_at).toLocaleDateString()}
+                        {new Date(r.created_at).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
                       </Text>
                     </View>
                   </View>

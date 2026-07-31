@@ -16,6 +16,8 @@ module.exports = async function handler(req, res) {
     const postBody = String(body.body || '').trim();
     const category = CATEGORIES.has(body.category) ? body.category : 'general';
     if (!title || !postBody) return send(res, 400, { error: 'Add a title and message.' });
+    if (title.length > 200) return send(res, 400, { error: 'Keep the title under 200 characters.' });
+    if (postBody.length > 4000) return send(res, 400, { error: 'Keep the message under 4000 characters.' });
 
     const insertPayload = {
       title,

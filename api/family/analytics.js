@@ -1,4 +1,5 @@
-const { authenticate, readBody, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 // Analytics are for the guardian looking in on a linked parent — the parent
 // does not view their own summary, so this check does not accept self access.
@@ -90,6 +91,6 @@ module.exports = async function handler(req, res) {
       favoritesCount,
     });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not load the summary.' });
+    return sendServerError(res, error, 'Could not load the summary.');
   }
 };

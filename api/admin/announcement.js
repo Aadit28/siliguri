@@ -1,4 +1,5 @@
-const { authenticate, readBody, requireCityStaff, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireCityStaff, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -57,6 +58,6 @@ module.exports = async function handler(req, res) {
 
     return send(res, 200, { announcement });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not save announcement.' });
+    return sendServerError(res, error, 'Could not save announcement.');
   }
 };

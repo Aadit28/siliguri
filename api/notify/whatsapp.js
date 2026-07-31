@@ -1,4 +1,5 @@
-const { authenticate, normalizePhone, readBody, send, validatePhone, withCors } = require('../_lib/auth');
+const { authenticate, normalizePhone, readBody, send, validatePhone, withCors,
+  sendServerError } = require('../_lib/auth');
 const { sendTemplate, sendText, whatsappConfigured } = require('../_lib/whatsapp');
 
 const STAFF_ROLES = new Set(['city_helper', 'admin', 'super_admin']);
@@ -47,6 +48,6 @@ module.exports = async function handler(req, res) {
       : await sendText(phone, text);
     return send(res, 200, { sent: true, id: result?.messages?.[0]?.id || null });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not send the WhatsApp message.' });
+    return sendServerError(res, error, 'Could not send the WhatsApp message.');
   }
 };

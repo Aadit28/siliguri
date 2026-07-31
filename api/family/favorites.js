@@ -1,4 +1,5 @@
-const { authenticate, readBody, requireFamilyLink, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireFamilyLink, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 const COLS = 'id,parent_id,service_id,note,added_by,created_at,services(name,phone,category)';
 
@@ -75,6 +76,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { favorites: (data || []).map(toFavorite) });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not update favorites.' });
+    return sendServerError(res, error, 'Could not update favorites.');
   }
 };

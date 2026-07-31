@@ -1,18 +1,26 @@
 const {
   adminClient,
   createSession,
+  hashesMatch,
   localPhoneUserId,
+  makeRateLimiter,
   normalizePhone,
   normalizeUsername,
   passwordHash,
   publicUser,
   readBody,
+  requestIp,
   send,
+  sendServerError,
   validatePassword,
   validatePhone,
   validateUsername,
   withCors,
 } = require('../_lib/auth');
+
+// Burst protection against credential stuffing (per-instance; see auth.js).
+const allowByIp = makeRateLimiter({ max: 20, windowMs: 15 * 60 * 1000 });
+const allowByIdentifier = makeRateLimiter({ max: 10, windowMs: 15 * 60 * 1000 });
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -27,6 +35,10 @@ module.exports = async function handler(req, res) {
     const validationError =
       (phone ? validatePhone(phone) : validateUsername(username)) || validatePassword(password);
     if (validationError) return send(res, 400, { error: validationError });
+
+    if (!allowByIp(requestIp(req)) || !allowByIdentifier(phone || username)) {
+      return send(res, 429, { error: 'Too many sign-in attempts. Try again in a few minutes.' });
+    }
 
     const supabase = adminClient();
     let { data: user, error } = await (phone
@@ -57,7 +69,7 @@ module.exports = async function handler(req, res) {
       }
       if (error) throw error;
     }
-    if (!user || passwordHash(password, user.password_salt) !== user.password_hash) {
+    if (!user || !hashesMatch(passwordHash(password, user.password_salt), user.password_hash)) {
       return send(res, 401, {
         error: phone ? 'Invalid phone number or password.' : 'Invalid username or password.',
       });
@@ -66,6 +78,6 @@ module.exports = async function handler(req, res) {
     const session = await createSession(supabase, user.id);
     return send(res, 200, { session: { ...session, user: publicUser(user) } });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not sign in.' });
+    return sendServerError(res, error, 'Could not sign in.');
   }
 };

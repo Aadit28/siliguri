@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import { Body, Button, Card, Chip, Dialog, H1, H2, Muted, Sheet } from '../src/components/ui';
 import { AppColors, family, font, radius, space, TAP, tracking } from '../src/lib/theme';
+import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
 import {
   addEvent,
@@ -14,6 +15,8 @@ import {
   normalizeTimeInput,
   removeEvent,
 } from '../src/lib/calendar';
+import { listFamilyLinks } from '../src/lib/family';
+import { todayISO } from '../src/lib/notifications';
 import { CalendarEvent, ReminderRepeat } from '../src/lib/types';
 
 const REPEATS: ReminderRepeat[] = ['once', 'daily', 'weekly'];
@@ -23,9 +26,23 @@ function toISO(year: number, month: number, day: number) {
 }
 
 function tomorrowISO() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
+  const [year, month, day] = todayISO().split('-').map(Number);
+  const date = new Date(year, month - 1, day + 1);
   return toISO(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+// Reminder times are the parent's Asia/Kolkata wall clock, so the zone is
+// spelled out — a family member reading this abroad shouldn't have to guess.
+function formatISTTime(time: string) {
+  const [hour, minute] = time.split(':').map(Number);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return time;
+  const period = hour < 12 ? 'AM' : 'PM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${pad2(minute)} ${period} IST`;
 }
 
 function formatReadableDate(dateISO: string) {
@@ -53,6 +70,7 @@ function monthMatrix(year: number, month: number): (number | null)[][] {
 
 export default function CalendarScreen() {
   const { t } = useTranslation();
+  const { session } = useAuth();
   const { colors } = useTheme();
   const styles = makeStyles(colors);
 
@@ -68,9 +86,37 @@ export default function CalendarScreen() {
   const [timeError, setTimeError] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
-  const now = new Date();
-  const todayISO = toISO(now.getFullYear(), now.getMonth(), now.getDate());
-  const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  // "Today" — the marked disc, and the month the grid opens on — follows the
+  // parent's Asia/Kolkata day, the same anchor reminders and the bell use, so a
+  // family member abroad never sees the ring on the wrong date.
+  const today = todayISO();
+  const [cursor, setCursor] = useState(() => {
+    const [year, month] = today.split('-').map(Number);
+    return { year, month: month - 1 };
+  });
+
+  // Guardians read this screen as their family's reminders, not their own day.
+  const [isGuardian, setIsGuardian] = useState(false);
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!token) {
+      setIsGuardian(false);
+      return;
+    }
+    let active = true;
+    listFamilyLinks(token)
+      .then(({ asGuardian }) => {
+        if (active) setIsGuardian(asGuardian.some((link) => link.status === 'active'));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [session?.access_token]);
+
+  const screenTitle = isGuardian
+    ? t('calendar.titleGuardian', { defaultValue: 'Family calendar' })
+    : t('calendar.title');
 
   const [sheetEvent, setSheetEvent] = useState<CalendarEvent | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -152,7 +198,9 @@ export default function CalendarScreen() {
     const marks = new Set<string>();
     const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
     for (const event of events) {
-      const repeat = event.repeat ?? 'once';
+      // Widened: the local store only writes once/daily/weekly, but a mirrored
+      // family reminder can carry 'monthly' — mark those on their day of month.
+      const repeat: ReminderRepeat | 'monthly' = event.repeat ?? 'once';
       if (repeat === 'once') {
         marks.add(event.dateISO);
         continue;
@@ -163,9 +211,13 @@ export default function CalendarScreen() {
       for (let day = 1; day <= daysInMonth; day++) {
         const cell = new Date(cursor.year, cursor.month, day);
         if (cell.getTime() < start.getTime()) continue;
-        if (repeat === 'daily' || (repeat === 'weekly' && cell.getDay() === start.getDay())) {
-          marks.add(toISO(cursor.year, cursor.month, day));
-        }
+        const occurs =
+          repeat === 'daily'
+            ? true
+            : repeat === 'weekly'
+              ? cell.getDay() === start.getDay()
+              : day === ed;
+        if (occurs) marks.add(toISO(cursor.year, cursor.month, day));
       }
     }
     return marks;
@@ -196,8 +248,8 @@ export default function CalendarScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: t('calendar.title') }} />
-      <H1 style={styles.screenTitle}>{t('calendar.title')}</H1>
+      <Stack.Screen options={{ title: screenTitle }} />
+      <H1 style={styles.screenTitle}>{screenTitle}</H1>
 
       <Card style={styles.monthCard}>
         <View style={styles.monthHeader}>
@@ -241,7 +293,7 @@ export default function CalendarScreen() {
             {week.map((day, di) => {
               if (!day) return <View key={`d-${wi}-${di}`} style={styles.dayCell} />;
               const iso = toISO(cursor.year, cursor.month, day);
-              const isToday = iso === todayISO;
+              const isToday = iso === today;
               const isSelected = iso === dateISO;
               const hasEvent = eventDates.has(iso);
               return (
@@ -310,7 +362,14 @@ export default function CalendarScreen() {
           <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
             <Feather name="calendar" size={20} color={colors.text} />
           </View>
-          <Muted style={styles.emptyText}>{t('calendar.empty')}</Muted>
+          <Muted style={styles.emptyText}>
+            {isGuardian
+              ? t('calendar.emptyGuardian', {
+                  defaultValue:
+                    'No reminders yet. Anything you set for your family shows up here.',
+                })
+              : t('calendar.empty')}
+          </Muted>
         </Card>
       ) : (
         <Card style={styles.listCard}>
@@ -337,7 +396,7 @@ export default function CalendarScreen() {
                   </Text>
                   <Text style={[styles.eventMeta, { color: colors.textMuted }]} numberOfLines={1}>
                     {formatReadableDate(event.dateISO)}
-                    {event.time ? ` · ${event.time}` : ''}
+                    {event.time ? ` · ${formatISTTime(event.time)}` : ''}
                     {event.repeat && event.repeat !== 'once'
                       ? ` · ${t(`reminders.repeat.${event.repeat}`)}`
                       : ''}
@@ -458,7 +517,7 @@ export default function CalendarScreen() {
               <Feather name="clock" size={16} color={colors.textMuted} />
               <Body style={{ color: colors.textMuted }}>
                 {formatReadableDate(sheetEvent.dateISO)}
-                {sheetEvent.time ? ` · ${sheetEvent.time}` : ''}
+                {sheetEvent.time ? ` · ${formatISTTime(sheetEvent.time)}` : ''}
               </Body>
             </View>
             {sheetEvent.note ? (

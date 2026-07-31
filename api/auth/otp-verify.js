@@ -4,11 +4,13 @@ const {
   createSession,
   localPhoneUserId,
   normalizePhone,
+  hashesMatch,
   passwordHash,
   publicUser,
   readBody,
   saveLocalPhoneAuth,
   send,
+  sendServerError,
   validatePhone,
   withCors,
 } = require('../_lib/auth');
@@ -113,7 +115,7 @@ module.exports = async function handler(req, res) {
       await supabase.from('phone_otps').delete().eq('id', otp.id);
       return send(res, 429, { error: 'Too many wrong tries. Ask for a new code.' });
     }
-    if (otpHash(phone, code) !== otp.code_hash) {
+    if (!hashesMatch(otpHash(phone, code), otp.code_hash)) {
       return send(res, 401, { error: 'That code is not right. Check WhatsApp and try again.' });
     }
 
@@ -127,6 +129,6 @@ module.exports = async function handler(req, res) {
     await supabase.from('phone_otps').delete().eq('id', otp.id);
     return send(res, 200, { session: { ...session, user: publicUser(user) }, isNewUser });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not verify the code.' });
+    return sendServerError(res, error, 'Could not verify the code.');
   }
 };

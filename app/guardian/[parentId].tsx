@@ -15,6 +15,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
+import AppHeader from '../../src/components/AppHeader';
 import { Button, Card, Chip, Dialog, H1, H2, Muted } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
 import {
@@ -34,6 +35,7 @@ import {
   addFamilyFavorite,
   addFamilyReminder,
   fetchParentAnalytics,
+  friendlyFamilyError,
   listCareTeam,
   listFamilyFavorites,
   listFamilyLinks,
@@ -89,6 +91,31 @@ function formatISTStamp(iso: string) {
   )} ${period} IST`;
 }
 
+// A reminder's dateISO is the parent's local day. Rendered the same way as the
+// calendar screen renders an event date, never as a raw 2026-08-04.
+function formatReadableDate(dateISO: string) {
+  const [year, month, day] = dateISO.split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  if (Number.isNaN(date.getTime())) return dateISO;
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+// Success notices are transient: "Saved." must not still be sitting next to a
+// form the guardian has since started editing again.
+function useAutoClear(active: boolean, clear: () => void, ms = 4000) {
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(clear, ms);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+}
+
 function monthName(year: number, month: number) {
   return `${MONTHS_SHORT[((month % 12) + 12) % 12]} ${year + Math.floor(month / 12)}`;
 }
@@ -119,7 +146,9 @@ function DatePicker({
   styles: Styles;
 }) {
   const [cursor, setCursor] = useState(() => {
-    const [y, m] = valueISO.split('-').map(Number);
+    // Fall back to the IST "today" the rest of the screen uses, so the grid
+    // never opens on the guardian's own (possibly different) calendar month.
+    const [y, m] = (valueISO || todayISO()).split('-').map(Number);
     const base = y && m ? new Date(y, m - 1, 1) : new Date();
     return { year: base.getFullYear(), month: base.getMonth() };
   });
@@ -324,16 +353,21 @@ export default function ParentDetail() {
 
   if (loading) {
     return (
-      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
-        <Stack.Screen options={{ title: t('family.title') }} />
-        <ActivityIndicator color={colors.textMuted} />
-      </ScrollView>
+      <View style={styles.screen}>
+        <AppHeader title={t('family.title')} />
+        <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
+          <Stack.Screen options={{ title: t('family.title') }} />
+          <ActivityIndicator color={colors.textMuted} />
+        </ScrollView>
+      </View>
     );
   }
 
   if (!session || !user) {
     return (
-      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
+      <View style={styles.screen}>
+        <AppHeader title={t('family.title')} />
+        <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
         <Stack.Screen options={{ title: t('family.title') }} />
         <Card style={styles.gateCard}>
           <View style={styles.gateIconBlock}>
@@ -350,7 +384,8 @@ export default function ParentDetail() {
             />
           </View>
         </Card>
-      </ScrollView>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -364,15 +399,19 @@ export default function ParentDetail() {
   ];
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={[styles.page, { paddingBottom: Math.max(insets.bottom, space.lg) }]}
-    >
+    <View style={styles.screen}>
+      <AppHeader title={heading} />
+      <ScrollView
+        style={{ backgroundColor: colors.bg }}
+        contentContainerStyle={[styles.page, { paddingBottom: Math.max(insets.bottom, space.lg) }]}
+      >
       <Stack.Screen options={{ title: heading }} />
       <View style={styles.shell}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          // A direct load or refresh of this URL has no history to pop, so back
+          // has to fall through to the parents list rather than dead-end.
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/guardian'))}
           style={styles.backRow}
           hitSlop={8}
         >
@@ -402,7 +441,8 @@ export default function ParentDetail() {
           <CareTeamSection token={token} parentId={parentId} styles={styles} colors={colors} />
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -437,7 +477,7 @@ function OverviewSection({
         if (active) setData(d);
       })
       .catch((e) => {
-        if (active) setError((e as Error).message);
+        if (active) setError(friendlyFamilyError(e, t));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -503,7 +543,7 @@ function OverviewSection({
                 <View style={styles.rowBody}>
                   <Text style={styles.rowTitle} numberOfLines={2}>{cb.issue || '—'}</Text>
                   <Text style={styles.rowMeta}>
-                    {t(`family.callbackStatus.${cb.status}`, { defaultValue: cb.status })} · {new Date(cb.created_at).toLocaleDateString()}
+                    {t(`family.callbackStatus.${cb.status}`, { defaultValue: cb.status })} · {formatISTStamp(cb.created_at)}
                   </Text>
                 </View>
               </View>
@@ -548,6 +588,8 @@ function RemindersSection({
   const [success, setSuccess] = useState(false);
 
   const [removeTarget, setRemoveTarget] = useState<FamilyReminder | null>(null);
+
+  useAutoClear(success, () => setSuccess(false));
 
   async function load() {
     setLoading(true);
@@ -644,7 +686,7 @@ function RemindersSection({
       setSuccess(true);
       await load();
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyFamilyError(e, t));
     } finally {
       setSaving(false);
     }
@@ -685,7 +727,7 @@ function RemindersSection({
           <Text style={[styles.itemTitle, done ? styles.itemTitleDone : null]}>{r.title}</Text>
           {r.note ? <Text style={styles.itemNote}>{r.note}</Text> : null}
           <Text style={[styles.itemMeta, overdue ? { color: colors.danger } : null]}>
-            {r.dateISO}
+            {formatReadableDate(r.dateISO)}
             {r.time ? ` · ${formatISTTime(r.time)}` : ''}
             {r.repeat !== 'once' ? ` · ${t(`family.repeat.${r.repeat}`)}` : ''}
           </Text>
@@ -866,6 +908,8 @@ function PlacesSection({
   const [success, setSuccess] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<FamilyFavorite | null>(null);
 
+  useAutoClear(success, () => setSuccess(false));
+
   async function loadFavorites() {
     try {
       const { favorites: rows } = await listFamilyFavorites(token, parentId);
@@ -919,7 +963,7 @@ function PlacesSection({
       setSuccess(true);
       await loadFavorites();
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyFamilyError(e, t));
     } finally {
       setBusyId(null);
     }
@@ -1079,6 +1123,8 @@ function CareTeamSection({
   const [success, setSuccess] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<CareTeamMember | null>(null);
 
+  useAutoClear(success, () => setSuccess(false));
+
   async function load() {
     setLoading(true);
     try {
@@ -1132,7 +1178,7 @@ function CareTeamSection({
       setSuccess(true);
       await load();
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyFamilyError(e, t));
     } finally {
       setSaving(false);
     }
@@ -1263,6 +1309,7 @@ function CareTeamSection({
 
 function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.bg },
     page: { padding: isWide ? space.xl : space.md, paddingTop: space.md },
     shell: { width: '100%', maxWidth: 960, alignSelf: 'center' },
     backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.sm, alignSelf: 'flex-start' },

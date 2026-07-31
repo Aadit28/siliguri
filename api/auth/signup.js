@@ -14,6 +14,7 @@ const {
   validatePhone,
   validateUsername,
   withCors,
+  sendServerError
 } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -86,6 +87,6 @@ module.exports = async function handler(req, res) {
     const session = await createSession(supabase, user.id);
     return send(res, 200, { session: { ...session, user: publicUser(user) } });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not create account.' });
+    return sendServerError(res, error, 'Could not create account.');
   }
 };

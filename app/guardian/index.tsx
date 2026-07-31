@@ -14,6 +14,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
+import AppHeader from '../../src/components/AppHeader';
 import { Button, Card, Dialog, H1, H2, Muted } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
 import { FamilyLink, FamilyLinkStatus, ParentAnalytics } from '../../src/lib/types';
@@ -22,6 +23,7 @@ import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import {
   fetchParentAnalytics,
+  friendlyFamilyError,
   listFamilyLinks,
   requestFamilyLink,
   revokeFamilyLink,
@@ -221,6 +223,7 @@ export default function GuardianDashboard() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [revokeTarget, setRevokeTarget] = useState<FamilyLink | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   async function loadLinks() {
     if (!session) return;
@@ -258,16 +261,21 @@ export default function GuardianDashboard() {
 
   if (loading) {
     return (
-      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
-        <Stack.Screen options={{ title: t('family.title') }} />
-        <ActivityIndicator color={colors.textMuted} />
-      </ScrollView>
+      <View style={styles.screen}>
+        <AppHeader title={t('family.title')} />
+        <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
+          <Stack.Screen options={{ title: t('family.title') }} />
+          <ActivityIndicator color={colors.textMuted} />
+        </ScrollView>
+      </View>
     );
   }
 
   if (!session || !user) {
     return (
-      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
+      <View style={styles.screen}>
+        <AppHeader title={t('family.title')} />
+        <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.gateContainer}>
         <Stack.Screen options={{ title: t('family.title') }} />
         <Card style={styles.gateCard}>
           <View style={styles.gateIconBlock}>
@@ -285,7 +293,8 @@ export default function GuardianDashboard() {
             />
           </View>
         </Card>
-      </ScrollView>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -374,23 +383,27 @@ export default function GuardianDashboard() {
     if (!revokeTarget || !session) return;
     const id = revokeTarget.id;
     setRevokeTarget(null);
+    setRevokeError(null);
     try {
       await revokeFamilyLink(session.access_token, id);
-      await loadLinks();
-    } catch {
-      // Reload reflects the true state either way.
-      await loadLinks();
+    } catch (e) {
+      // Removing access is a trust action — a silent no-op would leave the
+      // guardian believing the link is gone when it is not.
+      setRevokeError(friendlyFamilyError(e, t));
     }
+    await loadLinks();
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={[
-        styles.page,
-        { paddingBottom: Math.max(insets.bottom, space.lg) },
-      ]}
-    >
+    <View style={styles.screen}>
+      <AppHeader title={t('family.title')} />
+      <ScrollView
+        style={{ backgroundColor: colors.bg }}
+        contentContainerStyle={[
+          styles.page,
+          { paddingBottom: Math.max(insets.bottom, space.lg) },
+        ]}
+      >
       <Stack.Screen options={{ title: t('family.title') }} />
       <View style={styles.shell}>
         <H1>{t('family.title')}</H1>
@@ -400,6 +413,8 @@ export default function GuardianDashboard() {
           <H2 style={styles.sectionHeader}>{t('family.parentsHeading')}</H2>
           <Button label={t('family.addParent')} icon={<Feather name="plus" size={18} color={colors.primaryFg} />} onPress={openAddParent} />
         </View>
+
+        {revokeError ? <Notice kind="error" message={revokeError} /> : null}
 
         {loadingLinks ? (
           <Card style={styles.stateCard}>
@@ -430,8 +445,16 @@ export default function GuardianDashboard() {
                       ) : null}
                       <View style={styles.parentMetaRow}>
                         <StatusPill status={link.status} />
+                        {/* relationship describes the guardian, not the parent:
+                            'son' on this link means the signed-in user is the
+                            son — so it reads as "You are their son". */}
                         {link.relationship ? (
-                          <Text style={styles.parentRelationship}>{link.relationship}</Text>
+                          <Text style={styles.parentRelationship}>
+                            {t('family.relationshipYouAre', {
+                              relationship: link.relationship,
+                              defaultValue: 'You are their {{relationship}}',
+                            })}
+                          </Text>
                         ) : null}
                       </View>
                     </View>
@@ -591,12 +614,14 @@ export default function GuardianDashboard() {
           <Button label={t('family.cancel')} variant="secondary" onPress={() => setRevokeTarget(null)} />
         </View>
       </Dialog>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.bg },
     page: {
       padding: isWide ? space.xl : space.md,
       paddingTop: space.md,

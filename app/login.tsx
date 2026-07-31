@@ -331,7 +331,7 @@ export default function Login() {
                   <>
                     <Muted style={styles.demoNote}>Sample logins for testing only — not real accounts.</Muted>
                     <View style={styles.demoChips}>
-                      {(['parent', 'guardian'] as DemoKind[]).map((kind) => (
+                      {(['parent', 'guardian', 'admin'] as DemoKind[]).map((kind) => (
                         <Pressable
                           key={kind}
                           accessibilityRole="button"
@@ -340,7 +340,8 @@ export default function Login() {
                           hitSlop={6}
                         >
                           <Text style={[styles.demoChipText, { color: colors.textMuted }]}>
-                            {demoByKind(kind).fullName} · {kind === 'parent' ? 'Parent' : 'Guardian'}
+                            {demoByKind(kind).fullName} ·{' '}
+                            {kind === 'parent' ? 'Parent' : kind === 'guardian' ? 'Guardian' : 'Admin'}
                           </Text>
                         </Pressable>
                       ))}

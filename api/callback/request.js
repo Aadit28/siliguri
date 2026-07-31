@@ -1,6 +1,10 @@
-const { adminClient, authenticate, readBody, send, withCors } = require('../_lib/auth');
+const { adminClient, authenticate, makeRateLimiter, readBody, requestIp, send, withCors } = require('../_lib/auth');
 
 const SOURCES = new Set(['help', 'assistant', 'service']);
+
+// Unauthenticated endpoint that stores PII — pace it per IP on top of the
+// per-phone dedupe below (per-instance; burst protection only).
+const allowByIp = makeRateLimiter({ max: 5, windowMs: 10 * 60 * 1000 });
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -18,13 +22,19 @@ module.exports = async function handler(req, res) {
     if (!name || !phone) return send(res, 400, { error: 'Add a name and phone number.' });
     if (phone.replace(/\D/g, '').length < 8) return send(res, 400, { error: 'Add a valid phone number.' });
 
+    if (!allowByIp(requestIp(req))) {
+      return send(res, 429, { error: 'Too many requests. Please wait a few minutes.' });
+    }
+
     let userId = null;
+    let cityId = null;
     const hasToken = Boolean(String(req.headers.authorization || req.headers.Authorization || '').trim());
     let supabase = adminClient();
     if (hasToken) {
       const auth = await authenticate(req);
       if (!auth.error) {
         userId = auth.user.id;
+        cityId = auth.user.city_id || null;
         supabase = auth.supabase;
       }
     }
@@ -50,6 +60,7 @@ module.exports = async function handler(req, res) {
       source,
       service_id: serviceId,
       user_id: userId,
+      city_id: cityId,
       status: 'new',
     });
 

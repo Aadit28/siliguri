@@ -1,4 +1,5 @@
-const { authenticate, publicUser, send, withCors } = require('../_lib/auth');
+const { authenticate, publicUser, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -10,6 +11,6 @@ module.exports = async function handler(req, res) {
     if (auth.error) return send(res, 401, { error: auth.error });
     return send(res, 200, { user: publicUser(auth.user) });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not load account.' });
+    return sendServerError(res, error, 'Could not load account.');
   }
 };

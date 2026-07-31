@@ -96,6 +96,11 @@ function RootStack() {
             <Stack.Screen name="service/[id]" options={{ title: '' }} />
             <Stack.Screen name="post/[id]" options={{ title: '' }} />
             <Stack.Screen name="calendar" options={{ title: '' }} />
+            {/* Guardian screens mount <AppHeader /> themselves (same as the tab
+                screens) so a direct load of /guardian keeps the bell, language,
+                theme and sign-out controls instead of dead-ending. */}
+            <Stack.Screen name="guardian/index" options={{ headerShown: false }} />
+            <Stack.Screen name="guardian/[parentId]" options={{ headerShown: false }} />
             <Stack.Screen name="admin" options={{ title: '' }} />
             <Stack.Screen name="connectors" options={{ title: '' }} />
           </Stack>

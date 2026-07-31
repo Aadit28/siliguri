@@ -87,6 +87,10 @@ function normalizeIndianPhone(input: string): string | null | undefined {
 
 const UPI_PATTERN = /^[a-z0-9.\-_]{2,}@[a-z]{2,}$/i;
 
+// Any http(s) link works — Google Maps share links, plus codes and goo.gl
+// shorteners all pass, so admins can paste whatever the Maps app gave them.
+const MAP_URL_PATTERN = /^https?:\/\/\S+$/i;
+
 function Notice({ kind, message }: { kind: 'error' | 'success'; message: string }) {
   const { colors } = useTheme();
   const tint = kind === 'error' ? colors.danger : colors.success;
@@ -152,6 +156,7 @@ type AdminService = {
   category: ServiceCategory;
   phone: string | null;
   address: string | null;
+  map_url?: string | null;
   hours: string | null;
   description: string | null;
   upi_id: string | null;
@@ -171,14 +176,41 @@ type CallbackRequest = {
   created_at: string;
 };
 
+// The queue the backend can hand us. `queued`/`spam` rows used to render with a
+// raw status string and no way to act on them (audit finding 12).
+const CALLBACK_STATUSES = ['new', 'queued', 'contacted', 'closed', 'spam'] as const;
+type CallbackFilter = 'all' | (typeof CALLBACK_STATUSES)[number];
+
+// Used until admin.status_queued / admin.status_spam land in the locale files.
+const CALLBACK_STATUS_FALLBACK: Record<string, string> = {
+  new: 'New',
+  queued: 'Queued',
+  contacted: 'Contacted',
+  closed: 'Closed',
+  spam: 'Spam',
+};
+
+type AdminSection = 'callbacks' | 'services' | 'announcements' | 'helpers';
+
+// Announcements are read straight from Supabase (no backendRequest timeout), so
+// the read gets its own deadline — otherwise a hung socket spins forever.
+const ANNOUNCEMENTS_TIMEOUT_MS = 10000;
+
 export default function AdminScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { session, user, loading, isAdmin, isCityHelper, isCityStaff } = useAuth();
+  const { session, user, loading, isAdmin, isCityHelper, isCityStaff, clearSession } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
   const screenTitle = isCityHelper ? t('admin.helperTitle') : t('admin.title');
+
+  // One section on screen at a time; callbacks lead because they are the only
+  // time-sensitive queue here (audit finding 9).
+  const [section, setSection] = useState<AdminSection>('callbacks');
+  // Set when an offline demo token is rejected by the live backend, so the gate
+  // explains what happened instead of bouncing back to /login (finding 8).
+  const [demoSessionEnded, setDemoSessionEnded] = useState(false);
 
   // Announcements form state.
   const [titleEn, setTitleEn] = useState('');
@@ -198,6 +230,7 @@ export default function AdminScreen() {
   const [category, setCategory] = useState<ServiceCategory>('doctor');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [mapUrl, setMapUrl] = useState('');
   const [hours, setHours] = useState('');
   const [description, setDescription] = useState('');
   const [upiId, setUpiId] = useState('');
@@ -219,10 +252,18 @@ export default function AdminScreen() {
   const [callbacks, setCallbacks] = useState<CallbackRequest[]>([]);
   const [loadingCallbacks, setLoadingCallbacks] = useState(false);
   const [callbacksError, setCallbacksError] = useState(false);
+  const [callbackFilter, setCallbackFilter] = useState<CallbackFilter>('all');
+
+  // Per-row in-flight ids so a second tap cannot fire the same mutation twice
+  // on a slow connection (audit finding 13).
+  const [pendingCallbackId, setPendingCallbackId] = useState<string | null>(null);
+  const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
+  const [pendingAnnouncementId, setPendingAnnouncementId] = useState<string | null>(null);
 
   // City helper management state (admins only).
   const [helpers, setHelpers] = useState<CityHelper[]>([]);
   const [loadingHelpers, setLoadingHelpers] = useState(false);
+  const [helpersError, setHelpersError] = useState(false);
   const [helperUsername, setHelperUsername] = useState('');
   const [addingHelper, setAddingHelper] = useState(false);
   const [helperError, setHelperError] = useState<string | null>(null);
@@ -241,12 +282,18 @@ export default function AdminScreen() {
   }
 
   function handleAuthError(error: unknown): boolean {
-    if ((error as { status?: number }).status === 401) {
-      markLoginIntent();
-      router.replace('/login');
+    if ((error as { status?: number }).status !== 401) return false;
+    // An offline demo token (`demo.<id>`) can never satisfy the live backend.
+    // Redirecting to /login just mints another demo session and we bounce back
+    // here forever, so drop the session and explain it in place (finding 8).
+    if ((session?.access_token || '').startsWith('demo.')) {
+      setDemoSessionEnded(true);
+      void clearSession();
       return true;
     }
-    return false;
+    markLoginIntent();
+    router.replace('/login');
+    return true;
   }
 
   async function loadServices() {
@@ -284,6 +331,8 @@ export default function AdminScreen() {
   }
 
   async function setCallbackStatus(id: string, status: string) {
+    if (pendingCallbackId) return;
+    setPendingCallbackId(id);
     try {
       await backendRequest('/api/admin/callback', {
         method: 'POST',
@@ -293,6 +342,8 @@ export default function AdminScreen() {
       await loadCallbacks();
     } catch (error) {
       if (!handleAuthError(error)) setCallbacksError(true);
+    } finally {
+      setPendingCallbackId(null);
     }
   }
 
@@ -303,31 +354,44 @@ export default function AdminScreen() {
     }
     setLoadingAnnouncements(true);
     setAnnouncementsError(false);
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('active', true)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    setLoadingAnnouncements(false);
-    if (error) {
+    try {
+      // This read bypasses backendRequest, so it needs its own deadline and
+      // catch — otherwise a stalled request leaves a permanent spinner (H5).
+      const query = supabase
+        .from('announcements')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      const { data, error } = await Promise.race([
+        query,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), ANNOUNCEMENTS_TIMEOUT_MS),
+        ),
+      ]);
+      if (error) throw error;
+      setAnnouncements((data ?? []) as Announcement[]);
+    } catch {
       setAnnouncementsError(true);
-      return;
+    } finally {
+      setLoadingAnnouncements(false);
     }
-    if (data) setAnnouncements(data as Announcement[]);
   }
 
   async function loadHelpers() {
     if (!session) return;
     setLoadingHelpers(true);
+    setHelpersError(false);
     try {
       const { helpers: rows } = await backendRequest<{ helpers: CityHelper[] }>(
         '/api/admin/helper',
         { method: 'POST', token: session.access_token, body: { action: 'list' } },
       );
       setHelpers(rows);
-    } catch {
-      setHelpers([]);
+    } catch (error) {
+      // A failed load is not an empty city — say so instead of faking an empty
+      // state, and treat a 401 like the other sections do (H4).
+      if (!handleAuthError(error)) setHelpersError(true);
     } finally {
       setLoadingHelpers(false);
     }
@@ -365,7 +429,14 @@ export default function AdminScreen() {
             <Feather name="lock" size={28} color={colors.text} />
           </View>
           <H2 style={styles.gateTitle}>{t('admin.notAdmin')}</H2>
-          <Muted style={styles.gateBody}>{t('admin.signInFirst')}</Muted>
+          <Muted style={styles.gateBody}>
+            {demoSessionEnded
+              ? t('admin.demoSessionEnded', {
+                  defaultValue:
+                    'The offline demo sign-in cannot use the admin tools. Sign in again to continue.',
+                })
+              : t('admin.signInFirst')}
+          </Muted>
           <View style={styles.gateAction}>
             <Button
               label={t('common.signIn')}
@@ -427,7 +498,9 @@ export default function AdminScreen() {
   }
 
   async function deactivate(id: string) {
+    if (pendingAnnouncementId) return;
     setPublishError(null);
+    setPendingAnnouncementId(id);
     try {
       await backendRequest('/api/admin/announcement', {
         method: 'POST',
@@ -437,6 +510,8 @@ export default function AdminScreen() {
       await loadAnnouncements();
     } catch (error) {
       if (!handleAuthError(error)) setPublishError(friendlyMessage(error));
+    } finally {
+      setPendingAnnouncementId(null);
     }
   }
 
@@ -446,6 +521,7 @@ export default function AdminScreen() {
     setCategory(service.category);
     setPhone(service.phone ?? '');
     setAddress(service.address ?? '');
+    setMapUrl(service.map_url ?? '');
     setHours(service.hours ?? '');
     setDescription(service.description ?? '');
     setUpiId(service.upi_id ?? '');
@@ -459,6 +535,7 @@ export default function AdminScreen() {
     setServiceName('');
     setPhone('');
     setAddress('');
+    setMapUrl('');
     setHours('');
     setDescription('');
     setUpiId('');
@@ -483,6 +560,13 @@ export default function AdminScreen() {
       setServiceError(t('admin.invalidUpi'));
       return;
     }
+    const map = mapUrl.trim();
+    if (map && !MAP_URL_PATTERN.test(map)) {
+      setServiceError(
+        t('admin.invalidMapUrl', { defaultValue: 'Enter a link starting with http:// or https://' }),
+      );
+      return;
+    }
 
     setSavingService(true);
     try {
@@ -495,6 +579,7 @@ export default function AdminScreen() {
           category,
           phone: normalizedPhone,
           address: address.trim() || undefined,
+          map_url: map || undefined,
           hours: hours.trim() || undefined,
           description: description.trim() || undefined,
           upi_id: upi || undefined,
@@ -506,6 +591,7 @@ export default function AdminScreen() {
       setServiceName('');
       setPhone('');
       setAddress('');
+      setMapUrl('');
       setHours('');
       setDescription('');
       setUpiId('');
@@ -521,8 +607,10 @@ export default function AdminScreen() {
   }
 
   async function deleteService(id: string) {
+    if (pendingServiceId) return;
     setServiceError(null);
     setServiceSuccess(false);
+    setPendingServiceId(id);
     try {
       await backendRequest('/api/admin/service', {
         method: 'POST',
@@ -533,6 +621,8 @@ export default function AdminScreen() {
       await loadServices();
     } catch (error) {
       if (!handleAuthError(error)) setServiceError(friendlyMessage(error));
+    } finally {
+      setPendingServiceId(null);
     }
   }
 
@@ -617,31 +707,97 @@ export default function AdminScreen() {
     );
   });
 
+  // Callback queue counts drive both the filter chips and the tab badge.
+  const callbackCounts = callbacks.reduce<Record<string, number>>((acc, c) => {
+    acc[c.status] = (acc[c.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  const filteredCallbacks =
+    callbackFilter === 'all' ? callbacks : callbacks.filter((c) => c.status === callbackFilter);
+  const openCallbacks = callbacks.filter(
+    (c) => c.status !== 'closed' && c.status !== 'spam',
+  ).length;
+
+  function callbackStatusColor(status: string) {
+    if (status === 'closed') return colors.success;
+    if (status === 'contacted') return colors.info;
+    if (status === 'spam') return colors.danger;
+    if (status === 'queued') return colors.textSubtle;
+    return colors.star;
+  }
+
   const roleBadgeLabel = isAdmin ? t('admin.title') : t('admin.helperTitle');
 
+  // Section tabs — counts are suppressed while a section is loading or errored
+  // so a failed fetch never reads as "0 items" (finding 14).
+  const sectionTabs: { key: AdminSection; label: string; count?: number }[] = [
+    {
+      key: 'callbacks',
+      label: t('admin.callbacks'),
+      count: loadingCallbacks || callbacksError ? undefined : openCallbacks,
+    },
+    {
+      key: 'services',
+      label: t('admin.services'),
+      count: loadingServices || servicesError ? undefined : services.length,
+    },
+    {
+      key: 'announcements',
+      label: t('admin.announcements'),
+      count: loadingAnnouncements || announcementsError ? undefined : announcements.length,
+    },
+    ...(isAdmin
+      ? [
+          {
+            key: 'helpers' as const,
+            label: t('admin.helpers'),
+            count: loadingHelpers || helpersError ? undefined : helpers.length,
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{
-        padding: space.md,
-        paddingTop: space.sm,
-        paddingBottom: Math.max(insets.bottom, space.lg),
-      }}
-    >
+    <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       <Stack.Screen options={{ title: screenTitle }} />
 
-      <H1>{screenTitle}</H1>
-      <View style={styles.roleBadgeRow}>
-        <Badge label={roleBadgeLabel} color={isAdmin ? colors.accent : colors.chipBg} />
+      {/* Sticky section switcher — stays put while a section scrolls. */}
+      <View style={[styles.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBarContent}
+        >
+          {sectionTabs.map((tab) => (
+            <Chip
+              key={tab.key}
+              label={tab.label}
+              count={tab.count}
+              active={section === tab.key}
+              onPress={() => setSection(tab.key)}
+            />
+          ))}
+        </ScrollView>
       </View>
-      <Muted style={styles.screenSubtitle}>
-        {isCityHelper ? t('admin.helperSubtitle') : t('admin.subtitle')}
-      </Muted>
 
-      {/* Announcements */}
-      <H2 style={styles.sectionHeader}>{t('admin.announcements')}</H2>
+      <ScrollView
+        style={{ backgroundColor: colors.bg }}
+        contentContainerStyle={{
+          padding: space.md,
+          paddingTop: space.sm,
+          paddingBottom: Math.max(insets.bottom, space.lg),
+        }}
+      >
+        <View style={styles.roleBadgeRow}>
+          <Badge label={roleBadgeLabel} color={isAdmin ? colors.accent : colors.chipBg} />
+        </View>
+        <Muted style={styles.screenSubtitle}>
+          {isCityHelper ? t('admin.helperSubtitle') : t('admin.subtitle')}
+        </Muted>
 
-      <Card>
+      {section === 'announcements' ? (
+       <>
+      <Card style={styles.sectionLead}>
         <Text style={styles.cardTitle}>{t('admin.newAnnouncement')}</Text>
         <Field label={t('admin.titleLabel')} value={titleEn} onChangeText={setTitleEn} />
         <Field label={t('admin.bodyLabel')} value={bodyEn} onChangeText={setBodyEn} multiline />
@@ -673,8 +829,9 @@ export default function AdminScreen() {
             <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={t('common.retry')}
               onPress={loadAnnouncements}
-              style={({ pressed }) => [pressed ? { opacity: 0.6 } : null]}
+              style={({ pressed }) => [styles.retryButton, pressed ? { opacity: 0.6 } : null]}
             >
               <Text style={styles.retryText}>{t('common.retry')}</Text>
             </Pressable>
@@ -703,13 +860,19 @@ export default function AdminScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('admin.deactivate')}
+                  disabled={pendingAnnouncementId !== null}
                   onPress={() => setRemoveTarget(item)}
                   style={({ pressed }) => [
                     styles.ghostDanger,
+                    pendingAnnouncementId !== null ? { opacity: 0.45 } : null,
                     pressed ? { backgroundColor: colors.dangerSoft } : null,
                   ]}
                 >
-                  <Text style={styles.ghostDangerText}>{t('admin.deactivate')}</Text>
+                  {pendingAnnouncementId === item.id ? (
+                    <ActivityIndicator color={colors.danger} />
+                  ) : (
+                    <Text style={styles.ghostDangerText}>{t('admin.deactivate')}</Text>
+                  )}
                 </Pressable>
               </View>
               {index < announcements.length - 1 ? <View style={styles.rowDivider} /> : null}
@@ -717,11 +880,12 @@ export default function AdminScreen() {
           ))
         )}
       </Card>
+       </>
+      ) : null}
 
-      {/* Services */}
-      <H2 style={styles.sectionHeader}>{t('admin.services')}</H2>
-
-      <Card>
+      {section === 'services' ? (
+       <>
+      <Card style={styles.sectionLead}>
         <Text style={styles.cardTitle}>
           {editingId ? t('admin.editService') : t('admin.addService')}
         </Text>
@@ -751,6 +915,17 @@ export default function AdminScreen() {
           hint={t('admin.phoneHint')}
         />
         <Field label={t('admin.address')} value={address} onChangeText={setAddress} />
+        <Field
+          label={t('admin.mapUrl', { defaultValue: 'Map link (optional)' })}
+          value={mapUrl}
+          onChangeText={setMapUrl}
+          autoCapitalize="none"
+          keyboardType="url"
+          placeholder="https://maps.app.goo.gl/..."
+          hint={t('admin.mapUrlHint', {
+            defaultValue: 'Paste the Google Maps share link so people get directions.',
+          })}
+        />
         <Field label={t('admin.hours')} value={hours} onChangeText={setHours} />
         <Field
           label={t('admin.description')}
@@ -841,9 +1016,11 @@ export default function AdminScreen() {
           autoCapitalize="none"
         />
         <View style={[styles.chipRow, { marginTop: space.md }]}>
+          {/* Counts are dropped when the list failed to load — "0" would read
+              as an empty city rather than a broken fetch (finding 14). */}
           <Chip
             label={t('common.all')}
-            count={services.length}
+            count={servicesError ? undefined : services.length}
             active={serviceFilter === 'all'}
             onPress={() => setServiceFilter('all')}
           />
@@ -851,7 +1028,7 @@ export default function AdminScreen() {
             <Chip
               key={c.key}
               label={t(`categories.${c.key}`)}
-              count={serviceCounts[c.key] ?? 0}
+              count={servicesError ? undefined : (serviceCounts[c.key] ?? 0)}
               active={serviceFilter === c.key}
               onPress={() => setServiceFilter(c.key)}
             />
@@ -871,8 +1048,9 @@ export default function AdminScreen() {
             <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={t('common.retry')}
               onPress={loadServices}
-              style={({ pressed }) => [pressed ? { opacity: 0.6 } : null]}
+              style={({ pressed }) => [styles.retryButton, pressed ? { opacity: 0.6 } : null]}
             >
               <Text style={styles.retryText}>{t('common.retry')}</Text>
             </Pressable>
@@ -902,13 +1080,19 @@ export default function AdminScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('admin.deleteService')}
+                  disabled={pendingServiceId !== null}
                   onPress={() => setServiceRemoveTarget(item)}
                   style={({ pressed }) => [
                     styles.ghostDanger,
+                    pendingServiceId !== null ? { opacity: 0.45 } : null,
                     pressed ? { backgroundColor: colors.dangerSoft } : null,
                   ]}
                 >
-                  <Text style={styles.ghostDangerText}>{t('admin.deleteService')}</Text>
+                  {pendingServiceId === item.id ? (
+                    <ActivityIndicator color={colors.danger} />
+                  ) : (
+                    <Text style={styles.ghostDangerText}>{t('admin.deleteService')}</Text>
+                  )}
                 </Pressable>
               </View>
               {index < filteredServices.length - 1 ? <View style={styles.rowDivider} /> : null}
@@ -916,9 +1100,34 @@ export default function AdminScreen() {
           ))
         )}
       </Card>
+       </>
+      ) : null}
 
-      {/* Callback requests queue */}
-      <H2 style={styles.sectionHeader}>{t('admin.callbacks')}</H2>
+      {section === 'callbacks' ? (
+       <>
+      {/* Status filter — queued/spam rows used to have no home (finding 12). */}
+      <Card style={styles.sectionLead}>
+        <View style={styles.chipRow}>
+          <Chip
+            label={t('common.all')}
+            count={callbacksError ? undefined : callbacks.length}
+            active={callbackFilter === 'all'}
+            onPress={() => setCallbackFilter('all')}
+          />
+          {CALLBACK_STATUSES.map((status) => (
+            <Chip
+              key={status}
+              label={t(`admin.status_${status}`, {
+                defaultValue: CALLBACK_STATUS_FALLBACK[status] ?? status,
+              })}
+              count={callbacksError ? undefined : (callbackCounts[status] ?? 0)}
+              active={callbackFilter === status}
+              onPress={() => setCallbackFilter(status)}
+            />
+          ))}
+        </View>
+      </Card>
+
       <Card style={styles.listCard}>
         {loadingCallbacks ? (
           <View style={styles.stateBlock}>
@@ -931,8 +1140,9 @@ export default function AdminScreen() {
             <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={t('common.retry')}
               onPress={loadCallbacks}
-              style={({ pressed }) => [pressed ? { opacity: 0.6 } : null]}
+              style={({ pressed }) => [styles.retryButton, pressed ? { opacity: 0.6 } : null]}
             >
               <Text style={styles.retryText}>{t('common.retry')}</Text>
             </Pressable>
@@ -942,8 +1152,13 @@ export default function AdminScreen() {
             <Feather name="phone-missed" size={20} color={colors.textSubtle} />
             <Muted style={styles.stateText}>{t('admin.callbacksEmpty')}</Muted>
           </View>
+        ) : filteredCallbacks.length === 0 ? (
+          <View style={styles.stateBlock}>
+            <Feather name="filter" size={20} color={colors.textSubtle} />
+            <Muted style={styles.stateText}>{t('common.noResults')}</Muted>
+          </View>
         ) : (
-          callbacks.map((item, index) => (
+          filteredCallbacks.map((item, index) => (
             <View key={item.id}>
               <View style={styles.callbackRow}>
                 <View style={styles.callbackHeader}>
@@ -952,14 +1167,10 @@ export default function AdminScreen() {
                     <Text style={styles.rowSubtitle}>{item.phone}</Text>
                   </View>
                   <Badge
-                    label={t(`admin.status_${item.status}`, { defaultValue: item.status })}
-                    color={
-                      item.status === 'closed'
-                        ? colors.success
-                        : item.status === 'contacted'
-                          ? colors.info
-                          : colors.star
-                    }
+                    label={t(`admin.status_${item.status}`, {
+                      defaultValue: CALLBACK_STATUS_FALLBACK[item.status] ?? item.status,
+                    })}
+                    color={callbackStatusColor(item.status)}
                   />
                 </View>
                 {item.issue ? (
@@ -970,33 +1181,46 @@ export default function AdminScreen() {
                 </Text>
                 {item.status !== 'closed' ? (
                   <View style={styles.callbackActions}>
-                    {item.status === 'new' ? (
+                    {item.status !== 'contacted' && item.status !== 'spam' ? (
                       <Button
                         label={t('admin.callbackMarkContacted')}
                         variant="secondary"
+                        loading={pendingCallbackId === item.id}
+                        disabled={pendingCallbackId !== null}
                         onPress={() => setCallbackStatus(item.id, 'contacted')}
                       />
                     ) : null}
                     <Button
                       label={t('admin.callbackMarkClosed')}
                       variant="secondary"
+                      loading={pendingCallbackId === item.id}
+                      disabled={pendingCallbackId !== null}
                       onPress={() => setCallbackStatus(item.id, 'closed')}
                     />
+                    {item.status !== 'spam' ? (
+                      <Button
+                        label={t('admin.callbackMarkSpam', { defaultValue: 'Mark spam' })}
+                        variant="secondary"
+                        loading={pendingCallbackId === item.id}
+                        disabled={pendingCallbackId !== null}
+                        onPress={() => setCallbackStatus(item.id, 'spam')}
+                      />
+                    ) : null}
                   </View>
                 ) : null}
               </View>
-              {index < callbacks.length - 1 ? <View style={styles.rowDivider} /> : null}
+              {index < filteredCallbacks.length - 1 ? <View style={styles.rowDivider} /> : null}
             </View>
           ))
         )}
       </Card>
+       </>
+      ) : null}
 
       {/* City helpers (admins appoint trusted locals) */}
-      {isAdmin ? (
+      {isAdmin && section === 'helpers' ? (
         <>
-          <H2 style={styles.sectionHeader}>{t('admin.helpers')}</H2>
-
-          <Card>
+          <Card style={styles.sectionLead}>
             <Text style={styles.cardTitle}>{t('admin.addHelper')}</Text>
             <Muted style={styles.screenSubtitle}>{t('admin.helperHint')}</Muted>
             <Field
@@ -1025,6 +1249,19 @@ export default function AdminScreen() {
               <View style={styles.stateBlock}>
                 <ActivityIndicator color={colors.textMuted} />
                 <Muted style={styles.stateText}>{t('common.loading')}</Muted>
+              </View>
+            ) : helpersError ? (
+              <View style={styles.stateBlock}>
+                <Feather name="alert-circle" size={20} color={colors.textSubtle} />
+                <Muted style={styles.stateText}>{t('common.errorLoading')}</Muted>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.retry')}
+                  onPress={loadHelpers}
+                  style={({ pressed }) => [styles.retryButton, pressed ? { opacity: 0.6 } : null]}
+                >
+                  <Text style={styles.retryText}>{t('common.retry')}</Text>
+                </Pressable>
               </View>
             ) : helpers.length === 0 ? (
               <View style={styles.stateBlock}>
@@ -1061,6 +1298,7 @@ export default function AdminScreen() {
           </Card>
         </>
       ) : null}
+      </ScrollView>
 
       {/* Helper removal confirmation */}
       <Dialog
@@ -1132,18 +1370,31 @@ export default function AdminScreen() {
           />
         </View>
       </Dialog>
-    </ScrollView>
+    </View>
   );
 }
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
+    screen: {
+      flex: 1,
+    },
+    tabBar: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    tabBarContent: {
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      alignItems: 'center',
+    },
     screenSubtitle: {
       marginTop: space.xs,
     },
     roleBadgeRow: {
       flexDirection: 'row',
-      marginTop: space.sm,
+    },
+    sectionLead: {
+      marginTop: space.md,
     },
     sectionHeader: {
       marginTop: space.lg,
@@ -1243,6 +1494,15 @@ function makeStyles(colors: AppColors) {
     },
     stateText: {
       textAlign: 'center',
+    },
+    // Retry used to be a bare 21x41 text hit box — below the 56px TAP floor
+    // this app holds itself to for elder users (finding 10).
+    retryButton: {
+      minHeight: TAP,
+      minWidth: TAP,
+      paddingHorizontal: space.md,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     retryText: {
       fontSize: font.sm,

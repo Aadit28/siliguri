@@ -1,4 +1,4 @@
-const { authenticate, readBody, requireCityStaff, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireCityStaff, send, sendServerError, withCors } = require('../_lib/auth');
 
 const CATEGORIES = new Set(['doctor', 'hospital', 'medical_shop', 'travel_agent', 'elder_home', 'home_service', 'daily_service']);
 
@@ -22,10 +22,14 @@ module.exports = async function handler(req, res) {
     if (action === 'list') {
       let query = auth.supabase
         .from('services')
-        .select('id,name,category,phone,address,hours,description,upi_id,verified,city_id,town')
+        .select('id,name,category,phone,address,map_url,hours,description,upi_id,verified,city_id,town')
         .order('name', { ascending: true });
       if (!isSuperAdmin) {
-        query = query.or(`city_id.eq.${auth.user.city_id},city_id.is.null`);
+        // A staff account without a city would render "city_id.eq.null" (a
+        // PostgREST 500) — same null-branch as announcement.js.
+        query = auth.user.city_id
+          ? query.or(`city_id.eq.${auth.user.city_id},city_id.is.null`)
+          : query.is('city_id', null);
       }
       const { data: services, error } = await query;
       if (error) throw error;
@@ -59,17 +63,18 @@ module.exports = async function handler(req, res) {
     if (!CATEGORIES.has(category)) return send(res, 400, { error: 'Choose a valid category.' });
     if (!name) return send(res, 400, { error: 'Service name is required.' });
 
-    const fields = {
-      name,
-      category,
-      description: body.description ? String(body.description).trim() : null,
-      phone: body.phone ? String(body.phone).trim() : null,
-      address: body.address ? String(body.address).trim() : null,
-      map_url: body.map_url ? String(body.map_url).trim() : null,
-      hours: body.hours ? String(body.hours).trim() : null,
-      upi_id: body.upi_id ? String(body.upi_id).trim() : null,
-      verified: isHelper ? false : Boolean(body.verified),
-    };
+    // Partial patch: only fields present in the request body are written, so a
+    // client that omits a field (older form version) cannot silently null it.
+    const fields = { name, category };
+    for (const key of ['description', 'phone', 'address', 'map_url', 'hours', 'upi_id']) {
+      if (body[key] !== undefined) {
+        const value = String(body[key] || '').trim();
+        fields[key] = value || null;
+      }
+    }
+    if (body.verified !== undefined || !body.id) {
+      fields.verified = isHelper ? false : Boolean(body.verified);
+    }
 
     const id = body.id ? String(body.id) : null;
 
@@ -125,6 +130,6 @@ module.exports = async function handler(req, res) {
 
     return send(res, 200, { service });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not save service.' });
+    return sendServerError(res, error, 'Could not save service.');
   }
 };

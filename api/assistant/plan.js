@@ -1,8 +1,11 @@
-const { adminClient, authenticate, readBody, send, withCors } = require('../_lib/auth');
+const { adminClient, authenticate, readBody, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
+// Each list mixes English, Hinglish and Devanagari so Hindi-first elders get a
+// category match instead of the "no matching service" fallback.
 const CATEGORY_KEYWORDS = {
-  doctor: ['doctor', 'appointment', 'opd', 'physician', 'cardio', 'heart', 'ortho', 'bone', 'medicine', 'specialist', 'clinic'],
-  hospital: ['hospital', 'emergency', 'ambulance', 'admit', 'chest pain', 'stroke', 'accident', 'icu'],
+  doctor: ['doctor', 'appointment', 'opd', 'physician', 'cardio', 'heart', 'ortho', 'bone', 'medicine', 'specialist', 'clinic', 'डॉक्टर', 'अपॉइंटमेंट', 'इलाज', 'क्लिनिक', 'दिल', 'daktar', 'dawakhana'],
+  hospital: ['hospital', 'emergency', 'ambulance', 'admit', 'chest pain', 'stroke', 'accident', 'icu', 'अस्पताल', 'एम्बुलेंस', 'भर्ती', 'सीने में दर्द', 'aspatal'],
   medical_shop: [
     'medical shop',
     'medicine shop',
@@ -17,9 +20,17 @@ const CATEGORY_KEYWORDS = {
     'wheel chair',
     'medical equipment',
     'oxygen',
+    'दवा',
+    'दवाई',
+    'दवाइयां',
+    'मेडिकल',
+    'केमिस्ट',
+    'पर्ची',
+    'dawa',
+    'dawai',
   ],
-  travel_agent: ['travel', 'ticket', 'train', 'flight', 'bus', 'taxi', 'ride', 'airport', 'station'],
-  elder_home: ['elder', 'old age', 'care home', 'attendant', 'nursing', 'parent', 'senior'],
+  travel_agent: ['travel', 'ticket', 'train', 'flight', 'bus', 'taxi', 'ride', 'airport', 'station', 'टिकट', 'ट्रेन', 'बस', 'टैक्सी', 'यात्रा', 'स्टेशन', 'हवाई'],
+  elder_home: ['elder', 'old age', 'care home', 'attendant', 'nursing', 'parent', 'senior', 'बुजुर्ग', 'वृद्धाश्रम', 'नर्सिंग', 'देखभाल'],
   home_service: [
     'home service',
     'handyman',
@@ -37,8 +48,16 @@ const CATEGORY_KEYWORDS = {
     'painter',
     'repair',
     'technician',
+    'प्लंबर',
+    'बिजली',
+    'मिस्त्री',
+    'नल',
+    'पंखा',
+    'मरम्मत',
+    'bijli',
+    'mistri',
   ],
-  daily_service: ['water', 'electricity', 'post office', 'gas', 'lpg', 'municipal', 'garbage', 'civic'],
+  daily_service: ['water', 'electricity', 'post office', 'gas', 'lpg', 'municipal', 'garbage', 'civic', 'पानी', 'गैस', 'डाकघर', 'कचरा', 'नगर निगम'],
 };
 
 const URGENT_WORDS = [
@@ -52,6 +71,13 @@ const URGENT_WORDS = [
   'bleeding',
   'severe',
   'ambulance',
+  'आपातकाल',
+  'सीने में दर्द',
+  'सांस',
+  'बेहोश',
+  'दुर्घटना',
+  'खून',
+  'एम्बुलेंस',
 ];
 
 const ROUTE_TIME_WORDS = [
@@ -206,8 +232,9 @@ async function aiDailyQuotaOk(userId) {
     }
     return true;
   } catch {
-    // Quota accounting must never take the assistant down.
-    return true;
+    // Fail closed: if quota accounting is unreachable we cannot meter LLM
+    // spend, so fall back to the free local planner instead of unmetered AI.
+    return false;
   }
 }
 
@@ -277,7 +304,7 @@ module.exports = async function handler(req, res) {
     await logAssistantEvent(userId, { message: effectiveMessage, imageCount: imageAttachments.length, plan });
     return send(res, 200, plan);
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not plan this request.' });
+    return sendServerError(res, error, 'Could not plan this request.');
   }
 };
 
@@ -891,30 +918,38 @@ function editDistance(a, b) {
   return rows[a.length][b.length];
 }
 
+// Per-field cap: these strings are interpolated into the LLM prompt, so an
+// oversized client payload must not be able to inflate token spend.
+const SERVICE_FIELD_MAX = 300;
+
+function cappedString(value) {
+  return value ? String(value).slice(0, SERVICE_FIELD_MAX) : null;
+}
+
 function sanitizeServices(services) {
   return services
     .map((service) => ({
-      id: String(service.id || ''),
-      name: String(service.name || ''),
-      category: String(service.category || 'daily_service'),
-      description: service.description ? String(service.description) : null,
-      phone: service.phone ? String(service.phone) : null,
-      address: service.address ? String(service.address) : null,
-      map_url: service.map_url ? String(service.map_url) : null,
-      image_url: service.image_url ? String(service.image_url) : null,
-      hours: service.hours ? String(service.hours) : null,
+      id: String(service.id || '').slice(0, 80),
+      name: String(service.name || '').slice(0, SERVICE_FIELD_MAX),
+      category: String(service.category || 'daily_service').slice(0, 40),
+      description: cappedString(service.description),
+      phone: cappedString(service.phone),
+      address: cappedString(service.address),
+      map_url: cappedString(service.map_url),
+      image_url: cappedString(service.image_url),
+      hours: cappedString(service.hours),
       rating: typeof service.rating === 'number' ? service.rating : null,
       verified: Boolean(service.verified),
-      town: service.town ? String(service.town) : null,
-      source_url: service.source_url ? String(service.source_url) : null,
-      verification_status: service.verification_status ? String(service.verification_status) : null,
-      verified_at: service.verified_at ? String(service.verified_at) : null,
+      town: cappedString(service.town),
+      source_url: cappedString(service.source_url),
+      verification_status: cappedString(service.verification_status),
+      verified_at: cappedString(service.verified_at),
       phone_confirmed: Boolean(service.phone_confirmed),
-      claim_status: service.claim_status ? String(service.claim_status) : null,
-      service_area: service.service_area ? String(service.service_area) : null,
-      created_at: service.created_at ? String(service.created_at) : null,
-      upi_id: service.upi_id ? String(service.upi_id) : null,
-      city_id: service.city_id ? String(service.city_id) : null,
+      claim_status: cappedString(service.claim_status),
+      service_area: cappedString(service.service_area),
+      created_at: cappedString(service.created_at),
+      upi_id: cappedString(service.upi_id),
+      city_id: cappedString(service.city_id),
     }))
     .filter((service) => service.id && service.name)
     .slice(0, 60);

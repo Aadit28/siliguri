@@ -1,4 +1,5 @@
-const { authenticate, normalizeUsername, readBody, requireAdmin, send, withCors } = require('../_lib/auth');
+const { authenticate, normalizeUsername, readBody, requireAdmin, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -69,6 +70,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { helpers: helpers || [] });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not update city helpers.' });
+    return sendServerError(res, error, 'Could not update city helpers.');
   }
 };

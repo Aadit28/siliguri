@@ -69,7 +69,7 @@ export interface Announcement {
   created_at: string;
 }
 
-export type ReminderRepeat = 'once' | 'daily' | 'weekly';
+export type ReminderRepeat = 'once' | 'daily' | 'weekly' | 'monthly';
 
 export interface CalendarEvent {
   id: string;

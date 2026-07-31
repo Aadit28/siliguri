@@ -1,4 +1,5 @@
-const { authenticate, readBody, requireFamilyLink, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, requireFamilyLink, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 const CATEGORIES = ['doctor', 'grocery', 'pharmacy', 'hospital', 'helper', 'other'];
 const COLS = 'id,parent_id,category,service_id,name,phone,note,set_by,created_at';
@@ -92,6 +93,6 @@ module.exports = async function handler(req, res) {
     if (error) throw error;
     return send(res, 200, { members: (data || []).map(toMember) });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not update the care team.' });
+    return sendServerError(res, error, 'Could not update the care team.');
   }
 };

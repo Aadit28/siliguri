@@ -71,6 +71,15 @@ const GUARDIAN = {
   relationship: 'son',
 };
 
+const ADMIN = {
+  username: 'demo.admin',
+  fullName: 'Saathi Admin',
+  phone: '9800000003',
+  password: PASSWORD,
+  locale: 'en',
+  role: 'admin',
+};
+
 function isoDaysFromNow(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -115,7 +124,7 @@ async function main() {
   const { data: stale } = await supabase
     .from('user_accounts')
     .select('id')
-    .in('username', [PARENT.username, GUARDIAN.username]);
+    .in('username', [PARENT.username, GUARDIAN.username, ADMIN.username]);
   const staleIds = (stale || []).map((r) => r.id);
   if (staleIds.length) {
     await supabase.from('profiles').delete().in('id', staleIds);
@@ -129,8 +138,10 @@ async function main() {
   console.log('Creating parent + guardian accounts...');
   const parent = await insertAccount(PARENT, cityId);
   const guardian = await insertAccount(GUARDIAN, cityId);
+  const admin = await insertAccount(ADMIN, cityId);
   console.log(`  parent   ${parent.username} (${parent.id})`);
   console.log(`  guardian ${guardian.username} (${guardian.id})`);
+  console.log(`  admin    ${admin.username} (${admin.id})`);
 
   // 3. Profiles (locale) — best effort; table has no FK to user_accounts.
   const { error: profileError } = await supabase.from('profiles').insert([
@@ -231,6 +242,7 @@ async function main() {
   console.log('\nDone. Demo credentials (username or phone + password):');
   console.log(`  PARENT   username=${PARENT.username}   phone=${normalizePhone(PARENT.phone)}   password=${PASSWORD}`);
   console.log(`  GUARDIAN username=${GUARDIAN.username} phone=${normalizePhone(GUARDIAN.phone)} password=${PASSWORD}`);
+  console.log(`  ADMIN    username=${ADMIN.username}    phone=${normalizePhone(ADMIN.phone)}    password=${PASSWORD}`);
 }
 
 main().catch((error) => {

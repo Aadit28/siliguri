@@ -1,4 +1,5 @@
-const { authenticate, readBody, send, withCors } = require('../_lib/auth');
+const { authenticate, readBody, send, withCors,
+  sendServerError } = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -21,6 +22,6 @@ module.exports = async function handler(req, res) {
     if (error && !String(error.message || '').toLowerCase().includes('duplicate')) throw error;
     return send(res, 200, { ok: true });
   } catch (error) {
-    return send(res, 500, { error: error.message || 'Could not update like.' });
+    return sendServerError(res, error, 'Could not update like.');
   }
 };

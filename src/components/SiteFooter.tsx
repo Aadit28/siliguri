@@ -59,6 +59,13 @@ export default function SiteFooter({ services }: { services: Service[] }) {
         { label: t('categories.medical_shop'), href: '/services?category=medical_shop' },
       ],
     },
+    {
+      title: lang === 'hi' ? 'ऐप के बारे में' : 'About',
+      links: [
+        { label: lang === 'hi' ? 'गोपनीयता' : 'Privacy', href: '/privacy' },
+        { label: t('tabs.help'), href: '/help' },
+      ],
+    },
   ];
 
   return (

@@ -13,6 +13,7 @@ module.exports = async function handler(req, res) {
     const postId = String(body.postId || '').trim();
     const replyBody = String(body.body || '').trim();
     if (!postId || !replyBody) return send(res, 400, { error: 'Write a reply first.' });
+    if (replyBody.length > 4000) return send(res, 400, { error: 'Keep the reply under 4000 characters.' });
 
     let { data: post, error: postError } = await auth.supabase
       .from('community_posts')

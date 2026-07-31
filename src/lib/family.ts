@@ -20,7 +20,9 @@ import {
   demoRemoveCareTeamMember,
   demoRemoveFavorite,
   demoRemoveReminder,
+  demoRevokeLink,
   demoSetCareTeamMember,
+  demoUpdateReminder,
   isDemoToken,
 } from './demoFamily';
 
@@ -68,6 +70,7 @@ export async function revokeFamilyLink(
   token: string,
   id: string,
 ): Promise<{ ok: boolean }> {
+  if (isDemoToken(token)) return demoRevokeLink(token, id);
   return backendRequest('/api/family/link', {
     method: 'POST',
     token,
@@ -120,6 +123,7 @@ export async function updateFamilyReminder(
     repeat?: FamilyReminderRepeat;
   },
 ): Promise<{ reminder: FamilyReminder }> {
+  if (isDemoToken(token)) return demoUpdateReminder(token, input);
   return backendRequest('/api/family/reminders', {
     method: 'POST',
     token,
@@ -247,4 +251,26 @@ export async function fetchParentAnalytics(
     token,
     body: { action: 'summary', parentId },
   });
+}
+
+// ----- Error copy -----
+
+// Turns a rejected family call into copy a family member can act on. Raw
+// messages ("TypeError: fetch failed", a Postgres constraint name) must never
+// reach the screen. backendRequest attaches the HTTP status; a failure with no
+// status never reached the server (offline, DNS, server down).
+export function friendlyFamilyError(
+  e: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const err = e as Error & { status?: number };
+  const status = err?.status;
+  const message = err?.message ?? '';
+  if (status === undefined) return t('family.errorNetwork');
+  if (status === 401) return t('family.errorSignIn');
+  if (status === 403 || status === 404) return t('family.errorNotLinked');
+  if (status === 429) return t('family.errorTooManyTries');
+  if (status >= 500) return t('family.errorGeneric');
+  // 4xx from our own handlers carry a short, already-friendly sentence.
+  return message && message.length <= 120 ? message : t('family.errorGeneric');
 }

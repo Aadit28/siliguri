@@ -399,7 +399,14 @@
     "helpersEmpty": "No city helpers yet.",
     "portalTitle": "City helper portal",
     "portalBody": "You can add places, services and announcements for your city.",
-    "openPortal": "Open the portal"
+    "openPortal": "Open the portal",
+    "mapUrl": "Map link (optional)",
+    "mapUrlHint": "Paste the Google Maps share link so people get directions.",
+    "invalidMapUrl": "Enter a link starting with http:// or https://",
+    "status_queued": "Queued",
+    "status_spam": "Spam",
+    "callbackMarkSpam": "Mark spam",
+    "demoSessionEnded": "The offline demo sign-in cannot use the admin tools. Sign in again to continue."
   },
   "calendar": {
     "title": "My Calendar",
@@ -414,7 +421,9 @@
     "delete": "Delete",
     "added": "Added to your calendar.",
     "openGoogle": "Add to Google Calendar",
-    "call": "Call"
+    "call": "Call",
+    "titleGuardian": "Family calendar",
+    "emptyGuardian": "No reminders yet. Anything you set for your family shows up here."
   },
   "voice": {
     "start": "Speak",
@@ -456,7 +465,10 @@
     "badDate": "That date does not exist. Use YYYY-MM-DD.",
     "badTime": "Use a time like 08:30, 17:00 or 5 pm.",
     "saveFailed": "Could not save the reminder. Please try again.",
-    "alertNote": "Your phone will alert you at this time."
+    "alertNote": "Your phone will alert you at this time.",
+    "forWhom": "Who is this for?",
+    "savesToParent": "Saves to {{name}}’s account.",
+    "alertNoteParent": "Their phone will alert them at this time."
   },
   "notifications": {
     "title": "Notifications",
@@ -647,6 +659,12 @@
       "contacted": "Contacted",
       "closed": "Closed",
       "spam": "Spam"
-    }
+    },
+    "relationshipYouAre": "You are their {{relationship}}",
+    "createdByYou": "Added by you",
+    "createdByOther": "Added by a family member",
+    "noMatches": "No services match your search.",
+    "showingMatches": "Showing {{count}} of {{total}} matches. Refine your search to narrow it down.",
+    "reminderTimePlaceholder": "e.g. 8:30 am"
   }
 }
