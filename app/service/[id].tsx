@@ -14,29 +14,36 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Body, Button, Card, H1, H2, Muted, Badge, Stars } from '../../src/components/ui';
+import {
+  Body,
+  Button,
+  Card,
+  DialFallbackDialog,
+  H1,
+  H2,
+  Muted,
+  Badge,
+  Stars,
+  dateLocale,
+  useDialer,
+} from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
 import { fetchService, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
+import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat } from '../../src/lib/whatsapp';
 
-// Primary "Call" places a real phone call via tel:. WhatsApp stays a labelled
-// secondary action so elders are never sent to WhatsApp when they tap "Call".
-function openPhoneCall(phone?: string | null) {
-  const digits = String(phone ?? '').replace(/[^\d+]/g, '');
-  if (!digits) return;
-  Linking.openURL(`tel:${digits}`).catch(() => undefined);
-}
-
-function formatTrustDate(value?: string | null) {
+// Dates must follow the in-app language toggle, not the device locale — a phone
+// set to English would otherwise print English dates inside a Hindi screen.
+function formatTrustDate(value: string | null | undefined, locale: string) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function ServiceDetail() {
@@ -47,6 +54,8 @@ export default function ServiceDetail() {
   const insets = useSafeAreaInsets();
   const { favoriteSet, toggleFavorite, recordViewed } = useServicePreferences();
   const { user } = useAuth();
+  const { lang } = useLocale();
+  const { dial, failedNumber, clearFailedNumber } = useDialer();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const { isComputerMode } = useDisplayMode();
@@ -121,7 +130,7 @@ export default function ServiceDetail() {
 
   const verificationStatus = service.verification_status ?? (service.verified ? 'source_linked' : 'unverified');
   const claimStatus = service.claim_status ?? 'unclaimed';
-  const verifiedAt = formatTrustDate(service.verified_at);
+  const verifiedAt = formatTrustDate(service.verified_at, dateLocale(lang));
   const showWhatsApp = canUseWhatsApp(service.phone);
   const hasPhone = Boolean(service.phone);
   const phoneConfirmed = Boolean(service.phone_confirmed);
@@ -338,7 +347,7 @@ export default function ServiceDetail() {
             <Button
               label={t('services.viewSource')}
               variant="secondary"
-              onPress={() => Linking.openURL(service.source_url!)}
+              onPress={() => Linking.openURL(service.source_url!).catch(() => undefined)}
             />
           ) : null}
         </View>
@@ -350,7 +359,7 @@ export default function ServiceDetail() {
           <View style={styles.footerActions}>
             {hasPhone ? (
               <View style={{ flex: 1 }}>
-                <Button label={t('common.call')} variant="primary" onPress={() => openPhoneCall(service.phone)} />
+                <Button label={t('common.call')} variant="primary" onPress={() => dial(service.phone)} />
               </View>
             ) : null}
             {showWhatsApp ? (
@@ -367,12 +376,18 @@ export default function ServiceDetail() {
             ) : null}
             {service.map_url ? (
               <View style={{ flex: 1 }}>
-                <Button label={t('common.directions')} variant="primary" onPress={() => Linking.openURL(service.map_url!)} />
+                <Button
+                  label={t('common.directions')}
+                  variant="primary"
+                  onPress={() => Linking.openURL(service.map_url!).catch(() => undefined)}
+                />
               </View>
             ) : null}
           </View>
         </View>
       ) : null}
+
+      <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
     </View>
   );
 }
@@ -409,7 +424,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       justifyContent: 'center',
     },
     heroText: { flex: 1, minWidth: 0 },
-    kicker: { fontFamily: family.regular, fontSize: font.xs },
+    kicker: { fontFamily: family.regular, fontSize: font.sm },
     title: { fontFamily: family.medium, marginTop: space.sm, fontSize: isWide ? 40 : 32, lineHeight: isWide ? 47 : 38 },
     heroSignalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     heroSignal: {
@@ -418,7 +433,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       paddingHorizontal: space.sm,
       paddingVertical: 8,
       fontFamily: family.semibold,
-      fontSize: font.xs,
+      fontSize: font.sm,
       overflow: 'hidden',
     },
     headerBack: {
@@ -450,7 +465,9 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       justifyContent: 'center',
     },
     checkLabel: { color: colors.text, fontFamily: family.semibold, fontSize: font.sm },
-    checkValue: { fontFamily: family.regular, fontSize: font.xs },
+    // Verification status / last-verified date is the trust evidence a user
+    // reads before calling a stranger — body content, not a caption.
+    checkValue: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.35 },
     trustSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
     trustSummaryText: {
       flex: 1,
@@ -488,12 +505,12 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       borderRadius: radius.md,
       padding: space.md,
     },
-    noticeTitle: { color: colors.text, fontFamily: family.semibold, fontSize: font.sm },
-    noticeBody: { fontFamily: family.regular, fontSize: font.xs, marginTop: 2, lineHeight: font.xs * 1.4 },
+    noticeTitle: { color: colors.text, fontFamily: family.semibold, fontSize: font.md },
+    noticeBody: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2, lineHeight: font.sm * 1.4 },
     callbackBtn: {
       marginTop: space.sm,
       alignSelf: 'flex-start',
-      minHeight: TAP - 8,
+      minHeight: TAP,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,

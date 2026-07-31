@@ -13,12 +13,11 @@ import {
 } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Linking from 'expo-linking';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Badge, Card, Chip, H1, Muted, Stars } from '../../src/components/ui';
+import { Badge, Card, Chip, DialFallbackDialog, H1, Muted, Stars, useDialer } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
 import { SERVICE_CATEGORIES, expandServiceQuery, serviceSearchAliases } from '../../src/lib/categories';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
@@ -28,14 +27,6 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
-
-// Primary "Call" must place a real phone call. tel: is the elder-safe default;
-// WhatsApp stays a clearly-labelled secondary action, never mislabelled "Call".
-function openPhoneCall(phone?: string | null) {
-  const digits = String(phone ?? '').replace(/[^\d+]/g, '');
-  if (!digits) return;
-  Linking.openURL(`tel:${digits}`).catch(() => undefined);
-}
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
 
@@ -62,6 +53,10 @@ export default function Services() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [cat, setCat] = useState<DirectoryView>((params.category as ServiceCategory) || 'all');
   const pageScrollRef = useRef<ScrollView>(null);
+  // Primary "Call" must place a real phone call. tel: is the elder-safe default;
+  // when the platform refuses it, the number is shown to dial by hand rather
+  // than the tap doing nothing at all.
+  const { dial, failedNumber, clearFailedNumber } = useDialer();
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedQuery(query), 350);
@@ -245,11 +240,19 @@ export default function Services() {
 
         <View style={styles.resultBar}>
           <Text style={styles.resultCount}>
-            {activeLabel} · {filtered.length} {filtered.length === 1 ? 'service' : 'services'}
+            {t('services.resultCount', {
+              label: activeLabel,
+              count: filtered.length,
+              defaultValue: '{{label}} · {{count}} services',
+            })}
           </Text>
           {!loading ? (
             <Muted numberOfLines={1} style={styles.resultMeta}>
-              {trustedCount} {t('common.verified').toLowerCase()} · {phoneCount} {t('services.trustPhone').toLowerCase()}
+              {t('services.resultMeta', {
+                verified: trustedCount,
+                confirmed: phoneCount,
+                defaultValue: '{{verified}} verified · {{confirmed}} phone confirmed',
+              })}
             </Muted>
           ) : null}
         </View>
@@ -277,6 +280,7 @@ export default function Services() {
                 isSaved={favoriteSet.has(item.id)}
                 onToggleSaved={() => handleToggleFavorite(item.id)}
                 onOpen={() => router.push({ pathname: '/service/[id]', params: { id: item.id } })}
+                onCall={dial}
                 colors={colors}
                 styles={styles}
                 t={t}
@@ -285,6 +289,8 @@ export default function Services() {
           </View>
         )}
       </ScrollView>
+
+      <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
     </View>
   );
 }
@@ -294,6 +300,7 @@ function ServiceRow({
   isSaved,
   onToggleSaved,
   onOpen,
+  onCall,
   colors,
   styles,
   t,
@@ -302,6 +309,7 @@ function ServiceRow({
   isSaved: boolean;
   onToggleSaved: () => void;
   onOpen: () => void;
+  onCall: (phone?: string | null) => void;
   colors: AppColors;
   styles: ReturnType<typeof makeStyles>;
   t: (key: string, options?: Record<string, unknown>) => string;
@@ -399,7 +407,7 @@ function ServiceRow({
               onPress={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                openPhoneCall(item.phone);
+                onCall(item.phone);
               }}
             >
               <Feather name="phone" size={18} color={colors.primaryFg} />
@@ -475,7 +483,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     },
     resultBar: { gap: 2 },
     resultCount: { color: colors.text, fontFamily: family.semibold, fontSize: font.md },
-    resultMeta: { fontFamily: family.regular, fontSize: font.xs },
+    resultMeta: { fontFamily: family.regular, fontSize: font.sm },
     loadingBlock: { marginVertical: space.xl, alignItems: 'center', gap: space.sm },
     loadingText: { fontFamily: family.regular, fontSize: font.sm },
     emptyState: { paddingVertical: space.xl, alignItems: 'center', gap: space.sm },
@@ -499,12 +507,14 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     rowCopy: { flex: 1, minWidth: 0, gap: 4 },
     rowNameLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
     rowName: { color: colors.text, fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.25 },
-    rowMeta: { fontFamily: family.regular, fontSize: font.xs },
+    // The address is how someone decides whether this is the shop near them —
+    // body-level content, so it clears the caption floor (font.xs).
+    rowMeta: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.35 },
     rowSignalRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 2 },
-    categoryTag: { fontFamily: family.regular, fontSize: font.xs },
+    categoryTag: { fontFamily: family.regular, fontSize: font.sm },
     saveBtn: {
-      width: 44,
-      height: 44,
+      width: TAP,
+      height: TAP,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -548,7 +558,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     },
     callLabel: { fontFamily: family.semibold, fontSize: font.sm },
     aboutBtn: {
-      minHeight: 44,
+      minHeight: TAP,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',

@@ -18,7 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Muted, Dialog, Sheet, Button } from '../../src/components/ui';
+import { Muted, DialFallbackDialog, Dialog, Sheet, Button } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
@@ -114,6 +114,8 @@ export default function AssistantScreen() {
   const [servicesLoading, setServicesLoading] = useState(true);
   const [chatSheetOpen, setChatSheetOpen] = useState(false);
   const [payPrompt, setPayPrompt] = useState<PayPrompt | null>(null);
+  // Holds the number when a call handoff fails, so it can be shown to dial by hand.
+  const [dialFallback, setDialFallback] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const submitInFlightRef = useRef(false);
   const canAttachImages = getWebDocument() !== null;
@@ -362,12 +364,17 @@ export default function AssistantScreen() {
   }
 
   function handleAction(action: AssistantAction, plan?: AssistantPlan) {
+    // Every outbound handoff must report failure. A rejected openURL used to
+    // resolve into nothing at all, so the chip looked dead on press.
     if (action.kind === 'call' && action.value) {
-      openWhatsAppCall(action.value);
+      const number = action.value;
+      openWhatsAppCall(number).catch(() => setDialFallback(number));
       return;
     }
     if ((action.kind === 'directions' || action.kind === 'source') && action.value) {
-      Linking.openURL(action.value);
+      Linking.openURL(action.value).catch(() => appendAssistantNote(t('assistant.linkFailed', {
+        defaultValue: 'That link could not be opened on this device.',
+      })));
       return;
     }
     if (action.kind === 'add_calendar' && action.value) {
@@ -413,7 +420,9 @@ export default function AssistantScreen() {
             ? action.value
             : null;
       if (rideUrl) {
-        Linking.openURL(rideUrl);
+        Linking.openURL(rideUrl).catch(() => appendAssistantNote(t('assistant.linkFailed', {
+          defaultValue: 'That link could not be opened on this device.',
+        })));
         return;
       }
       // No bookable link in the payload yet; fall through to the composer prompt.
@@ -564,6 +573,7 @@ export default function AssistantScreen() {
                 message={message}
                 onAction={handleAction}
                 onRetry={retryPlan}
+                onCallFailed={setDialFallback}
               />
             ))}
 
@@ -632,6 +642,7 @@ export default function AssistantScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={t('assistant.attachImage')}
                   activeOpacity={0.82}
+                  hitSlop={8}
                   style={[styles.plusButton, { opacity: loading || servicesLoading ? 0.4 : 1 }]}
                 >
                   <Feather name="plus" size={22} color={colors.text} />
@@ -665,6 +676,7 @@ export default function AssistantScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('assistant.chatSend')}
                 activeOpacity={0.82}
+                hitSlop={8}
                 style={[
                   styles.sendButton,
                   {
@@ -695,6 +707,7 @@ export default function AssistantScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={t('assistant.removeImage')}
                       activeOpacity={0.82}
+                      hitSlop={8}
                       style={[styles.removeAttachmentButton, { backgroundColor: colors.cardSolid }]}
                     >
                       <Text style={[styles.removeAttachmentText, { color: colors.text }]}>x</Text>
@@ -778,6 +791,8 @@ export default function AssistantScreen() {
           </View>
         </View>
       </Dialog>
+
+      <DialFallbackDialog number={dialFallback} onClose={() => setDialFallback(null)} />
     </View>
   );
 }
@@ -786,10 +801,12 @@ function MessageBubble({
   message,
   onAction,
   onRetry,
+  onCallFailed,
 }: {
   message: AssistantMessage;
   onAction: (action: AssistantAction, plan?: AssistantPlan) => void;
   onRetry: (errorMessageId: string, payload: { message: string; attachments?: AssistantAttachment[] }) => void;
+  onCallFailed: (number: string) => void;
 }) {
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
@@ -914,7 +931,8 @@ function MessageBubble({
                         <TouchableOpacity
                           onPress={() => {
                             setServiceMenuOpen(false);
-                            openWhatsAppCall(suggested.phone);
+                            const number = suggested.phone;
+                            openWhatsAppCall(number).catch(() => onCallFailed(String(number)));
                           }}
                           accessibilityRole="button"
                           accessibilityLabel={t('assistant.serviceMenu.call')}
@@ -946,6 +964,7 @@ function MessageBubble({
                     accessibilityRole="button"
                     accessibilityLabel={t('assistant.serviceMenu.more')}
                     activeOpacity={0.82}
+                    hitSlop={8}
                     style={styles.serviceMoreButton}
                   >
                     <Feather name="more-horizontal" size={20} color={colors.textMuted} />
@@ -963,7 +982,10 @@ function MessageBubble({
                 <TouchableOpacity
                   key={`${action.kind}-${index}`}
                   onPress={() => onAction(action, message.plan)}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.label}
                   activeOpacity={0.82}
+                  hitSlop={6}
                   style={[styles.actionButton, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
                 >
                   <Text style={[styles.actionText, { color: colors.primaryDark }]} numberOfLines={1}>
@@ -1472,8 +1494,10 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   serviceMoreButton: {
-    width: 32,
-    height: 32,
+    // Real 56x56, not hitSlop: react-native-web does not use hitSlop for
+    // hit-testing, so on the web build only the painted box is tappable.
+    width: TAP,
+    height: TAP,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1498,12 +1522,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   serviceTextWrap: { flex: 1, minWidth: 0 },
-  serviceName: { fontSize: font.sm, fontFamily: family.bold },
-  serviceMeta: { fontFamily: family.regular, fontSize: font.xs, lineHeight: font.xs * 1.25 },
+  serviceName: { fontSize: font.md, fontFamily: family.bold },
+  // Address/phone/safety copy is real content, not a caption — font.xs (15) is
+  // the caption floor and reads too small for a 70+ user with cataracts.
+  serviceMeta: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.3 },
   planHint: {
     fontFamily: family.regular,
-    fontSize: font.xs,
-    lineHeight: font.xs * 1.3,
+    fontSize: font.sm,
+    lineHeight: font.sm * 1.4,
   },
   actionRow: {
     flexDirection: 'row',
@@ -1511,14 +1537,14 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   actionButton: {
-    minHeight: 40,
+    minHeight: TAP,
     borderRadius: radius.pill,
     borderWidth: 1,
     justifyContent: 'center',
-    paddingHorizontal: space.sm,
+    paddingHorizontal: space.md,
     maxWidth: '100%',
   },
-  actionText: { fontSize: font.xs, fontFamily: family.semibold },
+  actionText: { fontSize: font.sm, fontFamily: family.semibold },
   composer: {
     paddingTop: space.xs,
     gap: space.sm,
@@ -1531,9 +1557,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   plusButton: {
-    width: 36,
-    height: 36,
-    marginBottom: 4,
+    width: TAP,
+    height: TAP,
+    marginBottom: 2,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1577,9 +1603,9 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    marginBottom: 4,
+    width: TAP,
+    height: TAP,
+    marginBottom: 2,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1589,8 +1615,8 @@ const styles = StyleSheet.create({
     paddingRight: space.md,
   },
   attachmentPreview: {
-    width: 64,
-    height: 64,
+    width: 84,
+    height: 84,
     borderRadius: radius.md,
     borderWidth: 1,
     overflow: 'hidden',
@@ -1599,20 +1625,22 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  // The one control that cannot reach 56: it floats on the thumbnail it removes,
+  // and a 56px disc would hide the picture. 48 painted + hitSlop 8 = 64 on native.
   removeAttachmentButton: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 22,
-    height: 22,
+    top: 2,
+    right: 2,
+    width: 48,
+    height: 48,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   removeAttachmentText: {
-    fontSize: font.sm,
+    fontSize: font.md,
     fontFamily: family.bold,
-    lineHeight: font.sm,
+    lineHeight: font.md * 1.15,
   },
   messageAttachments: {
     flexDirection: 'row',

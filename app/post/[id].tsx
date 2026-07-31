@@ -14,7 +14,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { Card, H2, Body, Muted, Button } from '../../src/components/ui';
+import { Card, H2, Body, Muted, Button, dateLocale, localizedServerError } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
 import { postEmoji } from '../../src/lib/categories';
 import { fetchPost, fetchReplies, createReply, toggleLike } from '../../src/lib/api';
@@ -43,6 +43,8 @@ export default function PostDetail() {
   const router = useRouter();
   const { lang } = useLocale();
   const contentLang = languageForContent(lang);
+  // Timestamps follow the app's language toggle, not the device locale.
+  const stampLocale = dateLocale(lang);
   const { session, user, displayName } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -85,7 +87,7 @@ export default function PostDetail() {
     const res = await createReply({ postId: id!, body: text.trim(), token: session!.access_token });
     setSending(false);
     if (!res.ok) {
-      setSendError(res.error ?? t('common.errorLoading'));
+      setSendError(localizedServerError(res.error, t));
       return;
     }
     setText('');
@@ -172,7 +174,7 @@ export default function PostDetail() {
               <Text style={styles.metaLine} numberOfLines={1}>
                 {postEmoji(post.category)} {t(`postCategories.${post.category}`)}
                 {' · '}
-                {new Date(post.created_at).toLocaleString(undefined, {
+                {new Date(post.created_at).toLocaleString(stampLocale, {
                   month: 'short',
                   day: 'numeric',
                   hour: 'numeric',
@@ -238,7 +240,7 @@ export default function PostDetail() {
                         </Text>
                       ) : null}
                       <Text style={styles.metaLine} numberOfLines={1}>
-                        {new Date(r.created_at).toLocaleString(undefined, {
+                        {new Date(r.created_at).toLocaleString(stampLocale, {
                           month: 'short',
                           day: 'numeric',
                           hour: 'numeric',
@@ -300,11 +302,11 @@ function makeStyles(colors: AppColors) {
     headerText: { flex: 1 },
     authorName: { fontSize: font.md, fontFamily: family.semibold, color: colors.text },
     metaLine: {
-      fontSize: font.xs,
+      fontSize: font.sm,
       fontFamily: family.regular,
       color: colors.textSubtle,
       marginTop: 2,
-      lineHeight: Math.round(font.xs * 1.4),
+      lineHeight: Math.round(font.sm * 1.4),
     },
     postTitle: { marginTop: space.md },
     postBody: { marginTop: space.sm },

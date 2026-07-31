@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Alert, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Chip, H2, Muted, Button } from '../src/components/ui';
+import { Chip, H2, Muted, Button, localizedServerError } from '../src/components/ui';
 import { AppColors, family, font, radius, space } from '../src/lib/theme';
 import { POST_CATEGORIES } from '../src/lib/categories';
 import { createPost } from '../src/lib/api';
@@ -50,11 +50,12 @@ export default function NewPost() {
         ]);
       }
     } else {
-      const message = res.error ?? 'Could not post';
+      // The API answers in English only — never show its raw string to a Hindi reader.
+      const message = localizedServerError(res.error, t);
       if (Platform.OS === 'web') {
         setError(message);
       } else {
-        Alert.alert('Error', message);
+        Alert.alert(t('errors.title', { defaultValue: 'Could not send' }), message);
       }
     }
   }

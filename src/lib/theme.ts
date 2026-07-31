@@ -83,7 +83,10 @@ export const lightColors = {
   navPill: 'rgba(255,255,255,0.66)',
   navPillEdge: 'rgba(255,255,255,0.95)',
   panelGlass: 'rgba(255,255,255,0.94)',
-  whatsapp: '#128C7E',
+  // WhatsApp brand dark teal. The mid green (#128C7E) gave white text only
+  // 4.13:1 — below WCAG AA for normal text. #075E54 is still official WhatsApp
+  // brand colour and lifts white to 7.67:1.
+  whatsapp: '#075E54',
   whatsappText: '#FFFFFF',
   handle: '#D6D6D6',
 };

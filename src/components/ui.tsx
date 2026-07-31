@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Linking,
   Text,
   TextProps,
   TouchableOpacity,
@@ -11,6 +12,8 @@ import {
   Pressable,
   useWindowDimensions,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Animated, {
   Easing,
@@ -26,6 +29,108 @@ import { family, font, radius, space, shadow, TAP, tracking } from '../lib/theme
 import { useTheme } from '../context/ThemeContext';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// ---------------------------------------------------------------------------
+// Dialling
+//
+// `Linking.openURL('tel:…')` rejects on web (and on tablets with no dialler).
+// An unhandled rejection makes the SOS button look dead, which is the worst
+// possible failure for this audience. Every dial path goes through `useDialer`
+// so a failure surfaces the number as large selectable text instead.
+// ---------------------------------------------------------------------------
+
+export function telDigits(number?: string | null) {
+  return String(number ?? '').replace(/[^\d+]/g, '');
+}
+
+export function useDialer() {
+  const [failedNumber, setFailedNumber] = React.useState<string | null>(null);
+
+  const dial = React.useCallback((number?: string | null) => {
+    const digits = telDigits(number);
+    if (!digits) return;
+    // openURL returns a promise on native and (on web) may throw synchronously.
+    Promise.resolve()
+      .then(() => Linking.openURL(`tel:${digits}`))
+      .catch(() => setFailedNumber(String(number)));
+  }, []);
+
+  const clearFailedNumber = React.useCallback(() => setFailedNumber(null), []);
+
+  return { dial, failedNumber, clearFailedNumber };
+}
+
+// Shown when the dialler could not be opened: the number stays on screen, big
+// and selectable, so it can be read aloud or copied into the phone app.
+export function DialFallbackDialog({ number, onClose }: { number: string | null; onClose: () => void }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  return (
+    <Dialog
+      visible={Boolean(number)}
+      onClose={onClose}
+      title={t('dialer.failedTitle', { defaultValue: 'Could not open the phone app' })}
+    >
+      <Body style={{ marginBottom: space.md }}>
+        {t('dialer.failedBody', { defaultValue: 'Please dial this number on your phone:' })}
+      </Body>
+      <Text selectable style={[styles.dialNumber, { color: colors.text }]}>
+        {number ?? ''}
+      </Text>
+      <Button label={t('common.close')} onPress={onClose} />
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Server error copy
+//
+// The API answers in English only. Screens must never print those strings to a
+// Hindi reader, so known messages map onto translated copy and anything
+// unrecognised falls back to one generic, translated line.
+// ---------------------------------------------------------------------------
+
+const SERVER_ERROR_KEYS: Array<[RegExp, string, string]> = [
+  [/could not reach|not running|network|timed? out|failed to fetch/i, 'errors.network', 'We could not reach the internet. Check your connection and try again.'],
+  [/already have your request/i, 'errors.callbackDuplicate', 'We already have your request. Our team will call you back soon.'],
+  [/too many sign-?in attempts/i, 'errors.tooManySignIn', 'Too many sign-in tries. Please wait a few minutes.'],
+  [/too many codes/i, 'errors.otpDailyLimit', 'Too many codes today. Please try again tomorrow.'],
+  [/code already sent/i, 'errors.otpAlreadySent', 'A code was just sent. Please wait a minute before asking again.'],
+  [/too many wrong tries/i, 'errors.otpTooManyWrong', 'Too many wrong tries. Please ask for a new code.'],
+  [/code expired/i, 'errors.otpExpired', 'That code has expired. Please ask for a new one.'],
+  [/code is not right/i, 'errors.otpWrong', 'That code is not right. Please check and try again.'],
+  [/whatsapp sign-?in is not set up/i, 'errors.otpUnavailable', 'Sign-in by WhatsApp is not ready yet. Please use your username and password.'],
+  [/too many/i, 'errors.tooMany', 'Too many tries. Please wait a few minutes and try again.'],
+  [/invalid (username|phone number) or password/i, 'errors.badCredentials', 'That username or password is not correct.'],
+  [/already registered/i, 'errors.phoneTaken', 'That phone number already has an account. Please sign in instead.'],
+  [/password with at least/i, 'errors.passwordShort', 'Please use a password of at least 6 letters or numbers.'],
+  [/enter your username|username must be at least|username is too long/i, 'errors.usernameInvalid', 'Please check your username and try again.'],
+  [/enter (your|a valid) phone number/i, 'errors.phoneInvalid', 'Please enter a valid phone number.'],
+  [/enter your username or phone/i, 'errors.identifierRequired', 'Please enter your username or phone number.'],
+  [/add a name and phone/i, 'errors.callbackFieldsRequired', 'Please fill in your name and phone number.'],
+  [/add a valid phone/i, 'errors.phoneInvalid', 'Please enter a valid phone number.'],
+  [/add a title and message/i, 'errors.postFieldsRequired', 'Please fill in both the title and the message.'],
+  [/under 200 characters/i, 'errors.titleTooLong', 'Please make the title shorter.'],
+  [/under 4000 characters/i, 'errors.bodyTooLong', 'Please make the message shorter.'],
+  [/enter the 6-digit code/i, 'errors.otpLength', 'Please enter the 6-digit code.'],
+];
+
+// Dates follow the in-app language toggle, not the device locale: passing
+// `undefined` to toLocaleDateString reads the OS setting, so a phone in English
+// printed English dates inside a fully Hindi screen. India region throughout.
+export function dateLocale(lang: string | null | undefined) {
+  return `${lang || 'en'}-IN`;
+}
+
+export type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+export function localizedServerError(raw: string | null | undefined, t: Translate) {
+  const generic = t('errors.generic', { defaultValue: 'Something went wrong. Please try again.' });
+  const message = String(raw ?? '').trim();
+  if (!message) return generic;
+  const match = SERVER_ERROR_KEYS.find(([pattern]) => pattern.test(message));
+  return match ? t(match[1], { defaultValue: match[2] }) : generic;
+}
 
 // Shared entrance timings: ease-out, state-conveying, honors reduced motion.
 const scrimIn = FadeIn.duration(160).reduceMotion(ReduceMotion.System);
@@ -230,6 +335,29 @@ function ModalHeading({ title }: { title?: React.ReactNode }) {
   );
 }
 
+// Explicit exit for sheets. The drag handle and the scrim are invisible affordances
+// to an elder — a labelled, TAP-sized X is the one that gets found.
+function SheetCloseButton({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t('common.close')}
+      onPress={onClose}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.sheetClose,
+        { backgroundColor: colors.surfaceTint, borderColor: colors.border },
+        pressed ? { opacity: 0.7 } : null,
+      ]}
+    >
+      <Feather name="x" size={22} color={colors.text} />
+      <Text style={[styles.sheetCloseLabel, { color: colors.text }]}>{t('common.close')}</Text>
+    </Pressable>
+  );
+}
+
 export function Sheet({
   visible,
   onClose,
@@ -264,7 +392,12 @@ export function Sheet({
             >
               <View style={[styles.sheetHandle, { backgroundColor: colors.handle }]} />
             </Pressable>
-            <ModalHeading title={title} />
+            <View style={styles.sheetTopRow}>
+              <View style={styles.sheetTopHeading}>
+                <ModalHeading title={title} />
+              </View>
+              <SheetCloseButton onClose={onClose} />
+            </View>
             {children}
           </BlurView>
         </Animated.View>
@@ -376,6 +509,29 @@ const styles = StyleSheet.create({
   // 44px+ grab zone around the visual handle so elders can tap-to-close.
   sheetHandleTap: { minHeight: 44, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
   sheetHandle: { width: 48, height: 5, borderRadius: 999 },
+  sheetTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  sheetTopHeading: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  sheetClose: {
+    minHeight: TAP,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: space.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    marginBottom: space.md,
+    flexShrink: 0,
+  },
+  sheetCloseLabel: { fontFamily: family.semibold, fontSize: font.sm },
+  dialNumber: {
+    fontFamily: family.heavy,
+    fontSize: font.xxl,
+    lineHeight: font.xxl * 1.2,
+    letterSpacing: tracking.display,
+    textAlign: 'center',
+    marginBottom: space.lg,
+  },
   dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
   dialogShell: {
     borderRadius: radius.xl,

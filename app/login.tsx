@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
-import { Button, H1, Muted } from '../src/components/ui';
+import { Button, H1, Muted, localizedServerError } from '../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../src/lib/theme';
 import { useAuth } from '../src/context/AuthContext';
 import { useDisplayMode } from '../src/context/DisplayModeContext';
@@ -13,6 +13,11 @@ import { listFamilyLinks } from '../src/lib/family';
 import { useTheme } from '../src/context/ThemeContext';
 
 type Mode = 'in' | 'up' | 'otp';
+
+// Demo credentials are a QA affordance, not a product feature: an elder who
+// taps "Guardian" here lands in someone else's dashboard with no idea why. Shown
+// in dev builds, or when a deployment explicitly opts in for a demo environment.
+const SHOW_DEMO_ACCOUNTS = __DEV__ || process.env.EXPO_PUBLIC_SHOW_DEMO_ACCOUNTS === '1';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -36,6 +41,8 @@ export default function Login() {
   const [info, setInfo] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
+  // Auth/API failures come back as English strings; always translate before display.
+  const setError = (raw: string | null | undefined) => setMsg(raw ? localizedServerError(raw, t) : null);
   // Set after a real (non-demo) sign-in so the session-watcher effect can route
   // the user once the auth session lands in context.
   const [pendingRoute, setPendingRoute] = useState(false);
@@ -100,7 +107,7 @@ export default function Login() {
       const { error } = await signIn(username, password);
       setBusy(false);
       if (error) {
-        setMsg(error);
+        setError(error);
         return;
       }
       // Guardians land on the management dashboard, like other family-care
@@ -119,12 +126,12 @@ export default function Login() {
 
     if (!supabaseConfigured) {
       setBusy(false);
-      setMsg('Backend not configured. Add Supabase keys to .env.');
+      setMsg(t('errors.backendUnavailable', { defaultValue: 'The service is not available right now. Please try again later.' }));
       return;
     }
     const { error } = await signUp(username, password, fullName.trim(), 'username', phone);
     setBusy(false);
-    if (error) setMsg(error);
+    if (error) setError(error);
     else goHome();
   }
 
@@ -132,21 +139,21 @@ export default function Login() {
     setMsg(null);
     setInfo(null);
     if (!supabaseConfigured) {
-      setMsg('Backend not configured. Add Supabase keys to .env.');
+      setMsg(t('errors.backendUnavailable', { defaultValue: 'The service is not available right now. Please try again later.' }));
       return;
     }
     setBusy(true);
     const { error, devCode } = await requestOtp(phone);
     setBusy(false);
     if (error) {
-      setMsg(error);
+      setError(error);
       return;
     }
     setOtpSent(true);
     setOtpCode('');
     setInfo(
       devCode
-        ? `Test mode code: ${devCode}`
+        ? t('auth.otpTestCode', { code: devCode, defaultValue: 'Test mode code: {{code}}' })
         : t('auth.otpSent', { phone: phone.trim() }),
     );
   }
@@ -156,7 +163,7 @@ export default function Login() {
     setBusy(true);
     const { error } = await verifyOtp(phone, otpCode, fullName);
     setBusy(false);
-    if (error) setMsg(error);
+    if (error) setError(error);
     else goHome();
   }
 
@@ -314,22 +321,29 @@ export default function Login() {
 
             {msg ? <Muted style={[styles.message, { color: colors.danger }]}>{msg}</Muted> : null}
 
-            {isSignIn ? (
+            {isSignIn && SHOW_DEMO_ACCOUNTS ? (
               <View style={styles.demoRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ expanded: showDemo }}
+                  accessibilityLabel={t('auth.demoAccounts', { defaultValue: 'Demo / test accounts' })}
                   onPress={() => setShowDemo((v) => !v)}
                   style={styles.demoHeader}
                   hitSlop={6}
                 >
-                  <Feather name="tool" size={13} color={colors.textSubtle} />
-                  <Muted style={styles.demoLabel}>Demo / test accounts</Muted>
+                  <Feather name="tool" size={16} color={colors.textSubtle} />
+                  <Muted style={styles.demoLabel}>
+                    {t('auth.demoAccounts', { defaultValue: 'Demo / test accounts' })}
+                  </Muted>
                   <Feather name={showDemo ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSubtle} />
                 </Pressable>
                 {showDemo ? (
                   <>
-                    <Muted style={styles.demoNote}>Sample logins for testing only — not real accounts.</Muted>
+                    <Muted style={styles.demoNote}>
+                      {t('auth.demoNote', {
+                        defaultValue: 'Sample logins for testing only — not real accounts.',
+                      })}
+                    </Muted>
                     <View style={styles.demoChips}>
                       {(['parent', 'guardian', 'admin'] as DemoKind[]).map((kind) => (
                         <Pressable
@@ -340,8 +354,9 @@ export default function Login() {
                           hitSlop={6}
                         >
                           <Text style={[styles.demoChipText, { color: colors.textMuted }]}>
-                            {demoByKind(kind).fullName} ·{' '}
-                            {kind === 'parent' ? 'Parent' : kind === 'guardian' ? 'Guardian' : 'Admin'}
+                            {demoByKind(kind).fullName} · {t(`auth.demoRole.${kind}`, {
+                              defaultValue: kind === 'parent' ? 'Parent' : kind === 'guardian' ? 'Guardian' : 'Admin',
+                            })}
                           </Text>
                         </Pressable>
                       ))}
@@ -435,7 +450,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     demoRow: { gap: space.xs, marginTop: space.sm },
     demoHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
     demoLabel: { fontFamily: family.semibold, fontSize: font.sm, flex: 1 },
-    demoNote: { fontFamily: family.regular, fontSize: font.xs, lineHeight: font.xs * 1.4 },
+    demoNote: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.4 },
     demoChips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
     demoChip: {
       borderWidth: 1,

@@ -16,7 +16,7 @@ import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import SiteFooter from '../../src/components/SiteFooter';
-import { H1, H2, Muted, Stars } from '../../src/components/ui';
+import { DialFallbackDialog, H1, H2, Muted, Stars, useDialer } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
@@ -132,7 +132,7 @@ function openExternal(url: string) {
     window.open(url, '_blank', 'noopener,noreferrer');
     return;
   }
-  Linking.openURL(url);
+  Linking.openURL(url).catch(() => undefined);
 }
 
 export default function Home() {
@@ -156,6 +156,7 @@ export default function Home() {
   const [careTeam, setCareTeam] = useState<CareTeamMember[]>([]);
   const [familyPicks, setFamilyPicks] = useState<FamilyFavorite[]>([]);
   const [reminderSheetOpen, setReminderSheetOpen] = useState(false);
+  const { dial, failedNumber, clearFailedNumber } = useDialer();
 
   const loadEvents = useCallback(() => {
     listEvents().then(setEvents);
@@ -363,7 +364,7 @@ export default function Home() {
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel={`${t('family.callContact')} ${member.name}`}
-                            onPress={() => Linking.openURL(`tel:${member.phone}`)}
+                            onPress={() => dial(member.phone)}
                             style={({ pressed }) => [
                               styles.callBtn,
                               { backgroundColor: colors.primary },
@@ -553,6 +554,8 @@ export default function Home() {
         onClose={() => setReminderSheetOpen(false)}
         onSaved={loadEvents}
       />
+
+      <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
     </View>
   );
 }
@@ -600,13 +603,13 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     rowLabel: { flex: 1, fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.3 },
     rowMeta: { flex: 0, fontFamily: family.regular, fontSize: font.sm },
     addReminder: {
-      minHeight: 40,
+      minHeight: TAP,
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.xs,
       borderWidth: 1,
       borderRadius: radius.pill,
-      paddingHorizontal: space.sm,
+      paddingHorizontal: space.md,
     },
     addReminderLabel: { fontFamily: family.semibold, fontSize: font.sm },
     statRow: { flexDirection: 'row', gap: space.sm },

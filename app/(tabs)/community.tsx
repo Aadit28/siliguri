@@ -321,7 +321,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       lineHeight: (isWide ? font.lg : font.md) * 1.3,
     },
     askBtn: {
-      minHeight: 44,
+      minHeight: TAP,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -373,7 +373,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     stateText: { textAlign: 'center' },
     retryBtn: {
       marginTop: space.sm,
-      minHeight: 44,
+      minHeight: TAP,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -382,7 +382,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     },
     retryLabel: { fontFamily: family.semibold, fontSize: font.sm },
     pendingTag: {
-      fontSize: font.xs,
+      fontSize: font.sm,
       fontFamily: family.semibold,
       overflow: 'hidden',
       borderRadius: radius.sm,
@@ -396,9 +396,11 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       gap: 6,
     },
     tagRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-    tag: { fontSize: font.xs, fontFamily: family.semibold },
+    // Category, status and reply/like counts are the content a reader scans to
+    // pick a post — they belong on the body floor, not the caption floor.
+    tag: { fontSize: font.sm, fontFamily: family.semibold },
     title: { fontSize: font.md, lineHeight: font.md * 1.35, fontFamily: family.semibold },
     preview: { fontFamily: family.regular, fontSize: font.sm, lineHeight: 22 },
-    metaRow: { fontFamily: family.regular, fontSize: font.xs, marginTop: 2 },
+    metaRow: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2 },
   });
 }

@@ -1,10 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
-import { Body, Button, Card, Dialog, H1, H2, Muted } from '../../src/components/ui';
+import {
+  Body,
+  Button,
+  Card,
+  DialFallbackDialog,
+  Dialog,
+  H1,
+  H2,
+  Muted,
+  localizedServerError,
+  useDialer,
+} from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP, tracking, ROW_MIN_HEIGHT } from '../../src/lib/theme';
 import {
   EMERGENCY_LINES,
@@ -34,7 +45,11 @@ export default function Help() {
   const [guardians, setGuardians] = useState<FamilyLink[]>([]);
   const [revokeTarget, setRevokeTarget] = useState<FamilyLink | null>(null);
   const [revoking, setRevoking] = useState(false);
-  const callNumber = (number: string) => Linking.openURL(`tel:${number}`);
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  // Every dial goes through the shared dialer: on web `tel:` rejects, and a
+  // silent rejection makes the SOS button look broken.
+  const { dial: callNumber, failedNumber, clearFailedNumber } = useDialer();
 
   // Trust surface: the parent must always be able to see, and remove, every
   // family member who can manage their account.
@@ -73,13 +88,32 @@ export default function Help() {
   // of throwing during the map below.
   const emergencyLines = Array.isArray(EMERGENCY_LINES) ? EMERGENCY_LINES : [];
 
+  // Validation must SPEAK. The old guard returned silently on an empty field, so
+  // pressing Submit did nothing at all and there was no way to tell why.
   async function submitCallback() {
-    if (!name.trim() || !phone.trim() || saving) return;
+    if (saving) return;
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+    const nextNameError = trimmedName
+      ? ''
+      : t('help.errorNameRequired', { defaultValue: 'Please enter your name.' });
+    const nextPhoneError = !trimmedPhone
+      ? t('help.errorPhoneRequired', { defaultValue: 'Please enter your phone number.' })
+      : trimmedPhone.replace(/\D/g, '').length < 8
+        ? t('help.errorPhoneInvalid', { defaultValue: 'Please enter a full phone number.' })
+        : '';
+    setNameError(nextNameError);
+    setPhoneError(nextPhoneError);
+    if (nextNameError || nextPhoneError) {
+      setError(t('help.errorFixFields', { defaultValue: 'Please fill in the boxes marked in red.' }));
+      return;
+    }
+
     setSaving(true);
     setError('');
     const result = await createCallbackRequest({
-      name: name.trim(),
-      phone: phone.trim(),
+      name: trimmedName,
+      phone: trimmedPhone,
       issue: issue.trim(),
       source: 'help',
       token: session?.access_token,
@@ -90,7 +124,7 @@ export default function Help() {
       setIssue('');
       return;
     }
-    setError(result.error || t('help.callbackError'));
+    setError(localizedServerError(result.error, t));
   }
 
   return (
@@ -153,23 +187,39 @@ export default function Help() {
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>{t('help.yourName')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, nameError ? styles.inputInvalid : null]}
                   placeholderTextColor={colors.textMuted}
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={(next) => {
+                    setName(next);
+                    if (nameError) setNameError('');
+                  }}
                   accessibilityLabel={t('help.yourName')}
                 />
+                {nameError ? (
+                  <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+                    {nameError}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>{t('help.yourPhone')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, phoneError ? styles.inputInvalid : null]}
                   placeholderTextColor={colors.textMuted}
                   keyboardType="phone-pad"
                   value={phone}
-                  onChangeText={setPhone}
+                  onChangeText={(next) => {
+                    setPhone(next);
+                    if (phoneError) setPhoneError('');
+                  }}
                   accessibilityLabel={t('help.yourPhone')}
                 />
+                {phoneError ? (
+                  <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+                    {phoneError}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>{t('help.describeIssue')}</Text>
@@ -182,13 +232,14 @@ export default function Help() {
                   accessibilityLabel={t('help.describeIssue')}
                 />
               </View>
-              <Button
-                label={t('help.submit')}
-                onPress={submitCallback}
-                loading={saving}
-                disabled={!name.trim() || !phone.trim()}
-              />
-              {error ? <Muted style={styles.errorText}>{error}</Muted> : null}
+              {/* Deliberately never disabled: a greyed-out button gives an elder
+                  no way to learn WHICH box is empty. Pressing it explains. */}
+              <Button label={t('help.submit')} onPress={submitCallback} loading={saving} />
+              {error ? (
+                <Muted style={styles.errorText} accessibilityLiveRegion="polite">
+                  {error}
+                </Muted>
+              ) : null}
             </View>
           )}
         </Card>
@@ -253,6 +304,8 @@ export default function Help() {
           </>
         ) : null}
       </ScrollView>
+
+      <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
 
       <Dialog visible={!!revokeTarget} onClose={() => setRevokeTarget(null)} title={t('family.accessTitle')}>
         <Body style={styles.dialogBody}>
@@ -329,6 +382,8 @@ function makeStyles(colors: AppColors) {
       color: colors.text,
       minHeight: TAP,
     },
+    inputInvalid: { borderColor: colors.danger, borderWidth: 2 },
+    fieldError: { fontSize: font.sm, fontFamily: family.semibold, color: colors.danger },
     issueInput: { minHeight: 120, textAlignVertical: 'top' },
     doneRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
     doneText: { color: colors.success },

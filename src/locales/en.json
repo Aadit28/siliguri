@@ -167,7 +167,9 @@
     "trustHideDetails": "Hide details",
     "phoneNotConfirmedTitle": "Phone not yet confirmed",
     "phoneNotConfirmedBody": "We haven’t confirmed a working phone number for this listing yet. Request a callback and Saathi will help you reach them.",
-    "requestCallback": "Request a callback"
+    "requestCallback": "Request a callback",
+    "resultCount": "{{label}} · {{count}} services",
+    "resultMeta": "{{verified}} verified · {{confirmed}} phone confirmed"
   },
   "assistant": {
     "title": "Assistant",
@@ -259,7 +261,8 @@
     "approve": "Tap a button below to approve",
     "voiceHint": "Tap Speak and say what you need",
     "addedToCalendar": "Added to your calendar. See the My Calendar page.",
-    "welcomeBack": "Welcome back. I remember our earlier chats — tell me what you need today."
+    "welcomeBack": "Welcome back. I remember our earlier chats — tell me what you need today.",
+    "linkFailed": "That link could not be opened on this device."
   },
   "community": {
     "title": "Community",
@@ -281,7 +284,14 @@
     "searchPlaceholder": "Search questions",
     "filterSmart": "Smart",
     "filterNew": "Newest",
-    "filterUnanswered": "Unanswered"
+    "filterUnanswered": "Unanswered",
+    "loadingPosts": "Loading community posts…",
+    "errorTimeout": "This is taking longer than usual. Check your connection and try again.",
+    "noSearchResults": "No questions match your search.",
+    "clearSearch": "Clear search",
+    "emptyTitle": "No questions yet.",
+    "emptyHint": "Be the first to ask neighbours for local advice.",
+    "pendingReview": "Awaiting review"
   },
   "postCategories": {
     "general": "General",
@@ -320,7 +330,11 @@
     "callbackError": "Could not save the callback request. Please call the help desk directly.",
     "privacyTitle": "Privacy and consent",
     "privacyBody": "Review what Saathi collects, how callback requests are used, and how to request deletion.",
-    "privacyCta": "Open privacy notes"
+    "privacyCta": "Open privacy notes",
+    "errorNameRequired": "Please enter your name.",
+    "errorPhoneRequired": "Please enter your phone number.",
+    "errorPhoneInvalid": "Please enter a full phone number.",
+    "errorFixFields": "Please fill in the boxes marked in red."
   },
   "privacy": {
     "title": "Privacy and consent",
@@ -506,7 +520,15 @@
     "otpSent": "Code sent to {{phone}} on WhatsApp.",
     "otpVerify": "Verify and sign in",
     "otpNameHint": "New to Saathi? Add your name so family and helpers recognise you.",
-    "usePassword": "Use username and password instead"
+    "usePassword": "Use username and password instead",
+    "demoAccounts": "Demo / test accounts",
+    "demoNote": "Sample logins for testing only — not real accounts.",
+    "demoRole": {
+      "parent": "Parent",
+      "guardian": "Family member",
+      "admin": "Admin"
+    },
+    "otpTestCode": "Test mode code: {{code}}"
   },
   "family": {
     "title": "Family",
@@ -669,5 +691,35 @@
     "noMatches": "No services match your search.",
     "showingMatches": "Showing {{count}} of {{total}} matches. Refine your search to narrow it down.",
     "reminderTimePlaceholder": "e.g. 8:30 am"
+  },
+  "dialer": {
+    "failedTitle": "Could not open the phone app",
+    "failedBody": "Please dial this number on your phone:"
+  },
+  "errors": {
+    "title": "Could not send",
+    "generic": "Something went wrong. Please try again.",
+    "network": "We could not reach the internet. Check your connection and try again.",
+    "backendUnavailable": "The service is not available right now. Please try again later.",
+    "callbackDuplicate": "We already have your request. Our team will call you back soon.",
+    "tooMany": "Too many tries. Please wait a few minutes and try again.",
+    "tooManySignIn": "Too many sign-in tries. Please wait a few minutes.",
+    "badCredentials": "That username or password is not correct.",
+    "phoneTaken": "That phone number already has an account. Please sign in instead.",
+    "passwordShort": "Please use a password of at least 6 letters or numbers.",
+    "usernameInvalid": "Please check your username and try again.",
+    "phoneInvalid": "Please enter a valid phone number.",
+    "identifierRequired": "Please enter your username or phone number.",
+    "callbackFieldsRequired": "Please fill in your name and phone number.",
+    "postFieldsRequired": "Please fill in both the title and the message.",
+    "titleTooLong": "Please make the title shorter.",
+    "bodyTooLong": "Please make the message shorter.",
+    "otpUnavailable": "Sign-in by WhatsApp is not ready yet. Please use your username and password.",
+    "otpAlreadySent": "A code was just sent. Please wait a minute before asking again.",
+    "otpDailyLimit": "Too many codes today. Please try again tomorrow.",
+    "otpExpired": "That code has expired. Please ask for a new one.",
+    "otpWrong": "That code is not right. Please check and try again.",
+    "otpTooManyWrong": "Too many wrong tries. Please ask for a new code.",
+    "otpLength": "Please enter the 6-digit code."
   }
 }
