@@ -49,7 +49,7 @@ import {
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
 import { requestAssistantPlan, ProposedReminder } from '../../src/lib/assistant';
-import { speechRecognitionSupported, startListening } from '../../src/lib/voice';
+import { ensureMicPermission, speechRecognitionSupported, startListening, voiceErrorKey } from '../../src/lib/voice';
 import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
 import { todayISO } from '../../src/lib/notifications';
 
@@ -488,6 +488,18 @@ function OverviewSection({
       setListening(false);
       return;
     }
+    void beginDictation();
+  }
+
+  async function beginDictation() {
+    // iOS Safari won't prompt for the mic from recognition alone; getUserMedia
+    // in the same tap raises the permission dialog.
+    const permission = await ensureMicPermission();
+    if (permission === 'blocked') {
+      setAnswer(t('assistant.voice.micBlocked'));
+      return;
+    }
+    if (dictationRef.current) return;
     const handle = startListening({
       lang: i18n.language?.startsWith('hi') ? 'hi' : 'en',
       onInterim: (text) => setQuestion(text),
@@ -498,6 +510,9 @@ function OverviewSection({
       onEnd: () => {
         dictationRef.current = null;
         setListening(false);
+      },
+      onError: (code) => {
+        setAnswer(t(`assistant.voice.${voiceErrorKey(code)}`));
       },
     });
     if (!handle) return;

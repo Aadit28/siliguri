@@ -192,7 +192,7 @@
     "simpleWelcome": "Hi, I am Saathi. Tell me what you need help with and I will find the next step.",
     "chatHistory": "Chats",
     "newChat": "New chat",
-    "chatPlaceholder": "Message or paste photo...",
+    "chatPlaceholder": "Type your message...",
     "chatSend": "Send",
     "attachImage": "Photo",
     "removeImage": "Remove image",
@@ -227,7 +227,10 @@
       "repliesOn": "Voice replies are on. Tap to turn off.",
       "repliesOff": "Voice replies are off. Tap to turn on.",
       "error": "I could not hear that. Please try again.",
-      "unsupported": "Voice input works in the Chrome browser on this device."
+      "micBlocked": "The microphone is blocked for this site. Allow it in your browser settings, then tap the mic again.",
+      "dictationOff": "Voice typing is off on this phone. Turn on Siri & Dictation in Settings, or type your message.",
+      "noMic": "No microphone was found on this device. Please type instead.",
+      "unsupported": "Voice input is not available in this browser. Please type instead."
     },
     "alertFamily": "Alert my family",
     "familyAlerted": "Your family has been alerted on their phones.",

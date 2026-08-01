@@ -34,7 +34,7 @@ import {
 } from '../../src/lib/assistant';
 import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
 import { appendTurn, buildAssistantContext } from '../../src/lib/memory';
-import { speechRecognitionSupported, startListening, speak, stopSpeaking } from '../../src/lib/voice';
+import { ensureMicPermission, speechRecognitionSupported, startListening, speak, stopSpeaking, voiceErrorKey } from '../../src/lib/voice';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { notifyFamilySos } from '../../src/lib/family';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -301,10 +301,12 @@ export default function AssistantScreen() {
   }
 
   function appendAssistantNote(text: string) {
-    updateActiveMessages((current) => [
-      ...current,
-      { id: `note-${Date.now()}`, role: 'assistant', text },
-    ]);
+    updateActiveMessages((current) => {
+      // The same note twice in a row (repeated mic failures) reads as spam.
+      const last = current[current.length - 1];
+      if (last?.role === 'assistant' && last.text === text) return current;
+      return [...current, { id: `note-${Date.now()}`, role: 'assistant', text }];
+    });
   }
 
   function startNewChat() {
@@ -380,7 +382,7 @@ export default function AssistantScreen() {
         // conversation continues hands-free.
         void speak(reply, lang === 'hi' ? 'hi' : 'en', () => {
           if (lastInputWasVoiceRef.current && voiceRepliesRef.current && !dictationRef.current) {
-            startVoiceInput();
+            void startVoiceInput();
           }
         });
       }
@@ -401,9 +403,17 @@ export default function AssistantScreen() {
     }
   }
 
-  function startVoiceInput() {
+  async function startVoiceInput() {
     if (loading || servicesLoading || dictationRef.current) return;
     stopSpeaking();
+    // iOS Safari won't prompt for the mic from recognition alone; getUserMedia
+    // in the same tap raises the permission dialog.
+    const permission = await ensureMicPermission();
+    if (permission === 'blocked') {
+      appendAssistantNote(t('assistant.voice.micBlocked'));
+      return;
+    }
+    if (dictationRef.current) return;
     const handle = startListening({
       lang: lang === 'hi' ? 'hi' : 'en',
       onInterim: (text) => setInput(text),
@@ -416,8 +426,8 @@ export default function AssistantScreen() {
         dictationRef.current = null;
         setListening(false);
       },
-      onError: () => {
-        appendAssistantNote(t('assistant.voice.error'));
+      onError: (code) => {
+        appendAssistantNote(t(`assistant.voice.${voiceErrorKey(code)}`));
       },
     });
     if (!handle) {
@@ -868,7 +878,7 @@ export default function AssistantScreen() {
               />
               {canDictate ? (
                 <TouchableOpacity
-                  onPress={() => (listening ? stopVoiceInput() : startVoiceInput())}
+                  onPress={() => (listening ? stopVoiceInput() : void startVoiceInput())}
                   disabled={loading || servicesLoading}
                   accessibilityRole="button"
                   accessibilityLabel={t(listening ? 'assistant.voice.stop' : 'assistant.voice.start')}
@@ -1575,8 +1585,10 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   // Floating glass tab bar covers the bottom edge; keep the composer above it.
+  // Full clearance: on iPhone Safari the browser toolbar eats extra bottom
+  // space and the reduced value left the input half-hidden under the dock.
   assistantLayoutPhone: {
-    paddingBottom: TAB_BAR_CLEARANCE - space.lg,
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
   historyPanel: {
     width: 286,
@@ -1648,10 +1660,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // Narrow phones: the chips drop below the status text instead of
+    // pushing off the right edge.
+    flexWrap: 'wrap',
     gap: space.sm,
     paddingHorizontal: 2,
   },
-  statusText: { fontFamily: family.regular, fontSize: font.sm },
+  statusText: { fontFamily: family.regular, fontSize: font.sm, flexShrink: 1 },
   mobileNewChat: {
     minHeight: 44,
     borderRadius: radius.lg,
@@ -1664,6 +1679,7 @@ const styles = StyleSheet.create({
   statusActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: space.sm,
   },
   chatsButton: {

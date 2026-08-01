@@ -12,6 +12,35 @@ export function speechRecognitionSupported(): boolean {
 
 let currentRecognition: any = null;
 
+// iOS Safari never shows a permission prompt for SpeechRecognition itself —
+// start() just fails with not-allowed. A getUserMedia call from the same tap
+// DOES prompt, and once granted recognition works.
+export async function ensureMicPermission(): Promise<'granted' | 'blocked' | 'unknown'> {
+  const mediaDevices = (globalThis as any).navigator?.mediaDevices;
+  if (!mediaDevices?.getUserMedia) return 'unknown';
+  try {
+    const stream = await mediaDevices.getUserMedia({ audio: true });
+    for (const track of stream.getTracks()) track.stop();
+    return 'granted';
+  } catch (error: any) {
+    const name = String(error?.name ?? '');
+    if (name === 'NotAllowedError' || name === 'SecurityError') return 'blocked';
+    // NotFoundError and friends: let recognition report its own error.
+    return 'unknown';
+  }
+}
+
+// Recognition error codes (and getUserMedia exception names) mapped to the
+// assistant.voice.* copy key telling the user what they can actually do.
+export function voiceErrorKey(code: string): 'micBlocked' | 'dictationOff' | 'noMic' | 'error' {
+  const value = code.toLowerCase();
+  // iOS reports service-not-allowed when Siri & Dictation is switched off.
+  if (value.includes('service-not-allowed')) return 'dictationOff';
+  if (value.includes('not-allowed') || value.includes('permission') || value.includes('security')) return 'micBlocked';
+  if (value.includes('audio-capture') || value.includes('notfound')) return 'noMic';
+  return 'error';
+}
+
 export function startListening(opts: {
   lang: VoiceLang;
   onResult: (text: string) => void;
