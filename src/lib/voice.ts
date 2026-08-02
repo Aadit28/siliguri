@@ -12,10 +12,20 @@ export function speechRecognitionSupported(): boolean {
 
 let currentRecognition: any = null;
 
-// iOS Safari never shows a permission prompt for SpeechRecognition itself —
-// start() just fails with not-allowed. A getUserMedia call from the same tap
-// DOES prompt, and once granted recognition works.
-export async function ensureMicPermission(): Promise<'granted' | 'blocked' | 'unknown'> {
+/**
+ * Raises the browser's microphone prompt.
+ *
+ * MUST NOT be awaited before `startListening`. iOS Safari requires
+ * `SpeechRecognition.start()` to be called synchronously inside the user
+ * gesture that triggered it; awaiting anything first discards the gesture
+ * context and start() then fails with `not-allowed` — even when the user has
+ * already granted the microphone. That produced a maddening bug where the
+ * Safari prompt appeared, the user tapped Allow, and dictation still never ran.
+ *
+ * Correct order: start recognition synchronously on tap, and only call this
+ * afterwards, from the error path, so the next tap has permission in hand.
+ */
+export async function requestMicPermission(): Promise<'granted' | 'blocked' | 'unknown'> {
   const mediaDevices = (globalThis as any).navigator?.mediaDevices;
   if (!mediaDevices?.getUserMedia) return 'unknown';
   try {

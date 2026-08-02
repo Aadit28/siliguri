@@ -228,6 +228,7 @@
       "repliesOff": "Voice replies are off. Tap to turn on.",
       "error": "I could not hear that. Please try again.",
       "micBlocked": "The microphone is blocked for this site. Allow it in your browser settings, then tap the mic again.",
+      "micReady": "Microphone allowed. Tap the mic once more and speak.",
       "dictationOff": "Voice typing is off on this phone. Turn on Siri & Dictation in Settings, or type your message.",
       "noMic": "No microphone was found on this device. Please type instead.",
       "unsupported": "Voice input is not available in this browser. Please type instead."

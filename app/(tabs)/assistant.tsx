@@ -21,6 +21,7 @@ import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Muted, DialFallbackDialog, Dialog, Sheet, Button } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
+import { useKeyboardInset } from '../../src/lib/useKeyboardInset';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import {
@@ -34,7 +35,7 @@ import {
 } from '../../src/lib/assistant';
 import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
 import { appendTurn, buildAssistantContext } from '../../src/lib/memory';
-import { ensureMicPermission, speechRecognitionSupported, startListening, speak, stopSpeaking, voiceErrorKey } from '../../src/lib/voice';
+import { requestMicPermission, speechRecognitionSupported, startListening, speak, stopSpeaking, voiceErrorKey } from '../../src/lib/voice';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { notifyFamilySos } from '../../src/lib/family';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -188,6 +189,7 @@ export default function AssistantScreen() {
   const activeSession = sessions.find((sessionItem) => sessionItem.id === activeSessionId) ?? sessions[0];
   const messages = activeSession.messages;
   const { isComputerMode } = useDisplayMode();
+  const keyboardInset = useKeyboardInset();
   const showSideHistory = isComputerMode && width >= 900;
 
   useEffect(() => {
@@ -382,7 +384,7 @@ export default function AssistantScreen() {
         // conversation continues hands-free.
         void speak(reply, lang === 'hi' ? 'hi' : 'en', () => {
           if (lastInputWasVoiceRef.current && voiceRepliesRef.current && !dictationRef.current) {
-            void startVoiceInput();
+            startVoiceInput();
           }
         });
       }
@@ -403,17 +405,16 @@ export default function AssistantScreen() {
     }
   }
 
-  async function startVoiceInput() {
+  /**
+   * Deliberately NOT async. iOS Safari only honours SpeechRecognition.start()
+   * when it runs synchronously inside the tap that triggered it — awaiting a
+   * permission check first loses the gesture and start() fails with
+   * `not-allowed` even after the user has granted the microphone. Permission is
+   * therefore requested from the error path instead, so the next tap has it.
+   */
+  function startVoiceInput() {
     if (loading || servicesLoading || dictationRef.current) return;
     stopSpeaking();
-    // iOS Safari won't prompt for the mic from recognition alone; getUserMedia
-    // in the same tap raises the permission dialog.
-    const permission = await ensureMicPermission();
-    if (permission === 'blocked') {
-      appendAssistantNote(t('assistant.voice.micBlocked'));
-      return;
-    }
-    if (dictationRef.current) return;
     const handle = startListening({
       lang: lang === 'hi' ? 'hi' : 'en',
       onInterim: (text) => setInput(text),
@@ -427,7 +428,18 @@ export default function AssistantScreen() {
         setListening(false);
       },
       onError: (code) => {
-        appendAssistantNote(t(`assistant.voice.${voiceErrorKey(code)}`));
+        const key = voiceErrorKey(code);
+        if (key === 'micBlocked') {
+          // Raise the OS prompt now (outside the gesture, which is fine for
+          // getUserMedia) and ask for one more tap rather than dead-ending.
+          void requestMicPermission().then((result) => {
+            appendAssistantNote(
+              t(result === 'granted' ? 'assistant.voice.micReady' : 'assistant.voice.micBlocked'),
+            );
+          });
+          return;
+        }
+        appendAssistantNote(t(`assistant.voice.${key}`));
       },
     });
     if (!handle) {
@@ -632,6 +644,10 @@ export default function AssistantScreen() {
           styles.assistantLayout,
           !showSideHistory ? styles.assistantLayoutStacked : null,
           !isComputerMode ? styles.assistantLayoutPhone : null,
+          // Mobile Safari does not shrink the layout viewport for the keyboard,
+          // so without this the composer sits underneath it and the elder
+          // cannot see what they are typing.
+          keyboardInset > 0 ? { paddingBottom: keyboardInset } : null,
         ]}
       >
         <View
@@ -878,7 +894,7 @@ export default function AssistantScreen() {
               />
               {canDictate ? (
                 <TouchableOpacity
-                  onPress={() => (listening ? stopVoiceInput() : void startVoiceInput())}
+                  onPress={() => (listening ? stopVoiceInput() : startVoiceInput())}
                   disabled={loading || servicesLoading}
                   accessibilityRole="button"
                   accessibilityLabel={t(listening ? 'assistant.voice.stop' : 'assistant.voice.start')}

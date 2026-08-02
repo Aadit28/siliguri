@@ -104,6 +104,9 @@ export default function AppHeader({ title }: { title?: string }) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${t('appName')}, ${t('tabs.home')}`}
+          // The wordmark is only as tall as its type (~24px). hitSlop lifts the
+          // touchable area to a comfortable target without changing the layout.
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
           onPress={() => router.push('/')}
           style={({ pressed }) => [styles.brandButton, pressed && styles.pressed]}
         >

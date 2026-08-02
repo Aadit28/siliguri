@@ -49,7 +49,8 @@ import {
 } from '../../src/lib/family';
 import { markLoginIntent } from '../../src/lib/authNavigation';
 import { requestAssistantPlan, ProposedReminder } from '../../src/lib/assistant';
-import { ensureMicPermission, speechRecognitionSupported, startListening, voiceErrorKey } from '../../src/lib/voice';
+import { requestMicPermission, speechRecognitionSupported, startListening, voiceErrorKey } from '../../src/lib/voice';
+import { useKeyboardInset } from '../../src/lib/useKeyboardInset';
 import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
 import { todayISO } from '../../src/lib/notifications';
 
@@ -330,6 +331,7 @@ export default function ParentDetail() {
   const { session, user, loading } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboardInset = useKeyboardInset();
   const { width } = useWindowDimensions();
   const { isComputerMode } = useDisplayMode();
   const isWide = isComputerMode && width >= 900;
@@ -405,7 +407,13 @@ export default function ParentDetail() {
       <AppHeader title={heading} />
       <ScrollView
         style={{ backgroundColor: colors.bg }}
-        contentContainerStyle={[styles.page, { paddingBottom: Math.max(insets.bottom, space.lg) }]}
+        // The keyboard inset is added, not maxed: the Ask box sits low on this
+        // page, and without the extra run-off there is nothing to scroll it up
+        // into once the keyboard is open.
+        contentContainerStyle={[
+          styles.page,
+          { paddingBottom: Math.max(insets.bottom, space.lg) + keyboardInset },
+        ]}
       >
       <Stack.Screen options={{ title: heading }} />
       <View style={styles.shell}>
@@ -488,18 +496,15 @@ function OverviewSection({
       setListening(false);
       return;
     }
-    void beginDictation();
+    beginDictation();
   }
 
-  async function beginDictation() {
-    // iOS Safari won't prompt for the mic from recognition alone; getUserMedia
-    // in the same tap raises the permission dialog.
-    const permission = await ensureMicPermission();
-    if (permission === 'blocked') {
-      setAnswer(t('assistant.voice.micBlocked'));
-      return;
-    }
-    if (dictationRef.current) return;
+  /**
+   * Synchronous on purpose — see the note on requestMicPermission. Awaiting a
+   * permission check before start() costs the user gesture, and iOS Safari then
+   * refuses to listen even with the microphone already granted.
+   */
+  function beginDictation() {
     const handle = startListening({
       lang: i18n.language?.startsWith('hi') ? 'hi' : 'en',
       onInterim: (text) => setQuestion(text),
@@ -512,7 +517,14 @@ function OverviewSection({
         setListening(false);
       },
       onError: (code) => {
-        setAnswer(t(`assistant.voice.${voiceErrorKey(code)}`));
+        const key = voiceErrorKey(code);
+        if (key === 'micBlocked') {
+          void requestMicPermission().then((result) => {
+            setAnswer(t(result === 'granted' ? 'assistant.voice.micReady' : 'assistant.voice.micBlocked'));
+          });
+          return;
+        }
+        setAnswer(t(`assistant.voice.${key}`));
       },
     });
     if (!handle) return;

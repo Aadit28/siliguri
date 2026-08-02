@@ -198,7 +198,9 @@ export default function Services() {
         </View>
 
         <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.cardStrong }]}>
-          <Feather name="search" size={20} color={colors.textMuted} accessible accessibilityLabel={t('common.search')} />
+          {/* Decorative: the input beside it already carries the Search label,
+              so marking this accessible only adds a dead stop for screen readers. */}
+          <Feather name="search" size={20} color={colors.textMuted} accessibilityElementsHidden importantForAccessibility="no" />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder={`${t('common.search')} ${t('tabs.services').toLowerCase()}`}
