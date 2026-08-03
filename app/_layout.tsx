@@ -20,6 +20,7 @@ import { LocaleProvider } from '../src/context/LocaleContext';
 import { AppThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { DisplayModeProvider, useDisplayMode } from '../src/context/DisplayModeContext';
 import { FONT_BOLD } from '../src/lib/fonts';
+import WebScrollbarStyle from '../src/components/WebScrollbarStyle';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -122,6 +123,7 @@ function RootStack() {
 
   return (
     <>
+      <WebScrollbarStyle />
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View
         style={[
