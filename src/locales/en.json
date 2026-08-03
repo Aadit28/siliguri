@@ -797,14 +797,54 @@
       "callbacksLabel": "Open callback requests",
       "callbacksNone": "No callback requests have been made.",
       "callbacksSummary": "{{open}} still open, out of {{total}} requests.",
-      "callbackNoIssue": "No details given"
+      "callbackNoIssue": "No details given",
+      "openDetail": "Opens a detail screen for this number"
     },
     "relationshipYouAre": "You are their {{relationship}}",
     "createdByYou": "Added by you",
     "createdByOther": "Added by a family member",
     "noMatches": "No services match your search.",
     "showingMatches": "Showing {{count}} of {{total}} matches. Refine your search to narrow it down.",
-    "reminderTimePlaceholder": "e.g. 8:30 am"
+    "reminderTimePlaceholder": "e.g. 8:30 am",
+    "metric": {
+      "breakdown": "Breakdown",
+      "whatThisMeans": "What this means",
+      "unknown": "That is not a metric we can show. Go back and pick one from the dashboard.",
+      "unknownTitle": "Detail",
+      "callbacksClosed": "Closed requests",
+      "callbacksDetail": "A callback request is your parent asking a Saathi helper to ring them back. Every request they have made is listed below, newest first.",
+      "savedEmpty": "Nothing has been saved for your parent yet — no care-team contacts and no saved services.",
+      "savedSummary": "{{careTeam}} care-team contacts and {{favorites}} saved services are set up on your parent's phone.",
+      "favoritesOpen": "Open the Saved services tab",
+      "upcomingDetail": "Reminders that are still to come: they have not been marked done and their day has not passed yet. Your parent's phone will ring for each one.",
+      "overdueDetail": "Reminders whose day has passed while they were still waiting to be marked done. These are the ones worth a phone call.",
+      "done7dDetail": "Reminders your parent marked done in the last seven days, counted from their own phone."
+    },
+    "home": {
+      "metricsTitle": "All numbers",
+      "adherenceTitle": "Medicine and appointment adherence",
+      "adherenceWhat": "Reminders marked done, out of the ones that came due in the last {{days}} days.",
+      "adherenceValue": "{{percent}}% done in the last 30 days",
+      "adherenceDone": "Marked done",
+      "adherenceMissed": "Still not done",
+      "adherenceSummary": "{{done}} of {{total}} reminders due in the last {{days}} days were marked done. {{missed}} passed their day without being marked.",
+      "adherenceNotEnough": "Not enough yet",
+      "adherenceNotEnoughWhy": "No reminder has come due in the last 30 days, so there is nothing to measure. This is not a score of zero.",
+      "calendarTitle": "This month",
+      "calendarSummary": "In {{month}}, {{marked}} days have reminders: {{done}} all done, {{missed}} with something still not done, {{upcoming}} still to come.",
+      "calendarEmpty": "No reminders fall in {{month}}.",
+      "dayTone": {
+        "done": "All done",
+        "missed": "Something still not done",
+        "upcoming": "Still to come",
+        "none": "Nothing scheduled"
+      },
+      "recentTitle": "Recent activity",
+      "recentEmpty": "Nothing has happened yet — no reminders added or completed, and no callback requests.",
+      "activityCompleted": "Marked done: {{title}}",
+      "activityAdded": "Reminder added: {{title}}",
+      "activityCallback": "Callback requested: {{issue}}"
+    }
   },
   "dialer": {
     "failedTitle": "Could not open the phone app",

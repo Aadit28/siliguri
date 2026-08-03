@@ -169,6 +169,7 @@ function RootStack() {
                 theme and sign-out controls instead of dead-ending. */}
             <Stack.Screen name="guardian/index" options={{ headerShown: false }} />
             <Stack.Screen name="guardian/[parentId]" options={{ headerShown: false }} />
+            <Stack.Screen name="guardian/metric" options={{ headerShown: false }} />
             <Stack.Screen name="admin" options={{ title: '' }} />
             <Stack.Screen name="connectors" options={{ title: '' }} />
           </Stack>

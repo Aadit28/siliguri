@@ -14,8 +14,6 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
   Easing,
-  FadeIn,
-  LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
@@ -24,9 +22,17 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import AppHeader from '../../src/components/AppHeader';
 import { Button, Card, Chip, Dialog, H1, H2, Muted } from '../../src/components/ui';
-import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
+import {
+  METRIC_KEYS,
+  MetricKey,
+  metricLabel,
+  metricValue,
+} from '../../src/components/GuardianMetric';
+import { AppColors, family, font, radius, shadow, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
 import {
   CareTeamCategory,
   CareTeamMember,
@@ -63,22 +69,23 @@ import { requestMicPermission, speechRecognitionSupported, startListening, voice
 import { useKeyboardInset } from '../../src/lib/useKeyboardInset';
 import { isValidISODate, normalizeTimeInput } from '../../src/lib/calendar';
 import { todayISO } from '../../src/lib/notifications';
+import {
+  MONTHS_SHORT,
+  daysBetweenISO,
+  formatISTStamp,
+  istDateISO,
+  pad,
+  relativeDayLabel,
+  shiftISO,
+  toISO,
+} from '../../src/lib/istDates';
 
 type SectionKey = 'overview' | 'reminders' | 'places' | 'care';
 
+const SECTION_KEYS: SectionKey[] = ['overview', 'reminders', 'places', 'care'];
+
 const REMINDER_REPEATS: FamilyReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
 const CARE_CATEGORIES: CareTeamCategory[] = ['doctor', 'grocery', 'pharmacy', 'hospital', 'helper', 'other'];
-
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function pad(value: number) {
-  return String(value).padStart(2, '0');
-}
-
-function toISO(year: number, month: number, day: number) {
-  return `${year}-${pad(month + 1)}-${pad(day)}`;
-}
 
 // Reminder times are the parent's local (Asia/Kolkata) wall clock. Guardians
 // abroad see the same numbers relabelled so there's no ambiguity — "8:30 AM IST".
@@ -89,19 +96,6 @@ function formatISTTime(time?: string | null) {
   const period = h < 12 ? 'AM' : 'PM';
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${pad(m)} ${period} IST`;
-}
-
-// lastActiveAt is an absolute server timestamp; render it as the parent's own
-// Kolkata wall time rather than the guardian's local zone.
-function formatISTStamp(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const k = new Date(d.getTime() + IST_OFFSET_MS);
-  const period = k.getUTCHours() < 12 ? 'AM' : 'PM';
-  const hour12 = k.getUTCHours() % 12 === 0 ? 12 : k.getUTCHours() % 12;
-  return `${k.getUTCDate()} ${MONTHS_SHORT[k.getUTCMonth()]} ${k.getUTCFullYear()}, ${hour12}:${pad(
-    k.getUTCMinutes(),
-  )} ${period} IST`;
 }
 
 // A reminder's dateISO is the parent's local day. Rendered the same way as the
@@ -336,10 +330,14 @@ const fieldStyles = StyleSheet.create({
 export default function ParentDetail() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { parentId: rawParentId } = useLocalSearchParams<{ parentId: string }>();
+  const { parentId: rawParentId, section: rawSection } = useLocalSearchParams<{
+    parentId: string;
+    section?: string;
+  }>();
   const parentId = Array.isArray(rawParentId) ? rawParentId[0] : rawParentId;
+  const requestedSection = Array.isArray(rawSection) ? rawSection[0] : rawSection;
   const { session, user, loading } = useAuth();
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const insets = useSafeAreaInsets();
   const keyboardInset = useKeyboardInset();
   const { width } = useWindowDimensions();
@@ -348,7 +346,15 @@ export default function ParentDetail() {
   const styles = makeStyles(colors, isWide);
 
   const [parentName, setParentName] = useState('');
-  const [section, setSection] = useState<SectionKey>('overview');
+  // The metric screen links back here with ?section=care, so a deep link can
+  // land on a section the dock would otherwise have to be tapped to reach.
+  const [section, setSection] = useState<SectionKey>(() =>
+    SECTION_KEYS.includes(requestedSection as SectionKey) ? (requestedSection as SectionKey) : 'overview',
+  );
+
+  useEffect(() => {
+    if (SECTION_KEYS.includes(requestedSection as SectionKey)) setSection(requestedSection as SectionKey);
+  }, [requestedSection]);
 
   useEffect(() => {
     if (!session || !parentId) return;
@@ -405,11 +411,11 @@ export default function ParentDetail() {
 
   const token = session.access_token;
   const heading = parentName || t('family.title');
-  const sections: { key: SectionKey; label: string }[] = [
-    { key: 'overview', label: t('family.analyticsTitle') },
-    { key: 'reminders', label: t('family.remindersTitle') },
-    { key: 'places', label: t('family.favoritesTitle') },
-    { key: 'care', label: t('family.careTeamTitle') },
+  const sections: { key: SectionKey; label: string; icon: FeatherName }[] = [
+    { key: 'overview', label: t('family.analyticsTitle'), icon: 'activity' },
+    { key: 'reminders', label: t('family.remindersTitle'), icon: 'bell' },
+    { key: 'places', label: t('family.favoritesTitle'), icon: 'star' },
+    { key: 'care', label: t('family.careTeamTitle'), icon: 'users' },
   ];
 
   return (
@@ -419,9 +425,13 @@ export default function ParentDetail() {
       <Stack.Screen options={{ title: heading }} />
       {/* The keyboard inset is added, not maxed: the Ask box sits low on this
           page, and without the extra run-off there is nothing to scroll it up
-          into once the keyboard is open. */}
+          into once the keyboard is open. The dock floats over the scroll view,
+          so TAB_BAR_CLEARANCE keeps the last row from hiding underneath it. */}
       <View
-        style={[styles.page, { paddingBottom: Math.max(insets.bottom, space.lg) + keyboardInset }]}
+        style={[
+          styles.page,
+          { paddingBottom: Math.max(insets.bottom, space.lg) + keyboardInset + TAB_BAR_CLEARANCE },
+        ]}
       >
       <View style={styles.shell}>
         <Pressable
@@ -437,12 +447,7 @@ export default function ParentDetail() {
         </Pressable>
 
         <H1>{heading}</H1>
-
-        <View style={styles.chipRow}>
-          {sections.map((s) => (
-            <Chip key={s.key} label={s.label} active={section === s.key} onPress={() => setSection(s.key)} />
-          ))}
-        </View>
+        <Text style={styles.sectionCaption}>{sections.find((s) => s.key === section)?.label}</Text>
 
         {!parentId ? (
           <Card style={styles.stateCard}>
@@ -456,7 +461,6 @@ export default function ParentDetail() {
             styles={styles}
             colors={colors}
             isWide={isWide}
-            onOpenCareTeam={() => setSection('care')}
           />
         ) : section === 'reminders' ? (
           <RemindersSection token={token} parentId={parentId} styles={styles} colors={colors} currentUserId={user.id} />
@@ -468,6 +472,7 @@ export default function ParentDetail() {
       </View>
       </View>
       </ScrollView>
+      <SectionDock sections={sections} active={section} onSelect={setSection} colors={colors} mode={mode} />
     </View>
   );
 }
@@ -476,143 +481,37 @@ type Styles = ReturnType<typeof makeStyles>;
 
 // ----- Overview tiles -----
 
-type TileKey =
-  | 'lastActive'
-  | 'assistant7d'
-  | 'assistant30d'
-  | 'upcoming'
-  | 'overdue'
-  | 'done7d'
-  | 'careTeam'
-  | 'favorites'
-  | 'callbacks';
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
-const tileDetailIn = FadeIn.duration(180).easing(Easing.out(Easing.cubic)).reduceMotion(ReduceMotion.System);
-const tileLayout = LinearTransition.duration(200).easing(Easing.out(Easing.cubic)).reduceMotion(ReduceMotion.System);
-
-// The parent's day, not the guardian's: a stamp is bucketed by its Kolkata
-// calendar date so "Yesterday" means yesterday where the senior lives.
-function istDateISO(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const k = new Date(d.getTime() + IST_OFFSET_MS);
-  return toISO(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate());
-}
-
-function relativeDayLabel(iso: string, t: (key: string, opts?: Record<string, unknown>) => string) {
-  const dayISO = istDateISO(iso);
-  if (!dayISO) return null;
-  const [y, m, d] = dayISO.split('-').map(Number);
-  const [ty, tm, td] = todayISO().split('-').map(Number);
-  const diff = Math.round((Date.UTC(ty, (tm || 1) - 1, td || 1) - Date.UTC(y, (m || 1) - 1, d || 1)) / 86400000);
-  // A future stamp only happens on clock skew; it is still "today" to a reader.
-  if (diff <= 0) return t('family.tile.today');
-  if (diff === 1) return t('family.tile.yesterday');
-  return t('family.tile.daysAgo', { days: diff });
-}
-
-type BarSegment = { key: string; value: number; color: string; emphasized: boolean };
-
-// Proportion bar drawn from plain Views: each segment's percentage width is the
-// number it represents. Purely decorative — every figure it encodes is also
-// printed in the legend and summary line beneath it.
-function ProportionBar({ segments, styles }: { segments: BarSegment[]; styles: Styles }) {
-  const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0);
-  if (total <= 0) return null;
-  return (
-    <View style={styles.barTrack} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-      {segments.map((s) => {
-        const value = Math.max(0, s.value);
-        if (value === 0) return null;
-        return (
-          <View
-            key={s.key}
-            testID={`bar-seg-${s.key}`}
-            style={[
-              styles.barSegment,
-              { width: `${(value / total) * 100}%`, backgroundColor: s.color, opacity: s.emphasized ? 1 : 0.4 },
-            ]}
-          />
-        );
-      })}
-    </View>
-  );
-}
-
-function LegendRow({
-  color,
-  label,
-  value,
-  emphasized,
-  styles,
-}: {
-  color: string;
-  label: string;
-  value: number;
-  emphasized: boolean;
-  styles: Styles;
-}) {
-  return (
-    <View style={styles.legendRow}>
-      <View style={[styles.legendDot, { backgroundColor: color, opacity: emphasized ? 1 : 0.4 }]} />
-      <Text style={[styles.legendLabel, emphasized ? styles.legendLabelOn : null]}>{label}</Text>
-      <Text style={styles.legendValue}>{value}</Text>
-    </View>
-  );
-}
-
-// Accordion tile: the whole head is the button, the chevron rotates, and the
-// detail block fades in beneath it. One tile open at a time is handled by the
-// parent, so this only reports taps.
+// A tile is now a link, not an accordion: the number and its label stay, and
+// tapping opens /guardian/metric where the same metric gets a full screen.
 function StatTile({
-  tileKey,
+  metricKey,
   label,
   value,
-  expanded,
-  onToggle,
   basis,
+  onPress,
   colors,
   styles,
-  children,
 }: {
-  tileKey: TileKey;
+  metricKey: MetricKey;
   label: string;
   value: string;
-  expanded: boolean;
-  onToggle: () => void;
   basis: `${number}%`;
+  onPress: () => void;
   colors: AppColors;
   styles: Styles;
-  children: React.ReactNode;
 }) {
   const { t } = useTranslation();
-  const rotation = useSharedValue(expanded ? 1 : 0);
-
-  useEffect(() => {
-    rotation.value = withTiming(expanded ? 1 : 0, {
-      duration: 180,
-      easing: Easing.out(Easing.cubic),
-      reduceMotion: ReduceMotion.System,
-    });
-  }, [expanded, rotation]);
-
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value * 180}deg` }],
-  }));
-
   return (
-    <Animated.View layout={tileLayout} style={[styles.statTileOuter, { flexBasis: basis }]}>
+    <View style={[styles.statTileOuter, { flexBasis: basis }]}>
       <Card style={styles.statCard}>
         <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          // react-native-web does not forward accessibilityState.expanded to the
-          // DOM; the aria prop is what actually reaches a browser screen reader.
-          aria-expanded={expanded}
+          accessibilityRole="link"
           accessibilityLabel={`${label}: ${value}`}
-          accessibilityHint={t(expanded ? 'family.tile.collapse' : 'family.tile.expand')}
-          onPress={onToggle}
-          testID={`tile-${tileKey}`}
+          accessibilityHint={t('family.tile.openDetail')}
+          onPress={onPress}
+          testID={`tile-${metricKey}`}
           style={({ pressed }) => [styles.statHeader, pressed ? { opacity: 0.72 } : null]}
         >
           <View style={styles.statHeaderText}>
@@ -620,19 +519,595 @@ function StatTile({
             <Text style={styles.statValue}>{value}</Text>
             <Text style={styles.statLabel}>{label}</Text>
           </View>
-          <Animated.View style={chevronStyle}>
-            <Feather name="chevron-down" size={20} color={colors.textMuted} />
-          </Animated.View>
+          <Feather name="chevron-right" size={20} color={colors.textMuted} />
         </Pressable>
-        {expanded ? (
-          <Animated.View entering={tileDetailIn} style={styles.tileDetail} testID={`tile-detail-${tileKey}`}>
-            {children}
-          </Animated.View>
-        ) : null}
       </Card>
-    </Animated.View>
+    </View>
   );
 }
+
+// ----- Home view: adherence, calendar, recent activity -----
+
+// Adherence is measured over this many calendar days ending today.
+const ADHERENCE_WINDOW_DAYS = 30;
+
+// One reminder row can fire on many days. An *active* repeating reminder is
+// expanded across the month from its start date; a finished one (done or
+// cancelled) is a single event on the day it was set for, because the row
+// stops repeating the moment it is closed. Without this a daily medicine would
+// paint one cell where it should paint thirty.
+function occursOn(r: FamilyReminder, dayISO: string) {
+  if (r.dateISO > dayISO) return false;
+  if (r.status !== 'active' || r.repeat === 'once') return r.dateISO === dayISO;
+  if (r.repeat === 'daily') return true;
+  if (r.repeat === 'weekly') return daysBetweenISO(r.dateISO, dayISO) % 7 === 0;
+  // Monthly: the same day number. Months without it (the 31st in April) are
+  // skipped rather than rolled forward, matching nextMonthlyISO.
+  return r.dateISO.slice(8, 10) === dayISO.slice(8, 10);
+}
+
+type Adherence = { done: number; missed: number; total: number; percent: number | null };
+
+// done / (done + missed) over the window. Counted per reminder ROW, never per
+// expanded occurrence: a daily reminder is one row and the data does not say
+// which individual days were taken, so expanding here would invent history.
+function computeAdherence(reminders: FamilyReminder[], today: string): Adherence {
+  const start = shiftISO(today, -(ADHERENCE_WINDOW_DAYS - 1));
+  let done = 0;
+  let missed = 0;
+  for (const r of reminders) {
+    if (r.status === 'done') {
+      // Dated by when it was actually completed where the server tells us
+      // (updatedAt), and by the day it was due otherwise.
+      const day = (r.updatedAt ? istDateISO(r.updatedAt) : null) ?? r.dateISO;
+      if (day >= start && day <= today) done += 1;
+    } else if (r.status === 'active' && r.dateISO < today && r.dateISO >= start) {
+      missed += 1;
+    }
+  }
+  const total = done + missed;
+  return { done, missed, total, percent: total === 0 ? null : Math.round((done / total) * 100) };
+}
+
+const RING_SIZE = 148;
+const RING_WIDTH = 16;
+
+// Progress ring from plain Views: a full circle whose top and right borders are
+// painted forms a 180° arc once rotated 45°, so one clipped half draws the
+// first 50% and a second clipped half draws the rest. No SVG, no chart library.
+function AdherenceRing({
+  percent,
+  colors,
+  styles,
+}: {
+  percent: number;
+  colors: AppColors;
+  styles: Styles;
+}) {
+  const target = Math.max(0, Math.min(100, percent)) * 3.6;
+  const sweep = useSharedValue(0);
+
+  useEffect(() => {
+    sweep.value = withTiming(target, {
+      duration: 620,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [target, sweep]);
+
+  // Unrotated, the painted top+right borders cover -45°..135°. Rotating by
+  // (angle - 135) puts the arc's end exactly at `angle`; the clip mask throws
+  // away whatever spills into the other half.
+  const rightStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${sweep.value <= 180 ? sweep.value - 135 : 45}deg` }],
+  }));
+  const leftStyle = useAnimatedStyle(() => ({
+    opacity: sweep.value > 180 ? 1 : 0,
+    transform: [{ rotate: `${Math.max(sweep.value, 180) - 135}deg` }],
+  }));
+
+  const arc = { borderTopColor: colors.success, borderRightColor: colors.success };
+
+  return (
+    <View style={styles.ring} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={[StyleSheet.absoluteFill, styles.ringTrack, { borderColor: colors.dangerSoft }]} />
+      <View style={[styles.ringClip, { left: RING_SIZE / 2 }]}>
+        <Animated.View style={[styles.ringArc, { left: -RING_SIZE / 2 }, arc, rightStyle]} />
+      </View>
+      <View style={[styles.ringClip, { left: 0 }]}>
+        <Animated.View style={[styles.ringArc, { left: 0 }, arc, leftStyle]} />
+      </View>
+      <View style={[StyleSheet.absoluteFill, styles.ringCenter]}>
+        <Text style={styles.ringPercent}>{`${Math.round(percent)}%`}</Text>
+      </View>
+    </View>
+  );
+}
+
+function AdherenceCard({
+  reminders,
+  loading,
+  colors,
+  styles,
+}: {
+  reminders: FamilyReminder[];
+  loading: boolean;
+  colors: AppColors;
+  styles: Styles;
+}) {
+  const { t } = useTranslation();
+  const today = todayISO();
+  const score = useMemo(() => computeAdherence(reminders, today), [reminders, today]);
+
+  return (
+    <Card style={styles.homeCard} testID="home-adherence">
+      <Text style={styles.homeCardTitle}>{t('family.home.adherenceTitle')}</Text>
+      <Muted style={styles.homeCardHint}>{t('family.home.adherenceWhat', { days: ADHERENCE_WINDOW_DAYS })}</Muted>
+      {loading && reminders.length === 0 ? (
+        <ActivityIndicator color={colors.textMuted} style={styles.homeSpinner} />
+      ) : score.percent === null ? (
+        <View style={styles.scoreEmpty}>
+          <Feather name="inbox" size={22} color={colors.textSubtle} />
+          <Text style={styles.scoreEmptyText} testID="home-adherence-value">
+            {t('family.home.adherenceNotEnough')}
+          </Text>
+          <Text style={styles.homeText}>{t('family.home.adherenceNotEnoughWhy')}</Text>
+        </View>
+      ) : (
+        <View style={styles.scoreBody}>
+          <AdherenceRing percent={score.percent} colors={colors} styles={styles} />
+          <View style={styles.scoreText}>
+            {/* The ring is decoration; this line is the actual reading. */}
+            <Text style={styles.scoreHeadline} testID="home-adherence-value">
+              {t('family.home.adherenceValue', { percent: score.percent })}
+            </Text>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+              <Text style={styles.legendLabel}>{t('family.home.adherenceDone')}</Text>
+              <Text style={styles.legendValue} testID="home-adherence-done">
+                {score.done}
+              </Text>
+            </View>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.danger }]} />
+              <Text style={styles.legendLabel}>{t('family.home.adherenceMissed')}</Text>
+              <Text style={styles.legendValue} testID="home-adherence-missed">
+                {score.missed}
+              </Text>
+            </View>
+            <Text style={styles.homeText}>
+              {t('family.home.adherenceSummary', {
+                percent: score.percent,
+                done: score.done,
+                total: score.total,
+                missed: score.missed,
+                days: ADHERENCE_WINDOW_DAYS,
+              })}
+            </Text>
+          </View>
+        </View>
+      )}
+    </Card>
+  );
+}
+
+type DayTone = 'none' | 'done' | 'missed' | 'upcoming';
+
+function toneFor(dayISO: string, occurrences: FamilyReminder[], today: string): DayTone {
+  if (occurrences.length === 0) return 'none';
+  const anyActive = occurrences.some((r) => r.status === 'active');
+  if (anyActive) return dayISO < today ? 'missed' : 'upcoming';
+  return occurrences.some((r) => r.status === 'done') ? 'done' : 'none';
+}
+
+function MonthCalendarCard({
+  reminders,
+  loading,
+  colors,
+  styles,
+}: {
+  reminders: FamilyReminder[];
+  loading: boolean;
+  colors: AppColors;
+  styles: Styles;
+}) {
+  const { t } = useTranslation();
+  const today = todayISO();
+  const [cursor, setCursor] = useState(() => {
+    const [year, month] = today.split('-').map(Number);
+    return { year, month: (month || 1) - 1 };
+  });
+
+  const weeks = useMemo(() => monthMatrix(cursor.year, cursor.month), [cursor]);
+  const weekdayLabels = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) =>
+        new Date(2024, 0, 7 + i).toLocaleDateString(undefined, { weekday: 'narrow' }),
+      ),
+    [],
+  );
+
+  // One pass over the month: every day gets its occurrence list and a tone.
+  const days = useMemo(() => {
+    const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
+    const map = new Map<string, { tone: DayTone; titles: string[] }>();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayISO = toISO(cursor.year, cursor.month, day);
+      const occurrences = reminders.filter((r) => occursOn(r, dayISO));
+      map.set(dayISO, { tone: toneFor(dayISO, occurrences, today), titles: occurrences.map((r) => r.title) });
+    }
+    return map;
+  }, [reminders, cursor, today]);
+
+  const counts = useMemo(() => {
+    let done = 0;
+    let missed = 0;
+    let upcoming = 0;
+    days.forEach(({ tone }) => {
+      if (tone === 'done') done += 1;
+      else if (tone === 'missed') missed += 1;
+      else if (tone === 'upcoming') upcoming += 1;
+    });
+    return { done, missed, upcoming, marked: done + missed + upcoming };
+  }, [days]);
+
+  const toneColor: Record<DayTone, string | null> = {
+    none: null,
+    done: colors.success,
+    missed: colors.danger,
+    upcoming: colors.accent,
+  };
+
+  function goMonth(delta: number) {
+    setCursor(({ year, month }) => {
+      const next = new Date(year, month + delta, 1);
+      return { year: next.getFullYear(), month: next.getMonth() };
+    });
+  }
+
+  return (
+    <Card style={styles.homeCard} testID="home-calendar">
+      <Text style={styles.homeCardTitle}>{t('family.home.calendarTitle')}</Text>
+      <View style={styles.calHeader}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={monthName(cursor.year, cursor.month - 1)}
+          testID="home-calendar-prev"
+          onPress={() => goMonth(-1)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.calNav, pressed ? { backgroundColor: colors.overlay } : null]}
+        >
+          <Feather name="chevron-left" size={20} color={colors.text} />
+        </Pressable>
+        <Text style={styles.calMonth} testID="home-calendar-month">
+          {monthName(cursor.year, cursor.month)}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={monthName(cursor.year, cursor.month + 1)}
+          testID="home-calendar-next"
+          onPress={() => goMonth(1)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.calNav, pressed ? { backgroundColor: colors.overlay } : null]}
+        >
+          <Feather name="chevron-right" size={20} color={colors.text} />
+        </Pressable>
+      </View>
+
+      {loading && reminders.length === 0 ? <ActivityIndicator color={colors.textMuted} style={styles.homeSpinner} /> : null}
+
+      <View style={styles.calWeekRow}>
+        {weekdayLabels.map((label, i) => (
+          <View key={`cwd-${i}`} style={styles.calCell}>
+            <Text style={styles.calWeekday}>{label}</Text>
+          </View>
+        ))}
+      </View>
+      {weeks.map((week, wi) => (
+        <View key={`cw-${wi}`} style={styles.calWeekRow}>
+          {week.map((day, di) => {
+            if (!day) return <View key={`cd-${wi}-${di}`} style={styles.calCell} />;
+            const dayISO = toISO(cursor.year, cursor.month, day);
+            const entry = days.get(dayISO);
+            const tone = entry?.tone ?? 'none';
+            const tint = toneColor[tone];
+            const isToday = dayISO === today;
+            return (
+              <View
+                key={`cd-${wi}-${di}`}
+                style={styles.calCell}
+                testID={`cal-day-${dayISO}`}
+                accessible
+                accessibilityLabel={[
+                  formatReadableDate(dayISO),
+                  t(`family.home.dayTone.${tone}`),
+                  entry && entry.titles.length > 0 ? entry.titles.join(', ') : null,
+                ]
+                  .filter(Boolean)
+                  .join('. ')}
+              >
+                <View
+                  // The dot below the number carries the colour so the number
+                  // itself always keeps full text contrast.
+                  style={[styles.calDay, isToday ? { borderWidth: 1.5, borderColor: colors.text } : null]}
+                >
+                  <Text style={styles.calDayNum}>{day}</Text>
+                  <View style={[styles.calDot, tint ? { backgroundColor: tint } : { backgroundColor: 'transparent' }]} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ))}
+
+      <View style={styles.calLegend}>
+        <View style={styles.legendRow}>
+          <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+          <Text style={styles.legendLabel}>{t('family.home.dayTone.done')}</Text>
+          <Text style={styles.legendValue} testID="cal-count-done">{counts.done}</Text>
+        </View>
+        <View style={styles.legendRow}>
+          <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
+          <Text style={styles.legendLabel}>{t('family.home.dayTone.missed')}</Text>
+          <Text style={styles.legendValue} testID="cal-count-missed">{counts.missed}</Text>
+        </View>
+        <View style={styles.legendRow}>
+          <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
+          <Text style={styles.legendLabel}>{t('family.home.dayTone.upcoming')}</Text>
+          <Text style={styles.legendValue} testID="cal-count-upcoming">{counts.upcoming}</Text>
+        </View>
+        <View style={styles.legendRow}>
+          <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
+          <Text style={styles.legendLabel}>{t('family.home.dayTone.none')}</Text>
+        </View>
+      </View>
+      <Text style={styles.homeText} testID="home-calendar-summary">
+        {counts.marked === 0
+          ? t('family.home.calendarEmpty', { month: monthName(cursor.year, cursor.month) })
+          : t('family.home.calendarSummary', {
+              month: monthName(cursor.year, cursor.month),
+              marked: counts.marked,
+              done: counts.done,
+              missed: counts.missed,
+              upcoming: counts.upcoming,
+            })}
+      </Text>
+    </Card>
+  );
+}
+
+type ActivityRow = { key: string; at: string; icon: FeatherName; tint: string; title: string; meta: string };
+
+const RECENT_ACTIVITY_LIMIT = 6;
+
+function RecentActivityCard({
+  reminders,
+  callbacks,
+  loading,
+  colors,
+  styles,
+}: {
+  reminders: FamilyReminder[];
+  callbacks: ParentAnalytics['callbacks'];
+  loading: boolean;
+  colors: AppColors;
+  styles: Styles;
+}) {
+  const { t } = useTranslation();
+
+  // Only things that actually happened, each carrying its own real timestamp.
+  // There is no activity log behind this — it is the reminder rows and the
+  // callback list re-read as events.
+  const rows = useMemo<ActivityRow[]>(() => {
+    const out: ActivityRow[] = [];
+    for (const r of reminders) {
+      if (r.status === 'done') {
+        const at = r.updatedAt ?? r.createdAt ?? `${r.dateISO}T00:00:00.000Z`;
+        out.push({
+          key: `done-${r.id}`,
+          at,
+          icon: 'check-circle',
+          tint: colors.success,
+          title: t('family.home.activityCompleted', { title: r.title }),
+          meta: [relativeDayLabel(at, t), formatISTStamp(at)].filter(Boolean).join(' · '),
+        });
+      }
+      if (r.createdAt) {
+        out.push({
+          key: `added-${r.id}`,
+          at: r.createdAt,
+          icon: 'plus-circle',
+          tint: colors.accent,
+          title: t('family.home.activityAdded', { title: r.title }),
+          meta: [relativeDayLabel(r.createdAt, t), formatISTStamp(r.createdAt)].filter(Boolean).join(' · '),
+        });
+      }
+    }
+    for (const cb of callbacks) {
+      out.push({
+        key: `cb-${cb.created_at}-${cb.status}`,
+        at: cb.created_at,
+        icon: 'phone-call',
+        tint: colors.primary,
+        title: t('family.home.activityCallback', { issue: cb.issue || t('family.tile.callbackNoIssue') }),
+        meta: [
+          t(`family.callbackStatus.${cb.status}`, { defaultValue: cb.status }),
+          relativeDayLabel(cb.created_at, t),
+          formatISTStamp(cb.created_at),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+    }
+    return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, RECENT_ACTIVITY_LIMIT);
+  }, [reminders, callbacks, colors, t]);
+
+  return (
+    <Card style={styles.homeCard} testID="home-activity">
+      <Text style={styles.homeCardTitle}>{t('family.home.recentTitle')}</Text>
+      {loading && rows.length === 0 ? (
+        <ActivityIndicator color={colors.textMuted} style={styles.homeSpinner} />
+      ) : rows.length === 0 ? (
+        <Text style={styles.homeText} testID="home-activity-empty">
+          {t('family.home.recentEmpty')}
+        </Text>
+      ) : (
+        rows.map((row) => (
+          <View key={row.key} style={styles.activityRow} testID="home-activity-row">
+            <Feather name={row.icon} size={18} color={row.tint} />
+            <View style={styles.activityBody}>
+              <Text style={styles.activityTitle}>{row.title}</Text>
+              <Text style={styles.activityMeta}>{row.meta}</Text>
+            </View>
+          </View>
+        ))
+      )}
+    </Card>
+  );
+}
+
+// ----- Bottom section dock -----
+
+// The same recipe as the app's tab bar (LinearGradient bevel, blurred glass,
+// sliding pill) but driven by this screen's own section state — GlassTabBar is
+// bound to react-navigation's tab props and cannot be reused here.
+const DOCK_RADIUS = 24;
+const DOCK_PAD = 6;
+// GSAP power4.out equivalent: fast launch, long soft landing.
+const DOCK_SLIDE_EASING = Easing.bezier(0.22, 1, 0.36, 1);
+
+function SectionDock({
+  sections,
+  active,
+  onSelect,
+  colors,
+  mode,
+}: {
+  sections: { key: SectionKey; label: string; icon: FeatherName }[];
+  active: SectionKey;
+  onSelect: (key: SectionKey) => void;
+  colors: AppColors;
+  mode: 'light' | 'dark';
+}) {
+  const [innerWidth, setInnerWidth] = useState(0);
+  const index = Math.max(0, sections.findIndex((s) => s.key === active));
+  const slide = useSharedValue(index);
+  const itemWidth = innerWidth > 0 ? innerWidth / sections.length : 0;
+
+  useEffect(() => {
+    // ReduceMotion.Never: a short state-conveying translate — OS "animation
+    // effects off" would otherwise make the pill teleport and read as broken.
+    slide.value = withTiming(index, {
+      duration: 520,
+      easing: DOCK_SLIDE_EASING,
+      reduceMotion: ReduceMotion.Never,
+    });
+  }, [index, slide]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slide.value * itemWidth }],
+  }));
+
+  return (
+    <View style={[dockStyles.dock, shadow.md]} testID="section-dock">
+      <View style={[StyleSheet.absoluteFill, dockStyles.dockClip]}>
+        {/* Bevel: light catches the top-left edge, falls off bottom-right. */}
+        <LinearGradient
+          colors={[colors.navEdgeHi, colors.navEdgeLo]}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={dockStyles.dockInner}>
+          <BlurView
+            intensity={48}
+            tint={mode}
+            experimentalBlurMethod="dimezisBlurView"
+            style={[StyleSheet.absoluteFill, { backgroundColor: colors.navGlass }]}
+          />
+        </View>
+      </View>
+
+      <View style={dockStyles.itemRow} onLayout={(event) => setInnerWidth(event.nativeEvent.layout.width)}>
+        {itemWidth > 0 ? (
+          <Animated.View
+            style={[
+              dockStyles.pill,
+              pillStyle,
+              { width: itemWidth, backgroundColor: colors.navPill, borderColor: colors.navPillEdge },
+            ]}
+          />
+        ) : null}
+        {sections.map((s) => {
+          const focused = s.key === active;
+          const tint = focused ? colors.text : colors.textSubtle;
+          return (
+            <Pressable
+              key={s.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: focused }}
+              // react-native-web does not forward accessibilityState.selected to
+              // the DOM; the aria prop is what reaches a browser screen reader.
+              aria-selected={focused}
+              accessibilityLabel={s.label}
+              testID={`dock-${s.key}`}
+              style={dockStyles.item}
+              onPress={() => onSelect(s.key)}
+            >
+              <Feather name={s.icon} size={24} color={tint} />
+              <Text style={[dockStyles.label, { color: tint }]} numberOfLines={1}>
+                {s.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const dockStyles = StyleSheet.create({
+  dock: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+    minHeight: 72,
+    borderRadius: DOCK_RADIUS,
+    backgroundColor: 'transparent',
+    elevation: 0,
+  },
+  dockClip: { borderRadius: DOCK_RADIUS, overflow: 'hidden' },
+  // Inset so the gradient underneath reads as a 1.5px bevel ring.
+  dockInner: {
+    position: 'absolute',
+    top: 1.5,
+    right: 1.5,
+    bottom: 1.5,
+    left: 1.5,
+    borderRadius: DOCK_RADIUS - 1.5,
+    overflow: 'hidden',
+  },
+  itemRow: { flexDirection: 'row', alignItems: 'stretch', margin: DOCK_PAD },
+  pill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: DOCK_RADIUS - DOCK_PAD,
+    borderWidth: 1,
+  },
+  item: {
+    flex: 1,
+    minHeight: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  label: { fontFamily: family.medium, fontSize: font.xs, lineHeight: 18 },
+});
 
 // ----- Overview -----
 
@@ -643,7 +1118,6 @@ function OverviewSection({
   styles,
   colors,
   isWide,
-  onOpenCareTeam,
 }: {
   token: string;
   parentId: string;
@@ -651,13 +1125,15 @@ function OverviewSection({
   styles: Styles;
   colors: AppColors;
   isWide: boolean;
-  onOpenCareTeam: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const router = useRouter();
   const [data, setData] = useState<ParentAnalytics | null>(null);
-  // One tile open at a time. Keyed by tile identity, not list position, so the
-  // live poll replacing `data` never closes or reassigns the open tile.
-  const [openTile, setOpenTile] = useState<TileKey | null>(null);
+  // The calendar and the adherence score need the reminder ROWS, not the
+  // pre-aggregated counts in the analytics payload — repeating reminders and
+  // completion dates only exist there.
+  const [reminders, setReminders] = useState<FamilyReminder[]>([]);
+  const [remindersLoading, setRemindersLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
@@ -798,12 +1274,33 @@ function OverviewSection({
     };
   }, [token, parentId]);
 
+  useEffect(() => {
+    let active = true;
+    setRemindersLoading(true);
+    listFamilyReminders(token, parentId)
+      .then(({ reminders: rows }) => {
+        if (active) setReminders(rows);
+      })
+      .catch(() => {
+        if (active) setReminders([]);
+      })
+      .finally(() => {
+        if (active) setRemindersLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, parentId]);
+
   // Adherence, last-active and the overdue count all move when the senior acts.
   // Quiet refresh for the same reason as the reminder list: the numbers update
   // in place rather than collapsing the card into a spinner.
   useLivePoll(() => {
     fetchParentAnalytics(token, parentId)
       .then((d) => setData(d))
+      .catch(() => undefined);
+    listFamilyReminders(token, parentId)
+      .then(({ reminders: rows }) => setReminders(rows))
       .catch(() => undefined);
   });
 
@@ -824,232 +1321,31 @@ function OverviewSection({
     );
   }
 
-  // Collapsed value stays short so it can never clip; the full IST stamp is
-  // what the expanded body is for.
-  const lastActiveRelative = data.lastActiveAt
-    ? relativeDayLabel(data.lastActiveAt, t) ?? formatISTStamp(data.lastActiveAt)
-    : t('family.neverActive');
-
-  const upcoming = Math.max(0, data.reminders.upcoming);
-  const overdue = Math.max(0, data.reminders.overdue);
-  const done7d = Math.max(0, data.reminders.done7d);
-  const reminderTotal = upcoming + overdue + done7d;
-
-  const events7d = Math.max(0, data.assistantEvents7d);
-  const events30d = Math.max(0, data.assistantEvents30d);
-  // 30d should contain 7d, but never trust it: a negative remainder would draw
-  // a bar that lies. Clamp at zero and widen the denominator instead.
-  const eventsEarlier = Math.max(0, events30d - events7d);
-  const eventsTotal = events7d + eventsEarlier;
-
-  const openCallbacks = data.callbacks.filter((cb) => cb.status !== 'closed' && cb.status !== 'spam');
-
-  function reminderDetail(emphasis: 'upcoming' | 'overdue' | 'done') {
-    if (reminderTotal === 0) {
-      return <Text style={styles.tileText}>{t('family.tile.remindersEmpty')}</Text>;
-    }
-    return (
-      <>
-        <ProportionBar
-          styles={styles}
-          segments={[
-            { key: 'upcoming', value: upcoming, color: colors.accent, emphasized: emphasis === 'upcoming' },
-            { key: 'overdue', value: overdue, color: colors.danger, emphasized: emphasis === 'overdue' },
-            { key: 'done', value: done7d, color: colors.success, emphasized: emphasis === 'done' },
-          ]}
-        />
-        <LegendRow
-          styles={styles}
-          color={colors.accent}
-          label={t('family.upcomingCount')}
-          value={upcoming}
-          emphasized={emphasis === 'upcoming'}
-        />
-        <LegendRow
-          styles={styles}
-          color={colors.danger}
-          label={t('family.overdueCount')}
-          value={overdue}
-          emphasized={emphasis === 'overdue'}
-        />
-        <LegendRow
-          styles={styles}
-          color={colors.success}
-          label={t('family.doneThisWeek')}
-          value={done7d}
-          emphasized={emphasis === 'done'}
-        />
-        <Text style={styles.tileText}>
-          {t('family.tile.remindersSummary', { total: reminderTotal, upcoming, overdue, done: done7d })}
-        </Text>
-      </>
-    );
-  }
-
-  function assistantDetail(emphasis: 'recent' | 'earlier') {
-    if (eventsTotal === 0) {
-      return <Text style={styles.tileText}>{t('family.tile.assistantEmpty')}</Text>;
-    }
-    return (
-      <>
-        <ProportionBar
-          styles={styles}
-          segments={[
-            { key: 'recent', value: events7d, color: colors.accent, emphasized: emphasis === 'recent' },
-            { key: 'earlier', value: eventsEarlier, color: colors.primary, emphasized: emphasis === 'earlier' },
-          ]}
-        />
-        <LegendRow
-          styles={styles}
-          color={colors.accent}
-          label={t('family.tile.assistantLegendRecent')}
-          value={events7d}
-          emphasized={emphasis === 'recent'}
-        />
-        <LegendRow
-          styles={styles}
-          color={colors.primary}
-          label={t('family.tile.assistantLegendEarlier')}
-          value={eventsEarlier}
-          emphasized={emphasis === 'earlier'}
-        />
-        <Text style={styles.tileText}>
-          {t('family.tile.assistantSummary', { total: eventsTotal, recent: events7d, earlier: eventsEarlier })}
-        </Text>
-      </>
-    );
-  }
-
-  const tiles: { key: TileKey; label: string; value: string; detail: React.ReactNode }[] = [
-    {
-      key: 'lastActive',
-      label: t('family.lastActiveLabel'),
-      value: lastActiveRelative,
-      detail: (
-        <Text style={styles.tileText}>
-          {data.lastActiveAt
-            ? t('family.tile.lastActiveFull', { stamp: formatISTStamp(data.lastActiveAt) })
-            : t('family.tile.lastActiveNever')}
-        </Text>
-      ),
-    },
-    {
-      key: 'assistant7d',
-      label: t('family.assistantEvents7d'),
-      value: String(data.assistantEvents7d),
-      detail: assistantDetail('recent'),
-    },
-    {
-      key: 'assistant30d',
-      label: t('family.assistantEvents30d'),
-      value: String(data.assistantEvents30d),
-      detail: (
-        <>
-          {assistantDetail('earlier')}
-          <Text style={styles.tileText}>{t('family.tile.assistantWhat')}</Text>
-        </>
-      ),
-    },
-    {
-      key: 'upcoming',
-      label: t('family.upcomingCount'),
-      value: String(data.reminders.upcoming),
-      detail: reminderDetail('upcoming'),
-    },
-    {
-      key: 'overdue',
-      label: t('family.overdueCount'),
-      value: String(data.reminders.overdue),
-      detail: reminderDetail('overdue'),
-    },
-    {
-      key: 'done7d',
-      label: t('family.doneThisWeek'),
-      value: String(data.reminders.done7d),
-      detail: reminderDetail('done'),
-    },
-    {
-      key: 'careTeam',
-      label: t('family.careTeamCount'),
-      value: String(data.careTeamCount),
-      // The care team list lives in its own tab and its own fetch; sending the
-      // guardian there beats firing a second request from a stat tile.
-      detail: (
-        <>
-          <Text style={styles.tileText}>{t('family.tile.careTeamSummary', { n: data.careTeamCount })}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('family.tile.careTeamOpen')}
-            onPress={onOpenCareTeam}
-            style={({ pressed }) => [styles.tileLink, pressed ? { backgroundColor: colors.surfaceTint } : null]}
-          >
-            <Feather name="users" size={16} color={colors.accent} />
-            <Text style={[styles.tileLinkText, { color: colors.accent }]}>{t('family.tile.careTeamOpen')}</Text>
-          </Pressable>
-        </>
-      ),
-    },
-    {
-      key: 'favorites',
-      label: t('family.favoritesCount'),
-      value: String(data.favoritesCount),
-      detail: (
-        <>
-          <Text style={styles.tileText}>{t('family.tile.favoritesSummary', { n: data.favoritesCount })}</Text>
-          <Text style={styles.tileText}>{t('family.tile.favoritesWhat')}</Text>
-        </>
-      ),
-    },
-    {
-      key: 'callbacks',
-      label: t('family.tile.callbacksLabel'),
-      value: String(openCallbacks.length),
-      detail:
-        data.callbacks.length === 0 ? (
-          <Text style={styles.tileText}>{t('family.tile.callbacksNone')}</Text>
-        ) : (
-          <>
-            <Text style={styles.tileText}>
-              {t('family.tile.callbacksSummary', { open: openCallbacks.length, total: data.callbacks.length })}
-            </Text>
-            {data.callbacks.map((cb) => (
-              // Keyed by the row's own data, not its index: the live poll swaps
-              // the array wholesale and index keys would remount every row.
-              <View key={`${cb.created_at}|${cb.status}|${cb.issue ?? ''}`} style={styles.callbackRow}>
-                <Text style={styles.callbackIssue}>{cb.issue || t('family.tile.callbackNoIssue')}</Text>
-                <Text style={styles.callbackMeta}>
-                  {[
-                    t(`family.callbackStatus.${cb.status}`, { defaultValue: cb.status }),
-                    relativeDayLabel(cb.created_at, t),
-                    formatISTStamp(cb.created_at),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Text>
-              </View>
-            ))}
-          </>
-        ),
-    },
-  ];
-
   return (
     <View style={styles.sectionBody}>
+      <AdherenceCard reminders={reminders} loading={remindersLoading} colors={colors} styles={styles} />
+      <MonthCalendarCard reminders={reminders} loading={remindersLoading} colors={colors} styles={styles} />
+      <RecentActivityCard
+        reminders={reminders}
+        callbacks={data.callbacks}
+        loading={remindersLoading}
+        colors={colors}
+        styles={styles}
+      />
+
+      <H2 style={styles.subHeader}>{t('family.home.metricsTitle')}</H2>
       <View style={styles.statGrid}>
-        {tiles.map((tile) => (
+        {METRIC_KEYS.map((key) => (
           <StatTile
-            key={tile.key}
-            tileKey={tile.key}
-            label={tile.label}
-            value={tile.value}
-            expanded={openTile === tile.key}
-            onToggle={() => setOpenTile((current) => (current === tile.key ? null : tile.key))}
-            basis={openTile === tile.key ? '100%' : isWide ? '31%' : '47%'}
+            key={key}
+            metricKey={key}
+            label={metricLabel(key, t)}
+            value={metricValue(key, data, t)}
+            basis={isWide ? '31%' : '47%'}
+            onPress={() => router.push({ pathname: '/guardian/metric', params: { parentId, key } })}
             colors={colors}
             styles={styles}
-          >
-            {tile.detail}
-          </StatTile>
+          />
         ))}
       </View>
 
@@ -1892,7 +2188,15 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     shell: { width: '100%', maxWidth: 960, alignSelf: 'center' },
     backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.sm, alignSelf: 'flex-start' },
     backText: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
-    chipRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.sm, marginTop: space.md, marginBottom: space.lg },
+    sectionCaption: {
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      color: colors.textSubtle,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop: space.xs,
+      marginBottom: space.md,
+    },
     wrapChipRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.sm },
     sectionBody: { gap: space.md },
     sectionIntro: { marginBottom: space.xs },
@@ -1904,49 +2208,96 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     statHeaderText: { flex: 1, minWidth: 0, gap: 4 },
     statValue: { fontSize: font.xl, fontFamily: family.semibold, color: colors.text },
     statLabel: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted, lineHeight: Math.round(font.sm * 1.4) },
-    tileDetail: {
-      marginTop: space.sm,
-      paddingTop: space.md,
-      gap: space.xs,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
+    legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 },
+    legendDot: { width: 12, height: 12, borderRadius: radius.pill },
+    legendLabel: { flex: 1, minWidth: 0, fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
+    legendValue: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text },
+
+    // ----- Home view (score, calendar, recent activity) -----
+    homeCard: { gap: space.xs },
+    homeCardTitle: {
+      fontSize: font.md,
+      fontFamily: family.semibold,
+      color: colors.text,
+      lineHeight: Math.round(font.md * 1.4),
     },
-    tileText: {
+    homeCardHint: { marginBottom: space.xs },
+    homeText: {
       fontSize: font.sm,
       fontFamily: family.regular,
       color: colors.textMuted,
       lineHeight: Math.round(font.sm * 1.45),
       marginTop: space.xs,
     },
-    barTrack: {
-      flexDirection: 'row',
-      height: 14,
-      borderRadius: radius.pill,
-      overflow: 'hidden',
-      backgroundColor: colors.surfaceTint,
-      marginTop: space.xs,
+    homeSpinner: { paddingVertical: space.lg },
+    scoreBody: {
+      flexDirection: isWide ? 'row' : 'column',
+      alignItems: isWide ? 'center' : 'stretch',
+      gap: space.lg,
+      marginTop: space.sm,
+    },
+    scoreText: { flex: 1, minWidth: 0 },
+    scoreHeadline: {
+      fontSize: font.lg,
+      fontFamily: family.bold,
+      color: colors.text,
+      lineHeight: Math.round(font.lg * 1.3),
       marginBottom: space.xs,
     },
-    barSegment: { height: '100%' },
-    legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },
-    legendDot: { width: 12, height: 12, borderRadius: radius.pill },
-    legendLabel: { flex: 1, minWidth: 0, fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
-    legendLabelOn: { fontFamily: family.semibold, color: colors.text },
-    legendValue: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text },
-    tileLink: {
-      minHeight: TAP,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      alignSelf: 'flex-start',
-      paddingHorizontal: space.sm,
-      marginLeft: -space.sm,
-      borderRadius: radius.pill,
+    scoreEmpty: { alignItems: 'flex-start', gap: space.xs, paddingVertical: space.md },
+    scoreEmptyText: {
+      fontSize: font.lg,
+      fontFamily: family.bold,
+      color: colors.text,
+      lineHeight: Math.round(font.lg * 1.3),
     },
-    tileLinkText: { fontSize: font.sm, fontFamily: family.semibold },
-    callbackRow: { gap: 2, paddingVertical: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-    callbackIssue: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text, lineHeight: Math.round(font.sm * 1.45) },
-    callbackMeta: { fontSize: font.xs, fontFamily: family.medium, color: colors.textSubtle, lineHeight: Math.round(font.xs * 1.4) },
+    ring: { width: RING_SIZE, height: RING_SIZE, alignSelf: isWide ? 'auto' : 'center' },
+    ringTrack: { borderRadius: RING_SIZE / 2, borderWidth: RING_WIDTH },
+    ringClip: { position: 'absolute', top: 0, width: RING_SIZE / 2, height: RING_SIZE, overflow: 'hidden' },
+    ringArc: {
+      position: 'absolute',
+      top: 0,
+      width: RING_SIZE,
+      height: RING_SIZE,
+      borderRadius: RING_SIZE / 2,
+      borderWidth: RING_WIDTH,
+      borderColor: 'transparent',
+    },
+    ringCenter: { alignItems: 'center', justifyContent: 'center' },
+    ringPercent: { fontSize: font.xl, fontFamily: family.bold, color: colors.text },
+
+    calHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs },
+    calNav: { width: TAP, height: TAP, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+    calMonth: { flex: 1, textAlign: 'center', fontSize: font.md, fontFamily: family.semibold, color: colors.text },
+    calWeekRow: { flexDirection: 'row' },
+    calCell: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    calWeekday: { fontSize: font.xs, fontFamily: family.medium, color: colors.textSubtle },
+    calDay: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', gap: 2 },
+    calDayNum: { fontSize: font.sm, fontFamily: family.medium, color: colors.text },
+    calDot: { width: 8, height: 8, borderRadius: radius.pill },
+    calLegend: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+
+    activityRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.sm,
+      paddingVertical: space.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    activityBody: { flex: 1, minWidth: 0, gap: 2 },
+    activityTitle: {
+      fontSize: font.sm,
+      fontFamily: family.semibold,
+      color: colors.text,
+      lineHeight: Math.round(font.sm * 1.45),
+    },
+    activityMeta: {
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      color: colors.textSubtle,
+      lineHeight: Math.round(font.xs * 1.4),
+    },
     cardTitle: { fontSize: font.md, fontFamily: family.semibold, lineHeight: Math.round(font.md * 1.5), color: colors.text },
     formAction: { marginTop: space.lg },
     listCard: { paddingHorizontal: 0, paddingVertical: space.xs },
