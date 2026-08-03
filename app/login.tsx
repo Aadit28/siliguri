@@ -5,10 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import { Button, H1, Muted, localizedServerError } from '../src/components/ui';
 import { AppColors, family, font, radius, space, TAP } from '../src/lib/theme';
+import CityPicker from '../src/components/CityPicker';
 import { useAuth } from '../src/context/AuthContext';
+import { useCity } from '../src/context/CityContext';
 import { useDisplayMode } from '../src/context/DisplayModeContext';
 import { supabaseConfigured } from '../src/lib/supabase';
-import { demoByKind, matchDemoUser, type DemoKind } from '../src/lib/demoAuth';
+import { DEFAULT_DEMO_CITY, demoByKind, matchDemoUser, type DemoKind } from '../src/lib/demoAuth';
 import { listFamilyLinks } from '../src/lib/family';
 import { consumeLoginIntent } from '../src/lib/authNavigation';
 import { useTheme } from '../src/context/ThemeContext';
@@ -27,6 +29,10 @@ export default function Login() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const { isComputerMode } = useDisplayMode();
+  const { city } = useCity();
+  // Offline demo data (src/lib/demoFamily.ts) exists for the launch city only,
+  // so without a backend a Bengaluru demo would sign in to an empty dashboard.
+  const demoCitySlug = supabaseConfigured ? city.slug : DEFAULT_DEMO_CITY;
   const isWide = isComputerMode && width >= 900;
   const styles = makeStyles(colors, isWide);
 
@@ -108,7 +114,7 @@ export default function Login() {
   }
 
   function fillDemo(kind: DemoKind) {
-    const demo = demoByKind(kind);
+    const demo = demoByKind(kind, demoCitySlug);
     setMsg(null);
     setUsername(demo.username);
     setPassword(demo.password);
@@ -122,7 +128,7 @@ export default function Login() {
    * the app, that is two taps too many — this does the whole thing.
    */
   async function signInAsDemo(kind: DemoKind) {
-    const demo = demoByKind(kind);
+    const demo = demoByKind(kind, demoCitySlug);
     setMsg(null);
     setUsername(demo.username);
     setPassword(demo.password);
@@ -398,7 +404,7 @@ export default function Login() {
                           hitSlop={6}
                         >
                           <Text style={[styles.demoChipText, { color: colors.textMuted }]}>
-                            {demoByKind(kind).fullName} · {t(`auth.demoRole.${kind}`, {
+                            {demoByKind(kind, demoCitySlug).fullName} · {t(`auth.demoRole.${kind}`, {
                               defaultValue: kind === 'parent' ? 'Parent' : kind === 'guardian' ? 'Guardian' : 'Admin',
                             })}
                           </Text>
@@ -422,6 +428,17 @@ export default function Login() {
                   <Muted style={styles.demoTryLabel}>
                     {t('auth.tryDemo', { defaultValue: 'Or explore with a demo account' })}
                   </Muted>
+                  {/* The demo family is per city, so the city has to be picked
+                      before entering rather than after: the whole point of the
+                      demo is seeing a directory that belongs somewhere. */}
+                  <CityPicker />
+                  {demoCitySlug === city.slug ? null : (
+                    <Muted style={styles.demoTryLabel}>
+                      {t('auth.demoOffline', {
+                        defaultValue: 'Offline demo covers Siliguri only.',
+                      })}
+                    </Muted>
+                  )}
                   <View style={styles.demoTryRow}>
                     {(['parent', 'guardian'] as DemoKind[]).map((kind) => (
                       <Pressable
