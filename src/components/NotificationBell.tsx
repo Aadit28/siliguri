@@ -36,7 +36,7 @@ export default function NotificationBell() {
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
   const { session } = useAuth();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [serverAlerts, setServerAlerts] = useState<ServerAlert[]>([]);
@@ -83,7 +83,14 @@ export default function NotificationBell() {
 
   // Only things already due or due today are worth a badge; the rest sit quietly.
   const badgeCount = items.filter((item) => item.tone !== 'soon').length + unreadCount;
-  const panelHeight = Math.max(240, Math.round(height / 3));
+  // Cap rather than fix. A fixed height left a dead block of glass under three
+  // rows; the panel now shrinks to its content and only scrolls once it would
+  // pass a third of the viewport.
+  const panelMaxHeight = Math.max(240, Math.round(height / 3));
+  // The bell lives at the top right, so the panel hangs from that corner. Left
+  // unbounded it spanned a 1900px desktop viewport, stretching every row the
+  // full width of the screen for two lines of text.
+  const panelWidth = Math.min(width - 28, 420);
 
   function alertDay(iso: string) {
     // IST calendar day, compared in IST — the alert about a Siliguri parent
@@ -132,7 +139,11 @@ export default function NotificationBell() {
 
           <Animated.View
             entering={panelIn}
-            style={[styles.panel, shadow.md, { top: insets.top + space.xs, height: panelHeight }]}
+            style={[
+              styles.panel,
+              shadow.md,
+              { top: insets.top + space.xs, width: panelWidth, maxHeight: panelMaxHeight },
+            ]}
           >
             {/* Same bevel + blur recipe as the floating tab dock. */}
             <View style={[StyleSheet.absoluteFill, styles.panelClip]}>
@@ -282,7 +293,6 @@ const styles = StyleSheet.create({
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)' },
   panel: {
     position: 'absolute',
-    left: 14,
     right: 14,
     borderRadius: PANEL_RADIUS,
     overflow: 'hidden',
