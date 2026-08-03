@@ -546,85 +546,171 @@ function occursOn(r: FamilyReminder, dayISO: string) {
   return r.dateISO.slice(8, 10) === dayISO.slice(8, 10);
 }
 
-type Adherence = { done: number; missed: number; total: number; percent: number | null };
+type Adherence = {
+  done: number;
+  missed: number;
+  upcoming: number;
+  total: number;
+  percent: number | null;
+};
 
 // done / (done + missed) over the window. Counted per reminder ROW, never per
 // expanded occurrence: a daily reminder is one row and the data does not say
 // which individual days were taken, so expanding here would invent history.
+// `upcoming` sits outside that fraction on purpose — a reminder that has not
+// come due yet is neither kept nor missed, so it colours a wedge but never
+// moves the score.
 function computeAdherence(reminders: FamilyReminder[], today: string): Adherence {
   const start = shiftISO(today, -(ADHERENCE_WINDOW_DAYS - 1));
   let done = 0;
   let missed = 0;
+  let upcoming = 0;
   for (const r of reminders) {
     if (r.status === 'done') {
       // Dated by when it was actually completed where the server tells us
       // (updatedAt), and by the day it was due otherwise.
       const day = (r.updatedAt ? istDateISO(r.updatedAt) : null) ?? r.dateISO;
       if (day >= start && day <= today) done += 1;
-    } else if (r.status === 'active' && r.dateISO < today && r.dateISO >= start) {
-      missed += 1;
+    } else if (r.status === 'active' && r.dateISO < today) {
+      if (r.dateISO >= start) missed += 1;
+    } else if (r.status === 'active') {
+      upcoming += 1;
     }
   }
   const total = done + missed;
-  return { done, missed, total, percent: total === 0 ? null : Math.round((done / total) * 100) };
+  return { done, missed, upcoming, total, percent: total === 0 ? null : Math.round((done / total) * 100) };
 }
 
-const RING_SIZE = 148;
-const RING_WIDTH = 16;
+const DONUT_SIZE = 72;
+const DONUT_WIDTH = 11;
 
-// Progress ring from plain Views: a full circle whose top and right borders are
-// painted forms a 180° arc once rotated 45°, so one clipped half draws the
-// first 50% and a second clipped half draws the rest. No SVG, no chart library.
-function AdherenceRing({
-  percent,
-  colors,
+// One wedge of the donut, drawn from 12 o'clock clockwise to `angle`.
+// A full circle whose top and right borders are painted forms a 180° arc once
+// rotated 45°, so one clipped half draws the first 180° and a second clipped
+// half draws the rest. The same recipe the adherence ring used — no SVG, no
+// chart library. Wedges are stacked, not offset: the caller draws the largest
+// cumulative slice first and paints the smaller ones over it, which is why a
+// plain 0→angle arc is all that is ever needed.
+function DonutArc({
+  angle,
+  color,
+  testID,
   styles,
 }: {
-  percent: number;
-  colors: AppColors;
+  angle: number;
+  color: string;
+  testID: string;
   styles: Styles;
 }) {
-  const target = Math.max(0, Math.min(100, percent)) * 3.6;
   const sweep = useSharedValue(0);
 
   useEffect(() => {
-    sweep.value = withTiming(target, {
+    sweep.value = withTiming(angle, {
       duration: 620,
       easing: Easing.out(Easing.cubic),
       reduceMotion: ReduceMotion.System,
     });
-  }, [target, sweep]);
+  }, [angle, sweep]);
 
   // Unrotated, the painted top+right borders cover -45°..135°. Rotating by
   // (angle - 135) puts the arc's end exactly at `angle`; the clip mask throws
   // away whatever spills into the other half.
   const rightStyle = useAnimatedStyle(() => ({
+    opacity: sweep.value > 0 ? 1 : 0,
     transform: [{ rotate: `${sweep.value <= 180 ? sweep.value - 135 : 45}deg` }],
   }));
   const leftStyle = useAnimatedStyle(() => ({
     opacity: sweep.value > 180 ? 1 : 0,
     transform: [{ rotate: `${Math.max(sweep.value, 180) - 135}deg` }],
   }));
-
-  const arc = { borderTopColor: colors.success, borderRightColor: colors.success };
+  const paint = { borderTopColor: color, borderRightColor: color };
 
   return (
-    <View style={styles.ring} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-      <View style={[StyleSheet.absoluteFill, styles.ringTrack, { borderColor: colors.dangerSoft }]} />
-      <View style={[styles.ringClip, { left: RING_SIZE / 2 }]}>
-        <Animated.View style={[styles.ringArc, { left: -RING_SIZE / 2 }, arc, rightStyle]} />
+    <>
+      <View style={[styles.donutClip, { left: DONUT_SIZE / 2 }]}>
+        <Animated.View
+          testID={testID}
+          style={[styles.donutArc, { left: -DONUT_SIZE / 2 }, paint, rightStyle]}
+        />
       </View>
-      <View style={[styles.ringClip, { left: 0 }]}>
-        <Animated.View style={[styles.ringArc, { left: 0 }, arc, leftStyle]} />
+      <View style={[styles.donutClip, { left: 0 }]}>
+        <Animated.View style={[styles.donutArc, { left: 0 }, paint, leftStyle]} />
       </View>
-      <View style={[StyleSheet.absoluteFill, styles.ringCenter]}>
-        <Text style={styles.ringPercent}>{`${Math.round(percent)}%`}</Text>
+    </>
+  );
+}
+
+// The whole reminder split as one donut: done, still not done, still to come.
+// Wedges are cumulative overlays — accent covers the full circle, danger covers
+// done+missed, success covers done — so each colour ends up owning exactly its
+// own share of the ring.
+function AdherenceDonut({
+  score,
+  colors,
+  styles,
+}: {
+  score: Adherence;
+  colors: AppColors;
+  styles: Styles;
+}) {
+  const whole = score.done + score.missed + score.upcoming;
+  const slice = (n: number) => (whole === 0 ? 0 : (n / whole) * 360);
+
+  return (
+    <View style={styles.donut} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={[StyleSheet.absoluteFill, styles.donutTrack, { borderColor: colors.border }]} />
+      <DonutArc angle={whole === 0 ? 0 : 360} color={colors.accent} testID="donut-arc-upcoming" styles={styles} />
+      <DonutArc angle={slice(score.done + score.missed)} color={colors.danger} testID="donut-arc-missed" styles={styles} />
+      <DonutArc angle={slice(score.done)} color={colors.success} testID="donut-arc-done" styles={styles} />
+      <View style={[StyleSheet.absoluteFill, styles.donutCenter]}>
+        <Text style={styles.donutPercent}>{score.percent === null ? '—' : `${score.percent}%`}</Text>
       </View>
     </View>
   );
 }
 
-function AdherenceCard({
+// A legend entry is the text equivalent of a wedge: colour, plain-words label,
+// raw count. The wedge is never the only place a number appears.
+function LegendItem({
+  tint,
+  label,
+  count,
+  testID,
+  styles,
+}: {
+  tint: string;
+  label: string;
+  count: number;
+  testID: string;
+  styles: Styles;
+}) {
+  return (
+    <View style={styles.legendItem} accessible accessibilityLabel={`${label}: ${count}`}>
+      <View style={[styles.legendDot, { backgroundColor: tint }]} />
+      <Text style={styles.legendItemLabel} numberOfLines={2}>
+        {label}
+      </Text>
+      <Text style={styles.legendItemValue} testID={testID}>
+        {count}
+      </Text>
+    </View>
+  );
+}
+
+type DayTone = 'none' | 'done' | 'missed' | 'upcoming';
+
+function toneFor(dayISO: string, occurrences: FamilyReminder[], today: string): DayTone {
+  if (occurrences.length === 0) return 'none';
+  const anyActive = occurrences.some((r) => r.status === 'active');
+  if (anyActive) return dayISO < today ? 'missed' : 'upcoming';
+  return occurrences.some((r) => r.status === 'done') ? 'done' : 'none';
+}
+
+// Activity is a dashboard, not a list: the reminder split and the whole month
+// share one card so both clear the fold on a 375x812 phone without scrolling.
+// The three semantic colours mean the same thing in the donut and in the grid,
+// so a single legend strip serves both and is never repeated.
+function ActivityDashboardCard({
   reminders,
   loading,
   colors,
@@ -638,81 +724,6 @@ function AdherenceCard({
   const { t } = useTranslation();
   const today = todayISO();
   const score = useMemo(() => computeAdherence(reminders, today), [reminders, today]);
-
-  return (
-    <Card style={styles.homeCard} testID="home-adherence">
-      <Text style={styles.homeCardTitle}>{t('family.home.adherenceTitle')}</Text>
-      <Muted style={styles.homeCardHint}>{t('family.home.adherenceWhat', { days: ADHERENCE_WINDOW_DAYS })}</Muted>
-      {loading && reminders.length === 0 ? (
-        <ActivityIndicator color={colors.textMuted} style={styles.homeSpinner} />
-      ) : score.percent === null ? (
-        <View style={styles.scoreEmpty}>
-          <Feather name="inbox" size={22} color={colors.textSubtle} />
-          <Text style={styles.scoreEmptyText} testID="home-adherence-value">
-            {t('family.home.adherenceNotEnough')}
-          </Text>
-          <Text style={styles.homeText}>{t('family.home.adherenceNotEnoughWhy')}</Text>
-        </View>
-      ) : (
-        <View style={styles.scoreBody}>
-          <AdherenceRing percent={score.percent} colors={colors} styles={styles} />
-          <View style={styles.scoreText}>
-            {/* The ring is decoration; this line is the actual reading. */}
-            <Text style={styles.scoreHeadline} testID="home-adherence-value">
-              {t('family.home.adherenceValue', { percent: score.percent })}
-            </Text>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-              <Text style={styles.legendLabel}>{t('family.home.adherenceDone')}</Text>
-              <Text style={styles.legendValue} testID="home-adherence-done">
-                {score.done}
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.danger }]} />
-              <Text style={styles.legendLabel}>{t('family.home.adherenceMissed')}</Text>
-              <Text style={styles.legendValue} testID="home-adherence-missed">
-                {score.missed}
-              </Text>
-            </View>
-            <Text style={styles.homeText}>
-              {t('family.home.adherenceSummary', {
-                percent: score.percent,
-                done: score.done,
-                total: score.total,
-                missed: score.missed,
-                days: ADHERENCE_WINDOW_DAYS,
-              })}
-            </Text>
-          </View>
-        </View>
-      )}
-    </Card>
-  );
-}
-
-type DayTone = 'none' | 'done' | 'missed' | 'upcoming';
-
-function toneFor(dayISO: string, occurrences: FamilyReminder[], today: string): DayTone {
-  if (occurrences.length === 0) return 'none';
-  const anyActive = occurrences.some((r) => r.status === 'active');
-  if (anyActive) return dayISO < today ? 'missed' : 'upcoming';
-  return occurrences.some((r) => r.status === 'done') ? 'done' : 'none';
-}
-
-function MonthCalendarCard({
-  reminders,
-  loading,
-  colors,
-  styles,
-}: {
-  reminders: FamilyReminder[];
-  loading: boolean;
-  colors: AppColors;
-  styles: Styles;
-}) {
-  const { t } = useTranslation();
-  const today = todayISO();
   const [cursor, setCursor] = useState(() => {
     const [year, month] = today.split('-').map(Number);
     return { year, month: (month || 1) - 1 };
@@ -765,113 +776,159 @@ function MonthCalendarCard({
     });
   }
 
+  const busy = loading && reminders.length === 0;
+
   return (
-    <Card style={styles.homeCard} testID="home-calendar">
-      <Text style={styles.homeCardTitle}>{t('family.home.calendarTitle')}</Text>
-      <View style={styles.calHeader}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={monthName(cursor.year, cursor.month - 1)}
-          testID="home-calendar-prev"
-          onPress={() => goMonth(-1)}
-          hitSlop={8}
-          style={({ pressed }) => [styles.calNav, pressed ? { backgroundColor: colors.overlay } : null]}
-        >
-          <Feather name="chevron-left" size={20} color={colors.text} />
-        </Pressable>
-        <Text style={styles.calMonth} testID="home-calendar-month">
-          {monthName(cursor.year, cursor.month)}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={monthName(cursor.year, cursor.month + 1)}
-          testID="home-calendar-next"
-          onPress={() => goMonth(1)}
-          hitSlop={8}
-          style={({ pressed }) => [styles.calNav, pressed ? { backgroundColor: colors.overlay } : null]}
-        >
-          <Feather name="chevron-right" size={20} color={colors.text} />
-        </Pressable>
-      </View>
-
-      {loading && reminders.length === 0 ? <ActivityIndicator color={colors.textMuted} style={styles.homeSpinner} /> : null}
-
-      <View style={styles.calWeekRow}>
-        {weekdayLabels.map((label, i) => (
-          <View key={`cwd-${i}`} style={styles.calCell}>
-            <Text style={styles.calWeekday}>{label}</Text>
+    <Card style={styles.homeCard} testID="home-activity-card">
+      {/* ----- Overview: the split, as a donut and as words ----- */}
+      <View testID="home-overview">
+        <View style={styles.overviewRow}>
+          {busy ? (
+            <View style={styles.donut}>
+              <ActivityIndicator color={colors.textMuted} />
+            </View>
+          ) : (
+            <AdherenceDonut score={score} colors={colors} styles={styles} />
+          )}
+          <View style={styles.overviewText}>
+            <Text style={styles.overviewLabel} numberOfLines={2}>
+              {t('family.home.adherenceTitle')}
+            </Text>
+            {/* The donut is decoration; this line is the actual reading. */}
+            <Text style={styles.overviewHeadline} testID="home-adherence-value">
+              {score.percent === null
+                ? t('family.home.adherenceNotEnough')
+                : t('family.home.adherenceValue', { percent: score.percent })}
+            </Text>
           </View>
-        ))}
-      </View>
-      {weeks.map((week, wi) => (
-        <View key={`cw-${wi}`} style={styles.calWeekRow}>
-          {week.map((day, di) => {
-            if (!day) return <View key={`cd-${wi}-${di}`} style={styles.calCell} />;
-            const dayISO = toISO(cursor.year, cursor.month, day);
-            const entry = days.get(dayISO);
-            const tone = entry?.tone ?? 'none';
-            const tint = toneColor[tone];
-            const isToday = dayISO === today;
-            return (
-              <View
-                key={`cd-${wi}-${di}`}
-                style={styles.calCell}
-                testID={`cal-day-${dayISO}`}
-                accessible
-                accessibilityLabel={[
-                  formatReadableDate(dayISO),
-                  t(`family.home.dayTone.${tone}`),
-                  entry && entry.titles.length > 0 ? entry.titles.join(', ') : null,
-                ]
-                  .filter(Boolean)
-                  .join('. ')}
-              >
-                <View
-                  // The dot below the number carries the colour so the number
-                  // itself always keeps full text contrast.
-                  style={[styles.calDay, isToday ? { borderWidth: 1.5, borderColor: colors.text } : null]}
-                >
-                  <Text style={styles.calDayNum}>{day}</Text>
-                  <View style={[styles.calDot, tint ? { backgroundColor: tint } : { backgroundColor: 'transparent' }]} />
-                </View>
-              </View>
-            );
-          })}
         </View>
-      ))}
 
-      <View style={styles.calLegend}>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-          <Text style={styles.legendLabel}>{t('family.home.dayTone.done')}</Text>
-          <Text style={styles.legendValue} testID="cal-count-done">{counts.done}</Text>
+        <View style={styles.legendStrip}>
+          <LegendItem
+            tint={colors.success}
+            label={t('family.home.adherenceDone')}
+            count={score.done}
+            testID="home-adherence-done"
+            styles={styles}
+          />
+          <LegendItem
+            tint={colors.danger}
+            label={t('family.home.adherenceMissed')}
+            count={score.missed}
+            testID="home-adherence-missed"
+            styles={styles}
+          />
+          <LegendItem
+            tint={colors.accent}
+            label={t('family.home.adherenceUpcoming')}
+            count={score.upcoming}
+            testID="home-adherence-upcoming"
+            styles={styles}
+          />
         </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
-          <Text style={styles.legendLabel}>{t('family.home.dayTone.missed')}</Text>
-          <Text style={styles.legendValue} testID="cal-count-missed">{counts.missed}</Text>
-        </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
-          <Text style={styles.legendLabel}>{t('family.home.dayTone.upcoming')}</Text>
-          <Text style={styles.legendValue} testID="cal-count-upcoming">{counts.upcoming}</Text>
-        </View>
-        <View style={styles.legendRow}>
-          <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
-          <Text style={styles.legendLabel}>{t('family.home.dayTone.none')}</Text>
-        </View>
+
+        <Text style={styles.homeText} testID="home-adherence-summary">
+          {score.percent === null
+            ? t('family.home.adherenceNotEnoughWhy')
+            : t('family.home.adherenceSummary', {
+                percent: score.percent,
+                done: score.done,
+                total: score.total,
+                missed: score.missed,
+                upcoming: score.upcoming,
+                days: ADHERENCE_WINDOW_DAYS,
+              })}
+        </Text>
       </View>
-      <Text style={styles.homeText} testID="home-calendar-summary">
-        {counts.marked === 0
-          ? t('family.home.calendarEmpty', { month: monthName(cursor.year, cursor.month) })
-          : t('family.home.calendarSummary', {
-              month: monthName(cursor.year, cursor.month),
-              marked: counts.marked,
-              done: counts.done,
-              missed: counts.missed,
-              upcoming: counts.upcoming,
-            })}
-      </Text>
+
+      {/* ----- The month, same three colours as the legend above ----- */}
+      <View style={styles.calBlock} testID="home-calendar">
+        <View style={styles.calHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={monthName(cursor.year, cursor.month - 1)}
+            testID="home-calendar-prev"
+            onPress={() => goMonth(-1)}
+            hitSlop={8}
+            style={({ pressed }) => [styles.calNav, pressed ? { backgroundColor: colors.overlay } : null]}
+          >
+            <Feather name="chevron-left" size={20} color={colors.text} />
+          </Pressable>
+          <Text style={styles.calMonth} testID="home-calendar-month">
+            {monthName(cursor.year, cursor.month)}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={monthName(cursor.year, cursor.month + 1)}
+            testID="home-calendar-next"
+            onPress={() => goMonth(1)}
+            hitSlop={8}
+            style={({ pressed }) => [styles.calNav, pressed ? { backgroundColor: colors.overlay } : null]}
+          >
+            <Feather name="chevron-right" size={20} color={colors.text} />
+          </Pressable>
+        </View>
+
+        <View testID="home-calendar-grid">
+          <View style={styles.calWeekRow}>
+            {weekdayLabels.map((label, i) => (
+              <View key={`cwd-${i}`} style={styles.calWeekdayCell}>
+                <Text style={styles.calWeekday}>{label}</Text>
+              </View>
+            ))}
+          </View>
+          {weeks.map((week, wi) => (
+            <View key={`cw-${wi}`} style={styles.calWeekRow}>
+              {week.map((day, di) => {
+                if (!day) return <View key={`cd-${wi}-${di}`} style={styles.calCell} />;
+                const dayISO = toISO(cursor.year, cursor.month, day);
+                const entry = days.get(dayISO);
+                const tone = entry?.tone ?? 'none';
+                const tint = toneColor[tone];
+                const isToday = dayISO === today;
+                return (
+                  <View
+                    key={`cd-${wi}-${di}`}
+                    style={styles.calCell}
+                    testID={`cal-day-${dayISO}`}
+                    accessible
+                    accessibilityLabel={[
+                      formatReadableDate(dayISO),
+                      t(`family.home.dayTone.${tone}`),
+                      entry && entry.titles.length > 0 ? entry.titles.join(', ') : null,
+                    ]
+                      .filter(Boolean)
+                      .join('. ')}
+                  >
+                    <View
+                      // The dot below the number carries the colour so the number
+                      // itself always keeps full text contrast.
+                      style={[styles.calDay, isToday ? { borderWidth: 1.5, borderColor: colors.text } : null]}
+                    >
+                      <Text style={styles.calDayNum}>{day}</Text>
+                      <View
+                        style={[styles.calDot, tint ? { backgroundColor: tint } : { backgroundColor: 'transparent' }]}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.calSummary} testID="home-calendar-summary">
+          {counts.marked === 0
+            ? t('family.home.calendarEmpty', { month: monthName(cursor.year, cursor.month) })
+            : t('family.home.calendarSummary', {
+                month: monthName(cursor.year, cursor.month),
+                marked: counts.marked,
+                done: counts.done,
+                missed: counts.missed,
+                upcoming: counts.upcoming,
+              })}
+        </Text>
+      </View>
     </Card>
   );
 }
@@ -1323,15 +1380,9 @@ function OverviewSection({
 
   return (
     <View style={styles.sectionBody}>
-      <AdherenceCard reminders={reminders} loading={remindersLoading} colors={colors} styles={styles} />
-      <MonthCalendarCard reminders={reminders} loading={remindersLoading} colors={colors} styles={styles} />
-      <RecentActivityCard
-        reminders={reminders}
-        callbacks={data.callbacks}
-        loading={remindersLoading}
-        colors={colors}
-        styles={styles}
-      />
+      {/* Everything above the fold. Schedules and the activity feed live in the
+          Reminders tab now — this section is a dashboard, not a list. */}
+      <ActivityDashboardCard reminders={reminders} loading={remindersLoading} colors={colors} styles={styles} />
 
       <H2 style={styles.subHeader}>{t('family.home.metricsTitle')}</H2>
       <View style={styles.statGrid}>
@@ -1435,6 +1486,9 @@ function RemindersSection({
   const { t } = useTranslation();
   const [reminders, setReminders] = useState<FamilyReminder[]>([]);
   const [loading, setLoading] = useState(true);
+  // Callbacks are the only part of the activity feed that is not a reminder
+  // row, and they only exist on the analytics payload.
+  const [callbacks, setCallbacks] = useState<ParentAnalytics['callbacks']>([]);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -1473,9 +1527,24 @@ function RemindersSection({
   // guardian finds out. Quiet refresh — no spinner, since the rows are already
   // on screen and flashing a loading state every few seconds would be worse
   // than the stale row it replaces.
+  useEffect(() => {
+    let active = true;
+    fetchParentAnalytics(token, parentId)
+      .then((d) => {
+        if (active) setCallbacks(d.callbacks);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [token, parentId]);
+
   useLivePoll(() => {
     listFamilyReminders(token, parentId)
       .then(({ reminders: rows }) => setReminders(rows))
+      .catch(() => undefined);
+    fetchParentAnalytics(token, parentId)
+      .then((d) => setCallbacks(d.callbacks))
       .catch(() => undefined);
   });
 
@@ -1743,6 +1812,16 @@ function RemindersSection({
           ) : null}
         </>
       )}
+
+      {/* Moved out of Activity: the schedule and what happened on it belong
+          with the list, not with the dashboard. */}
+      <RecentActivityCard
+        reminders={reminders}
+        callbacks={callbacks}
+        loading={loading}
+        colors={colors}
+        styles={styles}
+      />
 
       <Dialog visible={removeTarget !== null} onClose={() => setRemoveTarget(null)} title={t('family.deleteReminder')}>
         {removeTarget ? <Text style={styles.dialogBody}>{t('family.confirmDeleteReminder')}</Text> : null}
@@ -2184,9 +2263,9 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     // The header scrolls with the page, so the outer container stays
     // full-bleed and the padding lives on the block beneath it.
     pageOuter: { width: '100%' },
-    page: { padding: isWide ? space.xl : space.md, paddingTop: space.md },
+    page: { padding: isWide ? space.xl : space.md, paddingTop: space.sm },
     shell: { width: '100%', maxWidth: 960, alignSelf: 'center' },
-    backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.sm, alignSelf: 'flex-start' },
+    backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.xs, alignSelf: 'flex-start' },
     backText: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
     sectionCaption: {
       fontSize: font.sm,
@@ -2194,8 +2273,8 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       color: colors.textSubtle,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
-      marginTop: space.xs,
-      marginBottom: space.md,
+      marginTop: 2,
+      marginBottom: space.sm,
     },
     wrapChipRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.sm },
     sectionBody: { gap: space.md },
@@ -2208,74 +2287,93 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     statHeaderText: { flex: 1, minWidth: 0, gap: 4 },
     statValue: { fontSize: font.xl, fontFamily: family.semibold, color: colors.text },
     statLabel: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted, lineHeight: Math.round(font.sm * 1.4) },
-    legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 },
     legendDot: { width: 12, height: 12, borderRadius: radius.pill },
-    legendLabel: { flex: 1, minWidth: 0, fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
-    legendValue: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text },
 
     // ----- Home view (score, calendar, recent activity) -----
-    homeCard: { gap: space.xs },
+    // The dashboard card carries its own tighter padding: at Card's default
+    // space.lg the donut block plus a six-row month cannot clear the fold on a
+    // 375x812 phone, and clearing the fold is the point of this layout.
+    homeCard: { padding: 14 },
     homeCardTitle: {
       fontSize: font.md,
       fontFamily: family.semibold,
       color: colors.text,
       lineHeight: Math.round(font.md * 1.4),
     },
-    homeCardHint: { marginBottom: space.xs },
     homeText: {
-      fontSize: font.sm,
+      fontSize: font.xs,
       fontFamily: family.regular,
       color: colors.textMuted,
-      lineHeight: Math.round(font.sm * 1.45),
+      lineHeight: Math.round(font.xs * 1.35),
       marginTop: space.xs,
     },
     homeSpinner: { paddingVertical: space.lg },
-    scoreBody: {
-      flexDirection: isWide ? 'row' : 'column',
-      alignItems: isWide ? 'center' : 'stretch',
-      gap: space.lg,
-      marginTop: space.sm,
+
+    overviewRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+    overviewText: { flex: 1, minWidth: 0 },
+    overviewLabel: {
+      fontSize: font.xs,
+      fontFamily: family.medium,
+      color: colors.textMuted,
+      lineHeight: Math.round(font.xs * 1.3),
     },
-    scoreText: { flex: 1, minWidth: 0 },
-    scoreHeadline: {
-      fontSize: font.lg,
+    overviewHeadline: {
+      fontSize: font.md,
       fontFamily: family.bold,
       color: colors.text,
-      lineHeight: Math.round(font.lg * 1.3),
-      marginBottom: space.xs,
+      lineHeight: Math.round(font.md * 1.25),
+      marginTop: 2,
     },
-    scoreEmpty: { alignItems: 'flex-start', gap: space.xs, paddingVertical: space.md },
-    scoreEmptyText: {
-      fontSize: font.lg,
-      fontFamily: family.bold,
-      color: colors.text,
-      lineHeight: Math.round(font.lg * 1.3),
+    legendStrip: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginTop: space.xs },
+    legendItem: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5 },
+    legendItemLabel: {
+      flex: 1,
+      minWidth: 0,
+      fontSize: font.xs - 2,
+      fontFamily: family.medium,
+      color: colors.textMuted,
+      lineHeight: Math.round((font.xs - 2) * 1.25),
     },
-    ring: { width: RING_SIZE, height: RING_SIZE, alignSelf: isWide ? 'auto' : 'center' },
-    ringTrack: { borderRadius: RING_SIZE / 2, borderWidth: RING_WIDTH },
-    ringClip: { position: 'absolute', top: 0, width: RING_SIZE / 2, height: RING_SIZE, overflow: 'hidden' },
-    ringArc: {
+    legendItemValue: { fontSize: font.xs, fontFamily: family.semibold, color: colors.text },
+
+    donut: { width: DONUT_SIZE, height: DONUT_SIZE, alignItems: 'center', justifyContent: 'center' },
+    donutTrack: { borderRadius: DONUT_SIZE / 2, borderWidth: DONUT_WIDTH },
+    donutClip: { position: 'absolute', top: 0, width: DONUT_SIZE / 2, height: DONUT_SIZE, overflow: 'hidden' },
+    donutArc: {
       position: 'absolute',
       top: 0,
-      width: RING_SIZE,
-      height: RING_SIZE,
-      borderRadius: RING_SIZE / 2,
-      borderWidth: RING_WIDTH,
+      width: DONUT_SIZE,
+      height: DONUT_SIZE,
+      borderRadius: DONUT_SIZE / 2,
+      borderWidth: DONUT_WIDTH,
       borderColor: 'transparent',
     },
-    ringCenter: { alignItems: 'center', justifyContent: 'center' },
-    ringPercent: { fontSize: font.xl, fontFamily: family.bold, color: colors.text },
+    donutCenter: { alignItems: 'center', justifyContent: 'center' },
+    donutPercent: { fontSize: font.sm, fontFamily: family.bold, color: colors.text },
 
-    calHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs },
+    calBlock: {
+      marginTop: space.xs,
+      paddingTop: space.xs,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    calHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
     calNav: { width: TAP, height: TAP, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
     calMonth: { flex: 1, textAlign: 'center', fontSize: font.md, fontFamily: family.semibold, color: colors.text },
     calWeekRow: { flexDirection: 'row' },
-    calCell: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-    calWeekday: { fontSize: font.xs, fontFamily: family.medium, color: colors.textSubtle },
-    calDay: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', gap: 2 },
-    calDayNum: { fontSize: font.sm, fontFamily: family.medium, color: colors.text },
-    calDot: { width: 8, height: 8, borderRadius: radius.pill },
-    calLegend: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+    calWeekdayCell: { flex: 1, minHeight: 16, alignItems: 'center', justifyContent: 'center' },
+    calCell: { flex: 1, height: 28, alignItems: 'center', justifyContent: 'center' },
+    calWeekday: { fontSize: font.xs - 3, fontFamily: family.medium, color: colors.textSubtle },
+    calDay: { width: 28, height: 28, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+    calDayNum: { fontSize: font.xs - 2, fontFamily: family.medium, color: colors.text },
+    calDot: { width: 6, height: 6, borderRadius: radius.pill, marginTop: 1 },
+    calSummary: {
+      fontSize: font.xs - 2,
+      fontFamily: family.regular,
+      color: colors.textMuted,
+      lineHeight: Math.round((font.xs - 2) * 1.3),
+      marginTop: 4,
+    },
 
     activityRow: {
       flexDirection: 'row',

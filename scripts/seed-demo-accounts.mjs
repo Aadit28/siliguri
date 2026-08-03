@@ -86,6 +86,70 @@ function isoDaysFromNow(days) {
   return d.toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
+// Every row in one insert must carry the same keys: PostgREST builds a single
+// column list from the union of the batch, so a key omitted on some rows is
+// sent as NULL for those rows instead of falling back to the column default.
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function timestampDaysAgo(days, time) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const [hh, mm] = time.split(':');
+  d.setHours(Number(hh), Number(mm), 0, 0);
+  return d.toISOString();
+}
+
+// Days in the past 28 where a dose was NOT marked. Fixed rather than random so
+// two runs of the seeder produce the same adherence figure — a demo that shows
+// 89% one day and 96% the next invites questions about the number instead of
+// the product.
+const MISSED_DAYS_AGO = new Set([3, 9, 17, 24]);
+
+// A month of history behind the demo parent. Without it the guardian dashboard
+// opens on a pie of one done and one missed, which reads as a broken chart
+// rather than a quiet month. Rows are one-off copies rather than a repeating
+// row because a repeat carries no per-day outcome: the point here is that some
+// days were marked and some were not.
+function buildReminderHistory(parentId, guardianId) {
+  const rows = [];
+  for (let daysAgo = 28; daysAgo >= 1; daysAgo -= 1) {
+    const missed = MISSED_DAYS_AGO.has(daysAgo);
+    rows.push({
+      parent_id: parentId,
+      created_by: guardianId,
+      title: 'Blood pressure medicine',
+      note: 'After breakfast',
+      date_iso: isoDaysFromNow(-daysAgo),
+      time: '08:30',
+      repeat: 'once',
+      // 'active' on a day already past is what the app counts as missed; there
+      // is no separate missed state.
+      status: missed ? 'active' : 'done',
+      created_at: timestampDaysAgo(daysAgo, '07:00'),
+      updated_at: missed ? timestampDaysAgo(daysAgo, '07:00') : timestampDaysAgo(daysAgo, '08:40'),
+    });
+
+    // Evening tablet on alternating days, so the calendar has days with one
+    // reminder and days with two rather than a uniform grid.
+    if (daysAgo % 2 === 0) {
+      rows.push({
+        parent_id: parentId,
+        created_by: guardianId,
+        title: 'Evening sugar tablet',
+        date_iso: isoDaysFromNow(-daysAgo),
+        time: '20:00',
+        repeat: 'once',
+        status: 'done',
+        created_at: timestampDaysAgo(daysAgo, '07:00'),
+        updated_at: timestampDaysAgo(daysAgo, '20:10'),
+      });
+    }
+  }
+  return rows;
+}
+
 const supabase = createClient(url, key, {
   auth: { persistSession: false },
   realtime: { transport: WebSocket },
@@ -195,6 +259,7 @@ async function main() {
   // 6. Reminders (set by the guardian, on the parent's account).
   console.log('Seeding reminders...');
   const { error: remError } = await supabase.from('family_reminders').insert([
+    ...buildReminderHistory(parent.id, guardian.id),
     {
       parent_id: parent.id,
       created_by: guardian.id,
@@ -203,6 +268,9 @@ async function main() {
       date_iso: isoDaysFromNow(0),
       time: '08:30',
       repeat: 'daily',
+      status: 'active',
+      created_at: nowISO(),
+      updated_at: nowISO(),
     },
     {
       parent_id: parent.id,
@@ -212,6 +280,9 @@ async function main() {
       date_iso: isoDaysFromNow(3),
       time: '18:00',
       repeat: 'once',
+      status: 'active',
+      created_at: nowISO(),
+      updated_at: nowISO(),
     },
     {
       parent_id: parent.id,
@@ -220,6 +291,9 @@ async function main() {
       date_iso: isoDaysFromNow(7),
       time: '11:00',
       repeat: 'monthly',
+      status: 'active',
+      created_at: nowISO(),
+      updated_at: nowISO(),
     },
   ]);
   if (remError) console.warn(`  (reminders skipped: ${remError.message})`);
