@@ -556,7 +556,12 @@
       "guardian": "परिवार का सदस्य",
       "admin": "प्रशासक"
     },
-    "otpTestCode": "जाँच का कोड: {{code}}"
+    "otpTestCode": "जाँच का कोड: {{code}}",
+    "tryDemo": "या डेमो खाते से देखिए",
+    "demoEnter": {
+      "parent": "बुज़ुर्ग बनकर डेमो देखें",
+      "guardian": "परिवार बनकर डेमो देखें"
+    }
   },
   "family": {
     "title": "परिवार",

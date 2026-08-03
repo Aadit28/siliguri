@@ -114,6 +114,31 @@ export default function Login() {
     setPassword(demo.password);
   }
 
+  /**
+   * One tap: sign in as a demo account and land on the right home screen.
+   *
+   * The chips below only prefill the form, which still leaves the visitor to
+   * find and press Sign in. For a link handed to someone who has never seen
+   * the app, that is two taps too many — this does the whole thing.
+   */
+  async function signInAsDemo(kind: DemoKind) {
+    const demo = demoByKind(kind);
+    setMsg(null);
+    setUsername(demo.username);
+    setPassword(demo.password);
+    setBusy(true);
+    const { error } = await signIn(demo.username, demo.password);
+    setBusy(false);
+    if (error) {
+      setError(error);
+      return;
+    }
+    if (consumeLoginIntent() && router.canGoBack()) router.back();
+    else if (kind === 'guardian') router.replace('/guardian');
+    else if (kind === 'admin') router.replace('/admin');
+    else router.replace('/');
+  }
+
   async function submit() {
     setMsg(null);
     setBusy(true);
@@ -387,6 +412,50 @@ export default function Login() {
 
             <View style={styles.actions}>
               <Button label={isSignIn ? t('common.signIn') : t('auth.createAccount')} onPress={submit} loading={busy} />
+
+              {/* One-tap demo. Sits with the primary actions rather than inside
+                  the collapsed "demo accounts" disclosure below: someone opening
+                  a shared link has no reason to expand a section labelled as
+                  developer tooling. */}
+              {isSignIn ? (
+                <View style={styles.demoTry}>
+                  <Muted style={styles.demoTryLabel}>
+                    {t('auth.tryDemo', { defaultValue: 'Or explore with a demo account' })}
+                  </Muted>
+                  <View style={styles.demoTryRow}>
+                    {(['parent', 'guardian'] as DemoKind[]).map((kind) => (
+                      <Pressable
+                        key={kind}
+                        accessibilityRole="button"
+                        accessibilityLabel={t(`auth.demoEnter.${kind}`, {
+                          defaultValue: kind === 'parent' ? 'Enter demo as senior' : 'Enter demo as family member',
+                        })}
+                        disabled={busy}
+                        onPress={() => signInAsDemo(kind)}
+                        style={({ pressed }) => [
+                          styles.demoTryButton,
+                          {
+                            borderColor: colors.accent,
+                            backgroundColor: pressed ? colors.accentSoft : 'transparent',
+                            opacity: busy ? 0.5 : 1,
+                          },
+                        ]}
+                      >
+                        <Feather
+                          name={kind === 'parent' ? 'user' : 'users'}
+                          size={18}
+                          color={colors.accent}
+                        />
+                        <Text style={[styles.demoTryText, { color: colors.accent }]} numberOfLines={1}>
+                          {t(`auth.demoEnter.${kind}`, {
+                            defaultValue: kind === 'parent' ? 'Enter demo as senior' : 'Enter demo as family member',
+                          })}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
               {isSignIn ? (
                 <Pressable
                   accessibilityRole="button"
@@ -481,6 +550,27 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     },
     demoChipText: { fontFamily: family.medium, fontSize: font.sm },
     actions: { gap: space.md, marginTop: space.sm },
+    demoTry: { gap: space.sm },
+    demoTryLabel: { textAlign: 'center', fontSize: font.sm },
+    // Column on phones: "Enter demo as family member" will not fit beside its
+    // sibling at 375px, and a truncated label is worse than a stacked one.
+    demoTryRow: {
+      flexDirection: isWide ? 'row' : 'column',
+      gap: space.sm,
+      justifyContent: 'center',
+    },
+    demoTryButton: {
+      flex: isWide ? 1 : undefined,
+      minHeight: 52,
+      borderRadius: radius.lg,
+      borderWidth: 1.5,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.sm,
+      paddingHorizontal: space.md,
+    },
+    demoTryText: { fontFamily: family.semibold, fontSize: font.md, flexShrink: 1 },
     secondaryAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     secondaryText: { fontFamily: family.semibold, fontSize: font.md },
   });

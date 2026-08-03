@@ -556,7 +556,12 @@
       "guardian": "Family member",
       "admin": "Admin"
     },
-    "otpTestCode": "Test mode code: {{code}}"
+    "otpTestCode": "Test mode code: {{code}}",
+    "tryDemo": "Or explore with a demo account",
+    "demoEnter": {
+      "parent": "Enter demo as senior",
+      "guardian": "Enter demo as family member"
+    }
   },
   "family": {
     "title": "Family",
