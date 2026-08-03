@@ -326,7 +326,7 @@ function ServiceRow({
     <Pressable onPress={onOpen} style={({ pressed }) => (pressed ? { opacity: 0.86 } : null)}>
       <Card style={styles.row}>
         <View style={styles.rowTop}>
-          <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+          <View style={styles.rowIcon}>
             <ServiceGlyph category={item.category} color={colors.text} size={22} />
           </View>
           <View style={styles.rowCopy}>
@@ -498,11 +498,12 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       alignItems: 'flex-start',
       gap: space.sm,
     },
+    // No chip behind the glyph: at this size a filled, bordered square reads as
+    // a button the row is not, and six of them stacked turn a list into a grid.
+    // The width is kept so every row's text still starts on the same edge.
     rowIcon: {
       width: 56,
       height: 56,
-      borderRadius: radius.md,
-      borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
     },

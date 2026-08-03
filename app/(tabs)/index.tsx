@@ -225,7 +225,7 @@ export default function Home() {
                       pressed && styles.pressed,
                     ]}
                   >
-                    <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                    <View style={styles.rowIcon}>
                       <Feather name="calendar" size={22} color={tones.sky.fg} />
                     </View>
                     <View style={styles.rowCopy}>
@@ -248,7 +248,7 @@ export default function Home() {
                   onPress={() => router.push('/calendar')}
                   style={({ pressed }) => [styles.row, pressed && styles.pressed]}
                 >
-                  <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                  <View style={styles.rowIcon}>
                     <Feather name="plus" size={22} color={tones.sky.fg} />
                   </View>
                   <View style={styles.rowCopy}>
@@ -279,7 +279,7 @@ export default function Home() {
                           index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
                         ]}
                       >
-                        <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
+                        <View style={styles.rowIcon}>
                           <Feather
                             name={CARE_TEAM_ICONS[member.category]}
                             size={22}
@@ -361,7 +361,7 @@ export default function Home() {
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={[styles.rowIcon, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.rowIcon}>
                   <Feather name="users" size={20} color={tones.lilac.fg} />
                 </View>
                 <View style={styles.rowCopy}>
@@ -423,11 +423,12 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       paddingHorizontal: space.md,
       paddingVertical: space.sm,
     },
+    // No chip behind the glyph: at this size a filled, bordered square reads as
+    // a button the row is not, and six of them stacked turn a list into a grid.
+    // The width is kept so every row's text still starts on the same edge.
     rowIcon: {
       width: 44,
       height: 44,
-      borderRadius: radius.md,
-      borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
     },
