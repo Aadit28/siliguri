@@ -876,5 +876,10 @@
     "otpWrong": "That code is not right. Please check and try again.",
     "otpTooManyWrong": "Too many wrong tries. Please ask for a new code.",
     "otpLength": "Please enter the 6-digit code."
+  },
+  "city": {
+    "title": "Choose your city",
+    "hint": "The directory, helplines and announcements all follow this choice.",
+    "change": "Change city. Currently {{city}}"
   }
 }

@@ -17,6 +17,7 @@ import '../src/lib/i18n';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { getOnboardingKind } from '../src/lib/onboarding';
 import { LocaleProvider } from '../src/context/LocaleContext';
+import { CityProvider } from '../src/context/CityContext';
 import { AppThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { DisplayModeProvider, useDisplayMode } from '../src/context/DisplayModeContext';
 import { FONT_BOLD } from '../src/lib/fonts';
@@ -51,7 +52,9 @@ export default function RootLayout() {
         <DisplayModeProvider>
           <AuthProvider>
             <LocaleProvider>
-              <RootStack />
+              <CityProvider>
+                <RootStack />
+              </CityProvider>
             </LocaleProvider>
           </AuthProvider>
         </DisplayModeProvider>

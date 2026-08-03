@@ -56,6 +56,14 @@ export interface City {
   active: boolean;
 }
 
+// What the read path needs to scope a query: the id filters the database, the
+// slug picks the bundled offline catalog. Kept separate from City so a caller
+// holding only a slug (a deep link, a seeder argument) can still scope.
+export interface CityScope {
+  id?: string | null;
+  slug: string;
+}
+
 export interface Announcement {
   id: string;
   city_id: string | null;

@@ -20,6 +20,7 @@ import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Muted, DialFallbackDialog, Dialog, Sheet, Button } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
+import { useCity } from '../../src/context/CityContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useKeyboardInset } from '../../src/lib/useKeyboardInset';
 import { useLocale } from '../../src/context/LocaleContext';
@@ -189,12 +190,13 @@ export default function AssistantScreen() {
   const activeSession = sessions.find((sessionItem) => sessionItem.id === activeSessionId) ?? sessions[0];
   const messages = activeSession.messages;
   const { isComputerMode } = useDisplayMode();
+  const { city } = useCity();
   const keyboardInset = useKeyboardInset();
   const showSideHistory = isComputerMode && width >= 900;
 
   useEffect(() => {
     let mounted = true;
-    fetchServices()
+    fetchServices(city)
       .then((items) => {
         if (mounted) setServices(items);
       })
@@ -205,7 +207,7 @@ export default function AssistantScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [city]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);

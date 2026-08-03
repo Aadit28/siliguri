@@ -1,13 +1,20 @@
 // Seeds a full demo PARENT (elder) account + a matching GUARDIAN (child abroad)
-// account, already linked and active, plus sample care team, reminders and a
-// pinned service so the guardian dashboard has something to show.
+// account per city, already linked and active, plus sample care team, reminders
+// and a pinned service so the guardian dashboard has something to show. Each
+// city also gets its own admin, so the city-admin portal can be demonstrated
+// without handing over the Siliguri account.
 //
-//   node --env-file=.env scripts/seed-demo-accounts.mjs
+//   node --env-file=.env scripts/seed-demo-accounts.mjs              # all cities
+//   node --env-file=.env scripts/seed-demo-accounts.mjs bengaluru    # one city
 //
-// Idempotent: re-running deletes the two demo accounts by username first
-// (cascading their links / reminders / care team) and recreates them fresh, so
-// password hashes never go stale. Uses the service-role key -> run only in a
-// trusted local/server environment, never in the app bundle.
+// Idempotent: re-running deletes the demo accounts by username first (cascading
+// their links / reminders / care team) and recreates them fresh, so password
+// hashes never go stale. Uses the service-role key -> run only in a trusted
+// local/server environment, never in the app bundle.
+//
+// Every person, clinic and phone number below is invented for the demo. The
+// real, sourced directory lives in src/data/services.*.json and is seeded by
+// scripts/seed.mjs — do not mix the two.
 import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { WebSocket } from 'ws';
@@ -51,34 +58,86 @@ function accountRow({ username, fullName, phone, password, role = 'user' }) {
   };
 }
 
-// --- Demo identities --------------------------------------------------------
+// --- Demo identities, one family per city -----------------------------------
 const PASSWORD = 'saathi123';
 
-const PARENT = {
-  username: 'demo.parent',
-  fullName: 'Anjali Sen',
-  phone: '9800000001',
-  password: PASSWORD,
-  locale: 'bn',
+// Siliguri keeps the original bare usernames: the pitch deck, the promo video
+// and every existing walkthrough sign in as demo.parent / demo.guardian.
+const CITY_DEMOS = {
+  siliguri: {
+    parent: { username: 'demo.parent', fullName: 'Anjali Sen', phone: '9800000001', locale: 'bn' },
+    guardian: { username: 'demo.guardian', fullName: 'Rahul Sen', phone: '9800000002', locale: 'en', relationship: 'son' },
+    admin: { username: 'demo.admin', fullName: 'Saathi Admin', phone: '9800000003', locale: 'en' },
+    careTeam: [
+      {
+        category: 'doctor',
+        name: 'Dr. Ashok Banerjee',
+        phone: '+913512510101',
+        note: 'Family physician, Hakimpara. Mon/Wed/Fri evenings.',
+      },
+      {
+        category: 'pharmacy',
+        name: 'Sen Medical Hall',
+        phone: '+913512522233',
+        note: 'Home delivery for regular medicines.',
+      },
+      { category: 'helper', name: 'Mamata (day help)', phone: '+919800000045', note: 'Comes 9am-1pm daily.' },
+    ],
+    appointment: 'Dr. Banerjee appointment',
+  },
+  bengaluru: {
+    parent: { username: 'demo.parent.blr', fullName: 'Lakshmi Rao', phone: '9800000011', locale: 'kn' },
+    guardian: { username: 'demo.guardian.blr', fullName: 'Kiran Rao', phone: '9800000012', locale: 'en', relationship: 'daughter' },
+    admin: { username: 'demo.admin.blr', fullName: 'Saathi Admin (Bengaluru)', phone: '9800000013', locale: 'en' },
+    careTeam: [
+      {
+        category: 'doctor',
+        name: 'Dr. Shanthi Murthy',
+        phone: '+918025550101',
+        note: 'Geriatric physician, Jayanagar. Tue/Thu mornings.',
+      },
+      {
+        category: 'pharmacy',
+        name: 'Rao Medicals, 4th Block',
+        phone: '+918025550233',
+        note: 'Delivers to the flat within an hour.',
+      },
+      { category: 'helper', name: 'Shobha (day help)', phone: '+919800000046', note: 'Comes 8am-12pm daily.' },
+    ],
+    appointment: 'Dr. Murthy appointment',
+  },
+  ahilyanagar: {
+    parent: { username: 'demo.parent.ahn', fullName: 'Sunita Deshmukh', phone: '9800000021', locale: 'mr' },
+    guardian: { username: 'demo.guardian.ahn', fullName: 'Amol Deshmukh', phone: '9800000022', locale: 'en', relationship: 'son' },
+    admin: { username: 'demo.admin.ahn', fullName: 'Saathi Admin (Ahilyanagar)', phone: '9800000023', locale: 'en' },
+    careTeam: [
+      {
+        category: 'doctor',
+        name: 'Dr. Prakash Jadhav',
+        phone: '+912412550101',
+        note: 'Family physician, Savedi. Mon/Thu evenings.',
+      },
+      {
+        category: 'pharmacy',
+        name: 'Deshmukh Medical Stores',
+        phone: '+912412550233',
+        note: 'Keeps her monthly BP and sugar medicines in stock.',
+      },
+      { category: 'helper', name: 'Rekha (day help)', phone: '+919800000047', note: 'Comes 9am-2pm daily.' },
+    ],
+    appointment: 'Dr. Jadhav appointment',
+  },
 };
 
-const GUARDIAN = {
-  username: 'demo.guardian',
-  fullName: 'Rahul Sen',
-  phone: '9800000002',
-  password: PASSWORD,
-  locale: 'en',
-  relationship: 'son',
-};
+const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const slugs = requested.length ? requested : Object.keys(CITY_DEMOS);
 
-const ADMIN = {
-  username: 'demo.admin',
-  fullName: 'Saathi Admin',
-  phone: '9800000003',
-  password: PASSWORD,
-  locale: 'en',
-  role: 'admin',
-};
+for (const slug of slugs) {
+  if (!CITY_DEMOS[slug]) {
+    console.error(`Unknown city "${slug}". Known: ${Object.keys(CITY_DEMOS).join(', ')}`);
+    process.exit(1);
+  }
+}
 
 function isoDaysFromNow(days) {
   const d = new Date();
@@ -107,7 +166,7 @@ function timestampDaysAgo(days, time) {
 // the product.
 const MISSED_DAYS_AGO = new Set([3, 9, 17, 24]);
 
-// A month of history behind the demo parent. Without it the guardian dashboard
+// A month of history behind each demo parent. Without it the guardian dashboard
 // opens on a pie of one done and one missed, which reads as a broken chart
 // rather than a quiet month. Rows are one-off copies rather than a repeating
 // row because a repeat carries no per-day outcome: the point here is that some
@@ -155,22 +214,15 @@ const supabase = createClient(url, key, {
   realtime: { transport: WebSocket },
 });
 
-async function resolveSiliguriCityId() {
-  // Best effort: migration-3 adds public.cities. Absent on older schemas.
-  try {
-    const { data } = await supabase
-      .from('cities')
-      .select('id')
-      .ilike('name', 'Siliguri')
-      .maybeSingle();
-    return data?.id ?? null;
-  } catch {
-    return null;
-  }
+async function resolveCity(slug) {
+  const { data, error } = await supabase.from('cities').select('id,name').eq('slug', slug).maybeSingle();
+  if (error) throw new Error(`cities lookup (${slug}): ${error.message}`);
+  if (!data) throw new Error(`City "${slug}" is missing. Apply supabase-migration-14-multi-city.sql first.`);
+  return data;
 }
 
-async function insertAccount(profile, cityId) {
-  const row = accountRow(profile);
+async function insertAccount(profile, cityId, role = 'user') {
+  const row = accountRow({ ...profile, password: PASSWORD, role });
   if (cityId) row.city_id = cityId;
   const { data, error } = await supabase
     .from('user_accounts')
@@ -181,83 +233,52 @@ async function insertAccount(profile, cityId) {
   return data;
 }
 
-async function main() {
-  // 1. Clear any prior demo rows. FK on delete cascade wipes their family_links,
-  //    reminders and care_team; favorites/profiles are cleaned explicitly below.
-  console.log('Clearing old demo accounts...');
-  const { data: stale } = await supabase
-    .from('user_accounts')
-    .select('id')
-    .in('username', [PARENT.username, GUARDIAN.username, ADMIN.username]);
+async function clearAccounts(usernames) {
+  const { data: stale } = await supabase.from('user_accounts').select('id').in('username', usernames);
   const staleIds = (stale || []).map((r) => r.id);
-  if (staleIds.length) {
-    await supabase.from('profiles').delete().in('id', staleIds);
-    await supabase.from('user_accounts').delete().in('id', staleIds);
-  }
+  if (!staleIds.length) return;
+  // FK on delete cascade wipes family_links, reminders and care_team; profiles
+  // has no FK to user_accounts, so it is cleared explicitly.
+  await supabase.from('profiles').delete().in('id', staleIds);
+  await supabase.from('user_accounts').delete().in('id', staleIds);
+}
 
-  const cityId = await resolveSiliguriCityId();
-  if (cityId) console.log(`Siliguri city_id: ${cityId}`);
+async function seedCityDemo(slug) {
+  const demo = CITY_DEMOS[slug];
+  const city = await resolveCity(slug);
+  console.log(`\n=== ${city.name} ===`);
 
-  // 2. Create both accounts.
-  console.log('Creating parent + guardian accounts...');
-  const parent = await insertAccount(PARENT, cityId);
-  const guardian = await insertAccount(GUARDIAN, cityId);
-  const admin = await insertAccount(ADMIN, cityId);
+  await clearAccounts([demo.parent.username, demo.guardian.username, demo.admin.username]);
+
+  const parent = await insertAccount(demo.parent, city.id);
+  const guardian = await insertAccount(demo.guardian, city.id);
+  const admin = await insertAccount(demo.admin, city.id, 'admin');
   console.log(`  parent   ${parent.username} (${parent.id})`);
   console.log(`  guardian ${guardian.username} (${guardian.id})`);
   console.log(`  admin    ${admin.username} (${admin.id})`);
 
-  // 3. Profiles (locale) — best effort; table has no FK to user_accounts.
   const { error: profileError } = await supabase.from('profiles').insert([
-    { id: parent.id, full_name: PARENT.fullName, locale: PARENT.locale },
-    { id: guardian.id, full_name: GUARDIAN.fullName, locale: GUARDIAN.locale },
+    { id: parent.id, full_name: demo.parent.fullName, locale: demo.parent.locale },
+    { id: guardian.id, full_name: demo.guardian.fullName, locale: demo.guardian.locale },
   ]);
   if (profileError) console.warn(`  (profiles skipped: ${profileError.message})`);
 
-  // 4. Active guardian link — the state a verified WhatsApp OTP would produce.
-  console.log('Linking guardian -> parent (active)...');
+  // Active guardian link — the state a verified WhatsApp OTP would produce.
   const { error: linkError } = await supabase.from('family_links').insert({
     guardian_id: guardian.id,
     parent_id: parent.id,
     parent_phone: parent.phone_number,
-    relationship: GUARDIAN.relationship,
+    relationship: demo.guardian.relationship,
     status: 'active',
-    verified_at: new Date().toISOString(),
+    verified_at: nowISO(),
   });
   if (linkError) throw new Error(`family_links: ${linkError.message}`);
 
-  // 5. Care team for the parent (set by the guardian).
-  console.log('Seeding care team...');
-  const { error: careError } = await supabase.from('care_team').insert([
-    {
-      parent_id: parent.id,
-      category: 'doctor',
-      name: 'Dr. Ashok Banerjee',
-      phone: '+913512510101',
-      note: 'Family physician, Hakimpara. Mon/Wed/Fri evenings.',
-      set_by: guardian.id,
-    },
-    {
-      parent_id: parent.id,
-      category: 'pharmacy',
-      name: 'Sen Medical Hall',
-      phone: '+913512522233',
-      note: 'Home delivery for regular medicines.',
-      set_by: guardian.id,
-    },
-    {
-      parent_id: parent.id,
-      category: 'helper',
-      name: 'Mamata (day help)',
-      phone: '+919800000045',
-      note: 'Comes 9am-1pm daily.',
-      set_by: guardian.id,
-    },
-  ]);
+  const { error: careError } = await supabase
+    .from('care_team')
+    .insert(demo.careTeam.map((member) => ({ ...member, parent_id: parent.id, set_by: guardian.id })));
   if (careError) console.warn(`  (care team skipped: ${careError.message})`);
 
-  // 6. Reminders (set by the guardian, on the parent's account).
-  console.log('Seeding reminders...');
   const { error: remError } = await supabase.from('family_reminders').insert([
     ...buildReminderHistory(parent.id, guardian.id),
     {
@@ -275,7 +296,7 @@ async function main() {
     {
       parent_id: parent.id,
       created_by: guardian.id,
-      title: 'Dr. Banerjee appointment',
+      title: demo.appointment,
       note: 'Monthly check-up',
       date_iso: isoDaysFromNow(3),
       time: '18:00',
@@ -288,6 +309,7 @@ async function main() {
       parent_id: parent.id,
       created_by: guardian.id,
       title: 'Refill diabetes strips',
+      note: null,
       date_iso: isoDaysFromNow(7),
       time: '11:00',
       repeat: 'monthly',
@@ -298,8 +320,14 @@ async function main() {
   ]);
   if (remError) console.warn(`  (reminders skipped: ${remError.message})`);
 
-  // 7. Pin one directory service, if the services table has been seeded.
-  const { data: svc } = await supabase.from('services').select('id,name').limit(1).maybeSingle();
+  // Pin one directory service from this city, so the guardian's saved list is
+  // somewhere the elder could actually walk to.
+  const { data: svc } = await supabase
+    .from('services')
+    .select('id,name')
+    .eq('city_id', city.id)
+    .limit(1)
+    .maybeSingle();
   if (svc) {
     const { error: favError } = await supabase.from('family_favorites').insert({
       parent_id: parent.id,
@@ -308,15 +336,30 @@ async function main() {
       note: 'Recommended by neighbour',
     });
     if (favError) console.warn(`  (favorite skipped: ${favError.message})`);
-    else console.log(`Pinned service: ${svc.name}`);
+    else console.log(`  pinned service: ${svc.name}`);
   } else {
-    console.log('No services seeded yet — skipping pinned favorite. Run scripts/seed.mjs for the directory.');
+    console.log(`  no services seeded for ${city.name} yet — run scripts/seed.mjs ${slug}`);
+  }
+
+  return { city, demo };
+}
+
+async function main() {
+  const seeded = [];
+  for (const slug of slugs) {
+    seeded.push(await seedCityDemo(slug));
   }
 
   console.log('\nDone. Demo credentials (username or phone + password):');
-  console.log(`  PARENT   username=${PARENT.username}   phone=${normalizePhone(PARENT.phone)}   password=${PASSWORD}`);
-  console.log(`  GUARDIAN username=${GUARDIAN.username} phone=${normalizePhone(GUARDIAN.phone)} password=${PASSWORD}`);
-  console.log(`  ADMIN    username=${ADMIN.username}    phone=${normalizePhone(ADMIN.phone)}    password=${PASSWORD}`);
+  for (const { city, demo } of seeded) {
+    console.log(`  ${city.name}`);
+    for (const role of ['parent', 'guardian', 'admin']) {
+      const person = demo[role];
+      console.log(
+        `    ${role.padEnd(8)} username=${person.username.padEnd(20)} phone=${normalizePhone(person.phone)} password=${PASSWORD}`,
+      );
+    }
+  }
 }
 
 main().catch((error) => {

@@ -1,6 +1,16 @@
 import { supabase, supabaseConfigured } from './supabase';
-import { Service, CommunityPost, CommunityReply, PostCategory, PostStatus, CallbackRequestInput } from './types';
-import { MOCK_SERVICES, MOCK_POSTS } from '../data/mockData';
+import {
+  Service,
+  City,
+  CityScope,
+  CommunityPost,
+  CommunityReply,
+  PostCategory,
+  PostStatus,
+  CallbackRequestInput,
+} from './types';
+import { MOCK_SERVICES, MOCK_POSTS, CITY_CATALOGS } from '../data/mockData';
+import { FALLBACK_CITIES, DEFAULT_CITY_SLUG } from './city';
 import { backendRequest } from './backend';
 
 // Each function tries Supabase first and falls back to mock data so the app
@@ -70,25 +80,53 @@ function isApproved(status?: PostStatus | null) {
   return status == null || status === 'approved';
 }
 
-export async function fetchServices(): Promise<Service[]> {
-  if (!supabaseConfigured) return localCatalogServices();
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value?: string | null): boolean {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+export async function fetchCities(): Promise<City[]> {
+  if (!supabaseConfigured) return FALLBACK_CITIES;
   try {
     const { data, error } = await supabase
-      .from('services')
+      .from('cities')
       .select('*')
+      .eq('active', true)
+      .order('name');
+    if (error) throw error;
+    return data && data.length ? (data as City[]) : FALLBACK_CITIES;
+  } catch (e) {
+    console.warn('[Saathi] cities fell back to local list:', (e as Error).message);
+    return FALLBACK_CITIES;
+  }
+}
+
+// `city` scopes the directory. Rows with no city_id are kept in every city:
+// they are either pre-multi-city legacy rows or nationwide helplines, and
+// dropping them would be a silent loss the user cannot see or undo.
+export async function fetchServices(city?: CityScope | null): Promise<Service[]> {
+  if (!supabaseConfigured) return localCatalogServices(city);
+  try {
+    let query = supabase.from('services').select('*');
+    // Only a real database id can be filtered on. The fallback city list carries
+    // synthetic ids ("local-bengaluru"), which Postgres would reject as invalid
+    // uuid input and turn a missing migration into a hard directory failure.
+    if (isUuid(city?.id)) query = query.or(`city_id.eq.${city!.id},city_id.is.null`);
+    const { data, error } = await query
       .order('verified', { ascending: false })
       .order('rating', { ascending: false });
     if (error) throw error;
     if (!data || data.length === 0) {
       usingMockFlag.value = true;
-      return localCatalogServices();
+      return localCatalogServices(city);
     }
     usingMockFlag.value = false;
-    return mergeServiceCatalog(data as Service[]);
+    return mergeServiceCatalog(data as Service[], city);
   } catch (e) {
     console.warn('[Saathi] services fell back to mock:', (e as Error).message);
     usingMockFlag.value = true;
-    return localCatalogServices();
+    return localCatalogServices(city);
   }
 }
 
@@ -301,14 +339,16 @@ function normalizeServiceTrust(service: Service): Service {
   };
 }
 
-function localCatalogServices() {
-  return MOCK_SERVICES.map(normalizeServiceTrust);
+function localCatalogServices(city?: CityScope | null) {
+  const slug = city?.slug ?? DEFAULT_CITY_SLUG;
+  const catalog = CITY_CATALOGS[slug] ?? [];
+  return catalog.map(normalizeServiceTrust);
 }
 
-function mergeServiceCatalog(remoteServices: Service[]) {
+function mergeServiceCatalog(remoteServices: Service[], city?: CityScope | null) {
   const normalizedRemote = remoteServices.map(normalizeServiceTrust);
   const known = new Set(normalizedRemote.map(serviceIdentity));
-  const localAdditions = localCatalogServices().filter((service) => {
+  const localAdditions = localCatalogServices(city).filter((service) => {
     const key = serviceIdentity(service);
     if (known.has(key)) return false;
     known.add(key);

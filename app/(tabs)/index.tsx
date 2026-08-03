@@ -14,10 +14,12 @@ import { Feather } from '@expo/vector-icons';
 import AddReminderSheet from '../../src/components/AddReminderSheet';
 import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
+import CityPicker from '../../src/components/CityPicker';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import SiteFooter from '../../src/components/SiteFooter';
 import { DialFallbackDialog, H1, H2, Muted, useDialer } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
+import { useCity } from '../../src/context/CityContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchFavoriteIds, fetchServices } from '../../src/lib/api';
@@ -68,6 +70,7 @@ export default function Home() {
   const tones = pastelForMode(mode);
   const { width } = useWindowDimensions();
   const { isComputerMode } = useDisplayMode();
+  const { city } = useCity();
   // Phone display mode always gets the narrow layout, even when the browser
   // window is wide — the shell is clamped to 480px in that mode.
   const isWide = isComputerMode && width >= 900;
@@ -86,8 +89,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchServices().then(setAllServices);
-  }, []);
+    fetchServices(city).then(setAllServices);
+  }, [city]);
 
   // Stars are toggled on /services and /service/[id], so re-read the saved
   // count every time Home regains focus, not just when the user changes.
@@ -168,7 +171,7 @@ export default function Home() {
             <Text style={[styles.greeting, { color: colors.textMuted }]}>{t('home.greeting')}</Text>
             <H1 style={styles.title}>{displayName || t('home.guestName')}</H1>
             <Muted style={styles.subtitle}>{t('home.mobileNeedTitle')}</Muted>
-            <Text style={[styles.launchCity, { color: colors.textSubtle }]}>{t('home.signalCity')}</Text>
+            <CityPicker />
           </AnimatedSection>
 
           <AnimatedSection delay={40} style={styles.section}>
@@ -409,7 +412,6 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     greeting: { fontFamily: family.medium, fontSize: font.sm, lineHeight: font.sm * 1.4 },
     title: { fontFamily: family.medium, fontSize: isWide ? font.xxl : 34, lineHeight: isWide ? font.xxl * 1.13 : 41 },
     subtitle: { fontFamily: family.medium, fontSize: font.md, lineHeight: font.md * 1.4 },
-    launchCity: { marginTop: space.xs, fontFamily: family.medium, fontSize: font.sm, lineHeight: font.sm * 1.4 },
     list: {
       borderWidth: 1,
       borderRadius: radius.lg,

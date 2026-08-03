@@ -1,6 +1,9 @@
-// Seeds the public service directory and starter community posts.
-// Run after applying supabase-schema.sql and supabase-migration-2.sql:
-//   node --env-file=.env scripts/seed.mjs
+// Seeds the public service directory (per city) and starter community posts.
+// Run after applying supabase-schema.sql, supabase-migration-2.sql and
+// supabase-migration-14-multi-city.sql:
+//
+//   node --env-file=.env scripts/seed.mjs                 # every known city
+//   node --env-file=.env scripts/seed.mjs bengaluru       # one city only
 //
 // The service-role key bypasses RLS. Run this only in a trusted local/server
 // environment; never expose that key in the app bundle.
@@ -18,9 +21,23 @@ if (!url || !key) {
   process.exit(1);
 }
 
-const services = JSON.parse(
-  await readFile(new URL('../src/data/services.json', import.meta.url), 'utf8'),
-);
+// One audited file per city. The file name keeps the common spelling of the
+// city; the key is the slug that lives in public.cities.
+const CITY_FILES = {
+  siliguri: '../src/data/services.json',
+  bengaluru: '../src/data/services.bangalore.json',
+  ahilyanagar: '../src/data/services.ahilyanagar.json',
+};
+
+const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const slugs = requested.length ? requested : Object.keys(CITY_FILES);
+
+for (const slug of slugs) {
+  if (!CITY_FILES[slug]) {
+    console.error(`Unknown city "${slug}". Known: ${Object.keys(CITY_FILES).join(', ')}`);
+    process.exit(1);
+  }
+}
 
 const posts = [
   {
@@ -37,23 +54,52 @@ const posts = [
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
-async function main() {
-  const matchAll = '00000000-0000-0000-0000-000000000000';
+async function cityIdFor(slug) {
+  const { data, error } = await supabase.from('cities').select('id,name').eq('slug', slug).maybeSingle();
+  if (error) throw new Error(`cities lookup (${slug}): ${error.message}`);
+  if (!data) {
+    throw new Error(`City "${slug}" is missing. Apply supabase-migration-14-multi-city.sql first.`);
+  }
+  return data;
+}
 
-  console.log('Clearing old seed data...');
-  await supabase.from('community_posts').delete().neq('id', matchAll);
-  await supabase.from('services').delete().neq('id', matchAll);
+async function seedCity(slug) {
+  const city = await cityIdFor(slug);
+  const rows = JSON.parse(await readFile(new URL(CITY_FILES[slug], import.meta.url), 'utf8'));
 
-  console.log('Seeding services...');
-  const { error: servicesError } = await supabase.from('services').insert(services);
-  if (servicesError) throw servicesError;
-  console.log(`  inserted ${services.length} services`);
+  if (!rows.length) {
+    console.log(`  ${city.name}: source file is empty, leaving existing rows alone`);
+    return;
+  }
 
-  console.log('Seeding community posts...');
+  // Scoped delete: reseeding one city must never touch another city's
+  // directory, and re-running is how a corrected phone number ships.
+  const { error: clearError } = await supabase.from('services').delete().eq('city_id', city.id);
+  if (clearError) throw new Error(`clear ${slug}: ${clearError.message}`);
+
+  const { error } = await supabase.from('services').insert(rows.map((row) => ({ ...row, city_id: city.id })));
+  if (error) throw new Error(`insert ${slug}: ${error.message}`);
+  console.log(`  ${city.name}: ${rows.length} services`);
+}
+
+async function seedPostsIfEmpty() {
+  const { count, error } = await supabase.from('community_posts').select('id', { count: 'exact', head: true });
+  if (error) throw new Error(`community_posts count: ${error.message}`);
+  if (count) {
+    console.log(`Community already has ${count} posts — left untouched.`);
+    return;
+  }
   const { error: postsError } = await supabase.from('community_posts').insert(posts);
   if (postsError) throw postsError;
-  console.log(`  inserted ${posts.length} posts`);
+  console.log(`Seeded ${posts.length} starter posts`);
+}
 
+async function main() {
+  console.log(`Seeding directory for: ${slugs.join(', ')}`);
+  for (const slug of slugs) {
+    await seedCity(slug);
+  }
+  await seedPostsIfEmpty();
   console.log('Done');
 }
 

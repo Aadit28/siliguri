@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
+import CityPicker from '../../src/components/CityPicker';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Badge, Card, Chip, DialFallbackDialog, H1, Muted, Stars, useDialer } from '../../src/components/ui';
 import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
@@ -24,6 +25,7 @@ import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src
 import { Service, ServiceCategory } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useAuth } from '../../src/context/AuthContext';
+import { useCity } from '../../src/context/CityContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
@@ -42,6 +44,7 @@ export default function Services() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const { isComputerMode } = useDisplayMode();
+  const { city } = useCity();
   const isWide = isComputerMode && width >= 920;
   const styles = makeStyles(colors, isWide);
 
@@ -70,10 +73,11 @@ export default function Services() {
   }, []);
 
   useEffect(() => {
-    fetchServices()
+    setLoading(true);
+    fetchServices(city)
       .then(setAll)
       .finally(() => setLoading(false));
-  }, []);
+  }, [city]);
 
   useEffect(() => {
     const nextCategory: DirectoryView =
@@ -195,6 +199,7 @@ export default function Services() {
         <View style={styles.hero}>
           <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
           <Muted style={styles.heroBody}>{t('services.directoryBody')}</Muted>
+          <CityPicker />
         </View>
 
         <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.cardStrong }]}>
