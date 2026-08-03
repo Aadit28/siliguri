@@ -143,8 +143,9 @@ export default function Help() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <AppHeader title={t('help.title')} />
-      <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+      <ScrollView contentContainerStyle={styles.pageOuter} contentInsetAdjustmentBehavior="automatic">
+        <AppHeader title={t('help.title')} />
+        <View style={styles.content}>
         <H1>{t('help.title')}</H1>
         <Muted style={styles.subtitle}>{t('help.subtitle')}</Muted>
 
@@ -353,6 +354,7 @@ export default function Help() {
             </Card>
           </>
         ) : null}
+        </View>
       </ScrollView>
 
       <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
@@ -372,6 +374,7 @@ export default function Help() {
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
+    pageOuter: { width: '100%' },
     content: {
       width: '100%',
       maxWidth: 720,

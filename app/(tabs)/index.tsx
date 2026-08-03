@@ -161,8 +161,8 @@ export default function Home() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
-      <AppHeader />
       <ScrollView ref={homeScrollRef} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.scrollContent}>
+        <AppHeader />
         <View style={styles.content}>
           <AnimatedSection style={styles.intro}>
             <Text style={[styles.greeting, { color: colors.textMuted }]}>{t('home.greeting')}</Text>

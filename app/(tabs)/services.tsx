@@ -184,14 +184,14 @@ export default function Services() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
-      <AppHeader title={t('services.title')} />
-
       <ScrollView
         ref={pageScrollRef}
-        contentContainerStyle={styles.pageScroll}
+        contentContainerStyle={styles.pageOuter}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
+        <AppHeader title={t('services.title')} />
+        <View style={styles.pageScroll}>
         <View style={styles.hero}>
           <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
           <Muted style={styles.heroBody}>{t('services.directoryBody')}</Muted>
@@ -290,6 +290,7 @@ export default function Services() {
             ))}
           </View>
         )}
+        </View>
       </ScrollView>
 
       <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
@@ -440,6 +441,7 @@ function ServiceRow({
 function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
     screen: { flex: 1 },
+    pageOuter: { width: '100%' },
     pageScroll: {
       width: '100%',
       maxWidth: 1120,

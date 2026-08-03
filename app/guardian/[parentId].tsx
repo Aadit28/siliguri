@@ -405,18 +405,15 @@ export default function ParentDetail() {
 
   return (
     <View style={styles.screen}>
+      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.pageOuter}>
       <AppHeader title={heading} />
-      <ScrollView
-        style={{ backgroundColor: colors.bg }}
-        // The keyboard inset is added, not maxed: the Ask box sits low on this
-        // page, and without the extra run-off there is nothing to scroll it up
-        // into once the keyboard is open.
-        contentContainerStyle={[
-          styles.page,
-          { paddingBottom: Math.max(insets.bottom, space.lg) + keyboardInset },
-        ]}
-      >
       <Stack.Screen options={{ title: heading }} />
+      {/* The keyboard inset is added, not maxed: the Ask box sits low on this
+          page, and without the extra run-off there is nothing to scroll it up
+          into once the keyboard is open. */}
+      <View
+        style={[styles.page, { paddingBottom: Math.max(insets.bottom, space.lg) + keyboardInset }]}
+      >
       <View style={styles.shell}>
         <Pressable
           accessibilityRole="button"
@@ -451,6 +448,7 @@ export default function ParentDetail() {
         ) : (
           <CareTeamSection token={token} parentId={parentId} styles={styles} colors={colors} />
         )}
+      </View>
       </View>
       </ScrollView>
     </View>
@@ -1524,6 +1522,9 @@ function CareTeamSection({
 function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.bg },
+    // The header scrolls with the page, so the outer container stays
+    // full-bleed and the padding lives on the block beneath it.
+    pageOuter: { width: '100%' },
     page: { padding: isWide ? space.xl : space.md, paddingTop: space.md },
     shell: { width: '100%', maxWidth: 960, alignSelf: 'center' },
     backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: space.sm, alignSelf: 'flex-start' },

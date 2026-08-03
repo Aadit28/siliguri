@@ -396,15 +396,10 @@ export default function GuardianDashboard() {
 
   return (
     <View style={styles.screen}>
+      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.pageOuter}>
       <AppHeader title={t('family.title')} />
-      <ScrollView
-        style={{ backgroundColor: colors.bg }}
-        contentContainerStyle={[
-          styles.page,
-          { paddingBottom: Math.max(insets.bottom, space.lg) },
-        ]}
-      >
       <Stack.Screen options={{ title: t('family.title') }} />
+      <View style={[styles.page, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
       <View style={styles.shell}>
         {/* This screen hides the native header so AppHeader can render, which
             leaves a phone with no back gesture. Same fall-through as
@@ -627,6 +622,7 @@ export default function GuardianDashboard() {
           <Button label={t('family.cancel')} variant="secondary" onPress={() => setRevokeTarget(null)} />
         </View>
       </Dialog>
+      </View>
       </ScrollView>
     </View>
   );
@@ -635,6 +631,9 @@ export default function GuardianDashboard() {
 function makeStyles(colors: AppColors, isWide: boolean) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.bg },
+    // The header scrolls with the page, so the outer container stays
+    // full-bleed and the padding lives on the block beneath it.
+    pageOuter: { width: '100%' },
     page: {
       padding: isWide ? space.xl : space.md,
       paddingTop: space.md,
