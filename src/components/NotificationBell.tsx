@@ -18,6 +18,7 @@ import Animated, { Easing, FadeIn, FadeInDown, ReduceMotion } from 'react-native
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { fetchServerAlerts, markServerAlertsRead, ServerAlert } from '../lib/alerts';
+import { useLivePoll } from '../lib/useLivePoll';
 import { listEvents } from '../lib/calendar';
 import { buildNotifications, formatEventWhen, NotificationItem } from '../lib/notifications';
 import { family, font, radius, shadow, space } from '../lib/theme';
@@ -63,6 +64,12 @@ export default function NotificationBell() {
   }, [token]);
 
   useFocusEffect(load);
+
+  // SOS is the one alert that must not wait for a navigation. The senior
+  // presses it and every linked family member's bell should fill in while they
+  // are looking at it — web and Expo Go get no push, so this inbox is their
+  // only channel.
+  useLivePoll(load);
 
   function openPanel() {
     load();

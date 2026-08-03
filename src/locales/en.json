@@ -1,6 +1,52 @@
 {
   "appName": "Saathi",
   "tagline": "Starting in Siliguri, built for India",
+  "onboarding": {
+    "skip": "Skip",
+    "next": "Next",
+    "start": "Start using Saathi",
+    "progress": "Step {{step}} of {{total}}",
+    "chooser": {
+      "title": "Welcome to Saathi",
+      "subtitle": "Tell us who is using this phone, so we can show the right things.",
+      "senior": {
+        "title": "I am the senior",
+        "body": "Reminders, help and someone to talk to, on this phone."
+      },
+      "guardian": {
+        "title": "I look after someone",
+        "body": "Watch over a parent or elder and help them from anywhere."
+      }
+    },
+    "senior": {
+      "ask": {
+        "title": "Ask for anything",
+        "body": "Type or speak to Saathi in Hindi or English. Ask about a medicine, a bill, a plumber, or just talk. It answers in the language you used."
+      },
+      "reminders": {
+        "title": "Never miss a medicine",
+        "body": "Saathi remembers your medicines and appointments and reminds you at the right time. Your family can add reminders too."
+      },
+      "help": {
+        "title": "Help is one tap away",
+        "body": "The SOS button calls your family and shows nearby help. Trusted plumbers, doctors and electricians are always one tap away."
+      }
+    },
+    "guardian": {
+      "seeHow": {
+        "title": "See how they are doing",
+        "body": "One dashboard for each parent: which medicines were taken, what was missed, and when they last used the app."
+      },
+      "setReminders": {
+        "title": "Set reminders from anywhere",
+        "body": "Add a medicine or appointment from your own phone. It appears on theirs straight away, with an alert at the right time."
+      },
+      "alerts": {
+        "title": "Get told when it matters",
+        "body": "If they press SOS or miss a dose, your phone tells you. A short daily summary keeps you in the picture the rest of the time."
+      }
+    }
+  },
   "tabs": {
     "home": "Home",
     "services": "Services",
@@ -360,7 +406,9 @@
     "errorNameRequired": "Please enter your name.",
     "errorPhoneRequired": "Please enter your phone number.",
     "errorPhoneInvalid": "Please enter a full phone number.",
-    "errorFixFields": "Please fill in the boxes marked in red."
+    "errorFixFields": "Please fill in the boxes marked in red.",
+    "govTitle": "Government & public services",
+    "govBody": "Official government services. Opening one takes you to their own website."
   },
   "privacy": {
     "title": "Privacy and consent",

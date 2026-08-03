@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
@@ -29,12 +29,26 @@ import { listFamilyLinks, notifyFamilySos, revokeFamilyLink } from '../../src/li
 import { FamilyLink } from '../../src/lib/types';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/context/ThemeContext';
+import { useLocale } from '../../src/context/LocaleContext';
+import { TRUST_RAILS } from '../../src/lib/trustRails';
+
+// Government links leave the app entirely. On web that must be a new tab —
+// replacing the current one would strand a user inside a government site with
+// no way back to Saathi.
+function openExternal(url: string) {
+  if (process.env.EXPO_OS === 'web' && typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  Linking.openURL(url).catch(() => undefined);
+}
 
 export default function Help() {
   const { t } = useTranslation();
   const router = useRouter();
   const { session, isCityStaff } = useAuth();
   const { colors } = useTheme();
+  const { lang } = useLocale();
   const styles = makeStyles(colors);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -292,6 +306,34 @@ export default function Help() {
           </>
         ) : null}
 
+        {/* Government and public services. These sit on SOS rather than Home:
+            someone reaching for Elderline or eSanjeevani is looking for help
+            from an institution, and on Home they were buried under the
+            everyday listings. */}
+        <H2 style={styles.sectionHeader}>{t('help.govTitle')}</H2>
+        <Card style={styles.card}>
+          <Body>{t('help.govBody')}</Body>
+          <View style={styles.govList}>
+            {TRUST_RAILS.map((rail, index) => (
+              <View key={rail.label}>
+                {index > 0 ? <View style={styles.divider} /> : null}
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={`${rail.label}. ${lang === 'hi' ? rail.hi : rail.en}`}
+                  onPress={() => openExternal(rail.url)}
+                  style={({ pressed }) => [styles.govRow, pressed ? { opacity: 0.7 } : null]}
+                >
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowTitle}>{rail.label}</Text>
+                    <Text style={styles.rowMeta}>{lang === 'hi' ? rail.hi : rail.en}</Text>
+                  </View>
+                  <Feather name="external-link" size={20} color={colors.textSubtle} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </Card>
+
         <H2 style={styles.sectionHeader}>{t('help.privacyTitle')}</H2>
         <Card style={styles.card}>
           <Body>{t('help.privacyBody')}</Body>
@@ -369,6 +411,14 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.surfaceTint,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    govList: { marginTop: space.xs },
+    govRow: {
+      minHeight: ROW_MIN_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.md,
+      paddingVertical: space.sm,
     },
     rowBody: { flex: 1 },
     rowTitle: { fontSize: font.md, fontFamily: family.semibold, color: colors.text },

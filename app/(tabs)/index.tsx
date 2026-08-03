@@ -16,16 +16,16 @@ import AnimatedSection from '../../src/components/animated-section';
 import AppHeader from '../../src/components/AppHeader';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import SiteFooter from '../../src/components/SiteFooter';
-import { DialFallbackDialog, H1, H2, Muted, Stars, useDialer } from '../../src/components/ui';
+import { DialFallbackDialog, H1, H2, Muted, useDialer } from '../../src/components/ui';
 import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
-import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchFavoriteIds, fetchServices } from '../../src/lib/api';
 import { listEvents } from '../../src/lib/calendar';
-import { SERVICE_CATEGORIES, categoryColor } from '../../src/lib/categories';
+import { categoryColor } from '../../src/lib/categories';
 import { buildNotifications, formatEventWhen, todayISO, upcomingEvents } from '../../src/lib/notifications';
-import { syncFamilyForSelf } from '../../src/lib/familySync';
+import { refreshFamilyForSelf, syncFamilyForSelf } from '../../src/lib/familySync';
+import { useLivePoll } from '../../src/lib/useLivePoll';
 import {
   AppColors,
   PastelName,
@@ -39,7 +39,7 @@ import {
   radius,
   space,
 } from '../../src/lib/theme';
-import { CalendarEvent, CareTeamCategory, CareTeamMember, FamilyFavorite, Service, ServiceCategory } from '../../src/lib/types';
+import { CalendarEvent, CareTeamCategory, CareTeamMember, FamilyFavorite, Service } from '../../src/lib/types';
 
 const CARE_TEAM_ICONS: Record<CareTeamCategory, keyof typeof Feather.glyphMap> = {
   doctor: 'user',
@@ -59,86 +59,10 @@ const CARE_TEAM_TONES: Record<CareTeamCategory, PastelName> = {
   other: 'peach',
 };
 
-const TRUST_RAILS = [
-  {
-    label: 'Elderline 14567',
-    url: 'https://scw.dosje.gov.in/elderline',
-    en: 'Help and information for older adults.',
-    hi: 'वरिष्ठ नागरिकों के लिए सहायता और जानकारी।',
-  },
-  {
-    label: 'eSanjeevani',
-    url: 'https://esanjeevani.mohfw.gov.in/',
-    en: 'Online government health services.',
-    hi: 'सरकारी ऑनलाइन स्वास्थ्य सेवाएँ।',
-  },
-  {
-    label: 'UMANG',
-    url: 'https://web.umang.gov.in/',
-    en: 'Many government services in one place.',
-    hi: 'कई सरकारी सेवाएँ एक ही जगह।',
-  },
-  {
-    label: 'CSC access',
-    url: 'https://csc.gov.in/',
-    en: 'Assisted access to digital services.',
-    hi: 'डिजिटल सेवाओं तक सहायता के साथ पहुँच।',
-  },
-  {
-    label: 'Yatri Sathi',
-    url: 'https://yatrisathi.in/',
-    en: 'Travel information and support.',
-    hi: 'यात्रा की जानकारी और सहायता।',
-  },
-  {
-    label: 'Sanchar Saathi',
-    url: 'https://sancharsaathi.gov.in/',
-    en: 'Mobile and telecom safety services.',
-    hi: 'मोबाइल और दूरसंचार सुरक्षा सेवाएँ।',
-  },
-];
-
-const FEATURED_CATEGORY_MIX: ServiceCategory[] = [
-  'elder_home',
-  'doctor',
-  'hospital',
-  'medical_shop',
-  'home_service',
-  'travel_agent',
-  'daily_service',
-];
-
-function pickMixedFeaturedServices(services: Service[], limit = 6) {
-  const ranked = [...services]
-    .filter((service) => service.verified)
-    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-  const pool = ranked.length ? ranked : services;
-  const picked: Service[] = [];
-  const used = new Set<string>();
-
-  FEATURED_CATEGORY_MIX.forEach((category) => {
-    if (picked.length >= limit) return;
-    const next = pool.find((service) => service.category === category && !used.has(service.id));
-    if (!next) return;
-    picked.push(next);
-    used.add(next.id);
-  });
-
-  return picked;
-}
-
-function openExternal(url: string) {
-  if (process.env.EXPO_OS === 'web' && typeof window !== 'undefined') {
-    window.open(url, '_blank', 'noopener,noreferrer');
-    return;
-  }
-  Linking.openURL(url).catch(() => undefined);
-}
 
 export default function Home() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { lang } = useLocale();
   const { displayName, user, session } = useAuth();
   const { colors, mode } = useTheme();
   const tones = pastelForMode(mode);
@@ -150,7 +74,6 @@ export default function Home() {
   const styles = makeStyles(colors, isWide);
   const homeScrollRef = useRef<ScrollView>(null);
   const [allServices, setAllServices] = useState<Service[]>([]);
-  const [featured, setFeatured] = useState<Service[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [savedCount, setSavedCount] = useState(0);
   const [careTeam, setCareTeam] = useState<CareTeamMember[]>([]);
@@ -163,10 +86,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchServices().then((all) => {
-      setAllServices(all);
-      setFeatured(pickMixedFeaturedServices(all));
-    });
+    fetchServices().then(setAllServices);
   }, []);
 
   // Stars are toggled on /services and /service/[id], so re-read the saved
@@ -206,6 +126,20 @@ export default function Home() {
       active = false;
     };
   }, [user, session?.access_token, loadEvents]);
+
+  // A guardian adding a reminder from their own phone has to land here without
+  // the senior navigating away and back. refreshFamilyForSelf rather than
+  // syncFamilyForSelf: the latter answers from a cache that only clears when the
+  // app is backgrounded, which is exactly what never happens on a screen someone
+  // is watching.
+  useLivePoll(() => {
+    if (!user || !session?.access_token) return;
+    refreshFamilyForSelf(session.access_token, user.id).then((result) => {
+      setCareTeam(result.careTeam);
+      setFamilyPicks(result.favorites);
+      loadEvents();
+    });
+  });
 
   // Reminders are edited on /calendar, so re-read them every time Home regains focus.
   useFocusEffect(loadEvents);
@@ -443,109 +377,7 @@ export default function Home() {
             </AnimatedSection>
           ) : null}
 
-          <AnimatedSection delay={120} style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <H2>{t('home.browseCategories')}</H2>
-              <Pressable accessibilityRole="button" onPress={() => router.push('/services')} hitSlop={8}>
-                <Text style={[styles.seeAll, { color: colors.accent }]}>{t('home.seeAll')}</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.categoryGrid}>
-              {SERVICE_CATEGORIES.map((category) => {
-                const tone = categoryColor(category.key, mode);
-                return (
-                <Pressable
-                  key={category.key}
-                  accessibilityRole="button"
-                  onPress={() => router.push({ pathname: '/services', params: { category: category.key } })}
-                  style={({ pressed }) => [
-                    styles.categoryTile,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                    <ServiceGlyph category={category.key} color={tone.fg} size={24} />
                   </View>
-                  <Text style={[styles.categoryLabel, { color: colors.text }]} numberOfLines={2}>
-                    {t(`categories.${category.key}`)}
-                  </Text>
-                </Pressable>
-                );
-              })}
-            </View>
-          </AnimatedSection>
-
-          {featured.length ? (
-            <AnimatedSection delay={160} style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <H2>{t('home.topRated')}</H2>
-                <Pressable accessibilityRole="button" onPress={() => router.push('/services')} hitSlop={8}>
-                  <Text style={[styles.seeAll, { color: colors.accent }]}>{t('home.seeAll')}</Text>
-                </Pressable>
-              </View>
-
-              <View style={[styles.list, { borderColor: colors.border }]}>
-                {featured.map((service, index) => (
-                  <Pressable
-                    key={service.id}
-                    accessibilityRole="button"
-                    onPress={() => router.push(`/service/${service.id}`)}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <View style={[styles.rowIcon, { backgroundColor: colors.bgAlt, borderColor: colors.border }]}>
-                      <ServiceGlyph category={service.category} color={categoryColor(service.category, mode).fg} size={22} />
-                    </View>
-                    <View style={styles.rowCopy}>
-                      <Text selectable style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
-                        {service.name}
-                      </Text>
-                      <Muted numberOfLines={1} style={styles.rowMeta}>
-                        {service.town || 'Siliguri'} · {t(`categories.${service.category}`)}
-                      </Muted>
-                    </View>
-                    <Stars rating={service.rating} />
-                  </Pressable>
-                ))}
-              </View>
-            </AnimatedSection>
-          ) : null}
-
-          <AnimatedSection delay={200} style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <H2>{lang === 'hi' ? 'सरकारी और सार्वजनिक सेवाएँ' : 'Government & public services'}</H2>
-            </View>
-
-            <View style={[styles.list, { borderColor: colors.border }]}>
-              {TRUST_RAILS.map((rail, index) => (
-                <Pressable
-                  key={rail.label}
-                  accessibilityRole="link"
-                  accessibilityLabel={`${rail.label}. ${lang === 'hi' ? rail.hi : rail.en}`}
-                  onPress={() => openExternal(rail.url)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    index > 0 && { borderTopWidth: 1, borderTopColor: colors.border },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.rowCopy}>
-                    <Text style={[styles.rowLabel, { color: colors.text }]}>{rail.label}</Text>
-                    <Muted numberOfLines={2} style={styles.rowMeta}>
-                      {lang === 'hi' ? rail.hi : rail.en}
-                    </Muted>
-                  </View>
-                  <Feather name="external-link" size={20} color={colors.textSubtle} />
-                </Pressable>
-              ))}
-            </View>
-          </AnimatedSection>
-        </View>
         <SiteFooter services={allServices} />
       </ScrollView>
 

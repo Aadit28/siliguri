@@ -14,7 +14,8 @@ import {
   DMSans_800ExtraBold,
 } from '@expo-google-fonts/dm-sans';
 import '../src/lib/i18n';
-import { AuthProvider } from '../src/context/AuthContext';
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { getOnboardingKind } from '../src/lib/onboarding';
 import { LocaleProvider } from '../src/context/LocaleContext';
 import { AppThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { DisplayModeProvider, useDisplayMode } from '../src/context/DisplayModeContext';
@@ -91,10 +92,33 @@ function useNotificationDeepLinks() {
   }, [router]);
 }
 
+// First run for an account: show the intro before anything else. The check is
+// per user id (see src/lib/onboarding), so on a shared family phone the elder
+// and the son each get their own portal-specific walkthrough.
+function useOnboardingGate() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  const userId = user?.id ?? null;
+
+  useEffect(() => {
+    if (loading || !userId) return undefined;
+    let cancelled = false;
+    getOnboardingKind(userId).then((kind) => {
+      if (!cancelled && kind === null) router.push('/onboarding');
+    });
+    // The session can change under us (sign out, account switch); dropping the
+    // late answer stops a stale user's intro from opening over the new one.
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, userId, router]);
+}
+
 function RootStack() {
   const { colors, isDark } = useTheme();
   const { isComputerMode } = useDisplayMode();
   useNotificationDeepLinks();
+  useOnboardingGate();
 
   return (
     <>
@@ -126,6 +150,13 @@ function RootStack() {
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ presentation: 'modal', title: '' }} />
+            {/* Gesture off: the intro's own Skip is the way out, so a stray
+                swipe cannot drop a first-time user into an app they have not
+                been shown yet. */}
+            <Stack.Screen
+              name="onboarding"
+              options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
+            />
             <Stack.Screen name="privacy" options={{ title: '' }} />
             <Stack.Screen name="new-post" options={{ presentation: 'modal', title: '' }} />
             <Stack.Screen name="service/[id]" options={{ title: '' }} />

@@ -31,6 +31,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchServices } from '../../src/lib/api';
+import { useLivePoll } from '../../src/lib/useLivePoll';
 import {
   addFamilyFavorite,
   addFamilyReminder,
@@ -617,6 +618,15 @@ function OverviewSection({
     };
   }, [token, parentId]);
 
+  // Adherence, last-active and the overdue count all move when the senior acts.
+  // Quiet refresh for the same reason as the reminder list: the numbers update
+  // in place rather than collapsing the card into a spinner.
+  useLivePoll(() => {
+    fetchParentAnalytics(token, parentId)
+      .then((d) => setData(d))
+      .catch(() => undefined);
+  });
+
   if (loading) {
     return (
       <Card style={styles.stateCard}>
@@ -801,6 +811,16 @@ function RemindersSection({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, parentId]);
+
+  // The senior marks a dose done on their own phone; this list is how the
+  // guardian finds out. Quiet refresh — no spinner, since the rows are already
+  // on screen and flashing a loading state every few seconds would be worse
+  // than the stale row it replaces.
+  useLivePoll(() => {
+    listFamilyReminders(token, parentId)
+      .then(({ reminders: rows }) => setReminders(rows))
+      .catch(() => undefined);
+  });
 
   const groups = useMemo(() => {
     const today = todayISO();
