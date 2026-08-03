@@ -96,7 +96,6 @@ export default function AppHeader({ title }: { title?: string }) {
         {
           paddingTop: insets.top + space.sm,
           backgroundColor: colors.nav,
-          borderBottomColor: colors.border,
         },
       ]}
     >
@@ -189,10 +188,12 @@ export default function AppHeader({ title }: { title?: string }) {
 }
 
 const styles = StyleSheet.create({
+  // No rule under the bar. It read as a divider between a fixed chrome strip
+  // and the page below it; now that the bar scrolls away with the content,
+  // there are no two regions left for it to separate.
   header: {
     paddingHorizontal: space.md,
     paddingBottom: space.sm,
-    borderBottomWidth: 1,
   },
   shell: {
     width: '100%',
