@@ -411,11 +411,13 @@ export default function ParentDetail() {
 
   const token = session.access_token;
   const heading = parentName || t('family.title');
-  const sections: { key: SectionKey; label: string; icon: FeatherName }[] = [
-    { key: 'overview', label: t('family.analyticsTitle'), icon: 'activity' },
-    { key: 'reminders', label: t('family.remindersTitle'), icon: 'bell' },
-    { key: 'places', label: t('family.favoritesTitle'), icon: 'star' },
-    { key: 'care', label: t('family.careTeamTitle'), icon: 'users' },
+  const sections: { key: SectionKey; label: string; a11yLabel: string; icon: FeatherName }[] = [
+    // Short labels, not the section headings: "Saved services" does not fit a
+    // 10px caption under an icon, and a clipped word reads as a rendering bug.
+    { key: 'overview', label: t('family.dockTabs.overview'), a11yLabel: t('family.analyticsTitle'), icon: 'activity' },
+    { key: 'reminders', label: t('family.dockTabs.reminders'), a11yLabel: t('family.remindersTitle'), icon: 'bell' },
+    { key: 'places', label: t('family.dockTabs.places'), a11yLabel: t('family.favoritesTitle'), icon: 'star' },
+    { key: 'care', label: t('family.dockTabs.care'), a11yLabel: t('family.careTeamTitle'), icon: 'users' },
   ];
 
   return (
@@ -1028,8 +1030,12 @@ function RecentActivityCard({
 // The same recipe as the app's tab bar (LinearGradient bevel, blurred glass,
 // sliding pill) but driven by this screen's own section state — GlassTabBar is
 // bound to react-navigation's tab props and cannot be reused here.
-const DOCK_RADIUS = 24;
-const DOCK_PAD = 6;
+// Matches the senior tab bar: compact capsule, 44pt items, caption label.
+const DOCK_PAD = 4;
+const DOCK_ITEM_HEIGHT = 44;
+const DOCK_ITEM_WIDTH = 62;
+const DOCK_HEIGHT = DOCK_ITEM_HEIGHT + DOCK_PAD * 2;
+const DOCK_RADIUS = DOCK_HEIGHT / 2;
 // GSAP power4.out equivalent: fast launch, long soft landing.
 const DOCK_SLIDE_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 
@@ -1040,7 +1046,7 @@ function SectionDock({
   colors,
   mode,
 }: {
-  sections: { key: SectionKey; label: string; icon: FeatherName }[];
+  sections: { key: SectionKey; label: string; a11yLabel: string; icon: FeatherName }[];
   active: SectionKey;
   onSelect: (key: SectionKey) => void;
   colors: AppColors;
@@ -1066,7 +1072,10 @@ function SectionDock({
   }));
 
   return (
-    <View style={[dockStyles.dock, shadow.md]} testID="section-dock">
+    // Full-width wrapper only to centre the capsule; box-none so the page keeps
+    // receiving touches either side of it.
+    <View style={dockStyles.dockWrap} pointerEvents="box-none">
+      <View style={[dockStyles.dock, shadow.md]} testID="section-dock">
       <View style={[StyleSheet.absoluteFill, dockStyles.dockClip]}>
         {/* Bevel: light catches the top-left edge, falls off bottom-right. */}
         <LinearGradient
@@ -1106,12 +1115,12 @@ function SectionDock({
               // react-native-web does not forward accessibilityState.selected to
               // the DOM; the aria prop is what reaches a browser screen reader.
               aria-selected={focused}
-              accessibilityLabel={s.label}
+              accessibilityLabel={s.a11yLabel}
               testID={`dock-${s.key}`}
               style={dockStyles.item}
               onPress={() => onSelect(s.key)}
             >
-              <Feather name={s.icon} size={24} color={tint} />
+              <Feather name={s.icon} size={21} color={tint} />
               <Text style={[dockStyles.label, { color: tint }]} numberOfLines={1}>
                 {s.label}
               </Text>
@@ -1119,17 +1128,22 @@ function SectionDock({
           );
         })}
       </View>
+      </View>
     </View>
   );
 }
 
 const dockStyles = StyleSheet.create({
-  dock: {
+  dockWrap: {
     position: 'absolute',
-    left: 14,
-    right: 14,
+    left: 0,
+    right: 0,
     bottom: 14,
-    minHeight: 72,
+    alignItems: 'center',
+  },
+  dock: {
+    maxWidth: '100%',
+    height: DOCK_HEIGHT,
     borderRadius: DOCK_RADIUS,
     backgroundColor: 'transparent',
     elevation: 0,
@@ -1155,15 +1169,14 @@ const dockStyles = StyleSheet.create({
     borderWidth: 1,
   },
   item: {
-    flex: 1,
-    minHeight: 60,
+    width: DOCK_ITEM_WIDTH,
+    height: DOCK_ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 6,
+    gap: 1,
     paddingHorizontal: 2,
   },
-  label: { fontFamily: family.medium, fontSize: font.xs, lineHeight: 18 },
+  label: { fontFamily: family.medium, fontSize: 10, lineHeight: 12 },
 });
 
 // ----- Overview -----

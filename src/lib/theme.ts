@@ -237,7 +237,8 @@ export const ROW_MIN_HEIGHT = 64;
 
 // Bottom clearance for scroll content on phone: the tab bar floats (absolute,
 // glass) so screens must pad past it or the last row hides underneath.
-export const TAB_BAR_CLEARANCE = 118;
+// 52 capsule + 14 bottom offset + breathing room.
+export const TAB_BAR_CLEARANCE = 92;
 
 // Flat surfaces separated by hairline borders; elevation only for floating layers.
 export const shadow = {

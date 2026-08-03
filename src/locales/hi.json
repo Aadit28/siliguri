@@ -845,6 +845,12 @@
       "activityCompleted": "पूरा हुआ: {{title}}",
       "activityAdded": "रिमाइंडर जोड़ा गया: {{title}}",
       "activityCallback": "कॉलबैक मांगा गया: {{issue}}"
+    },
+    "dockTabs": {
+      "overview": "गतिविधि",
+      "reminders": "याद",
+      "places": "सहेजे",
+      "care": "देखभाल"
     }
   },
   "dialer": {

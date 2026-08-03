@@ -24,8 +24,14 @@ type FeatherName = React.ComponentProps<typeof Feather>['name'];
 // importable — recover the tab-bar props type from the Tabs component itself.
 type TabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 
-const DOCK_RADIUS = 24;
-const DOCK_PAD = 6;
+// Compact capsule, sized like the iOS tab bar rather than a full-width shelf:
+// item height is Apple's 44pt minimum target, the label drops to a caption, and
+// the bar hugs its items instead of stretching edge to edge.
+const DOCK_PAD = 4;
+const ITEM_HEIGHT = 44;
+const ITEM_WIDTH = 58;
+const DOCK_HEIGHT = ITEM_HEIGHT + DOCK_PAD * 2;
+const DOCK_RADIUS = DOCK_HEIGHT / 2;
 // GSAP power4.out equivalent: fast launch, long soft landing.
 const SLIDE_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 
@@ -46,7 +52,7 @@ function NavIcon({ name, color, focused }: { name: FeatherName; color: ColorValu
 
   return (
     <Animated.View style={style}>
-      <Feather name={name} size={24} color={color} />
+      <Feather name={name} size={21} color={color} />
     </Animated.View>
   );
 }
@@ -81,7 +87,10 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   if (isComputerMode) return null;
 
   return (
-    <View style={[styles.tabBar, shadow.md]}>
+    // Full-width wrapper only to centre the capsule; box-none so the page keeps
+    // receiving touches either side of it.
+    <View style={styles.dockWrap} pointerEvents="box-none">
+      <View style={[styles.tabBar, shadow.md]}>
       <View style={[StyleSheet.absoluteFill, styles.dockClip]}>
         {/* Bevel: light catches the top-left edge, falls off bottom-right. */}
         <LinearGradient
@@ -141,11 +150,14 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
                 }
               }}
             >
-              {options.tabBarIcon ? options.tabBarIcon({ focused, color: tint, size: 24 }) : null}
-              <Text style={[styles.label, { color: tint }]}>{label}</Text>
+              {options.tabBarIcon ? options.tabBarIcon({ focused, color: tint, size: 21 }) : null}
+              <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
+                {label}
+              </Text>
             </Pressable>
           );
         })}
+      </View>
       </View>
     </View>
   );
@@ -206,12 +218,16 @@ export default function AppSectionLayout() {
 
 const styles = StyleSheet.create({
   // Detached floating glass dock: content scrolls underneath, blur samples it live.
-  tabBar: {
+  dockWrap: {
     position: 'absolute',
-    left: 14,
-    right: 14,
+    left: 0,
+    right: 0,
     bottom: 14,
-    minHeight: 72,
+    alignItems: 'center',
+  },
+  tabBar: {
+    maxWidth: '100%',
+    height: DOCK_HEIGHT,
     borderRadius: DOCK_RADIUS,
     backgroundColor: 'transparent',
     elevation: 0,
@@ -245,12 +261,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   item: {
-    flex: 1,
-    minHeight: 60,
+    width: ITEM_WIDTH,
+    height: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 6,
+    gap: 1,
   },
-  label: { fontFamily: family.medium, fontSize: font.sm, lineHeight: 18 },
+  label: { fontFamily: family.medium, fontSize: 10, lineHeight: 12 },
 });

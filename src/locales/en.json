@@ -845,6 +845,12 @@
       "activityCompleted": "Marked done: {{title}}",
       "activityAdded": "Reminder added: {{title}}",
       "activityCallback": "Callback requested: {{issue}}"
+    },
+    "dockTabs": {
+      "overview": "Activity",
+      "reminders": "Reminders",
+      "places": "Saved",
+      "care": "Care"
     }
   },
   "dialer": {
