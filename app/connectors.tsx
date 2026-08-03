@@ -146,11 +146,12 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: space.md,
       paddingVertical: space.md,
     },
+    // Same reasoning as the row glyphs on Home and Services: a filled disc
+    // behind a 20px icon reads as a button the row is not. Width kept so every
+    // row's text starts on the same edge.
     rowLead: {
       width: 44,
       height: 44,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceTint,
       alignItems: 'center',
       justifyContent: 'center',
     },
