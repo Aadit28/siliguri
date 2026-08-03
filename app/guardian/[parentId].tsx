@@ -12,6 +12,15 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import Animated, {
+  Easing,
+  FadeIn,
+  LinearTransition,
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
@@ -440,7 +449,15 @@ export default function ParentDetail() {
             <Muted style={styles.stateText}>{t('family.errorNotLinked')}</Muted>
           </Card>
         ) : section === 'overview' ? (
-          <OverviewSection token={token} parentId={parentId} parentName={parentName} styles={styles} colors={colors} isWide={isWide} />
+          <OverviewSection
+            token={token}
+            parentId={parentId}
+            parentName={parentName}
+            styles={styles}
+            colors={colors}
+            isWide={isWide}
+            onOpenCareTeam={() => setSection('care')}
+          />
         ) : section === 'reminders' ? (
           <RemindersSection token={token} parentId={parentId} styles={styles} colors={colors} currentUserId={user.id} />
         ) : section === 'places' ? (
@@ -457,6 +474,166 @@ export default function ParentDetail() {
 
 type Styles = ReturnType<typeof makeStyles>;
 
+// ----- Overview tiles -----
+
+type TileKey =
+  | 'lastActive'
+  | 'assistant7d'
+  | 'assistant30d'
+  | 'upcoming'
+  | 'overdue'
+  | 'done7d'
+  | 'careTeam'
+  | 'favorites'
+  | 'callbacks';
+
+const tileDetailIn = FadeIn.duration(180).easing(Easing.out(Easing.cubic)).reduceMotion(ReduceMotion.System);
+const tileLayout = LinearTransition.duration(200).easing(Easing.out(Easing.cubic)).reduceMotion(ReduceMotion.System);
+
+// The parent's day, not the guardian's: a stamp is bucketed by its Kolkata
+// calendar date so "Yesterday" means yesterday where the senior lives.
+function istDateISO(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const k = new Date(d.getTime() + IST_OFFSET_MS);
+  return toISO(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate());
+}
+
+function relativeDayLabel(iso: string, t: (key: string, opts?: Record<string, unknown>) => string) {
+  const dayISO = istDateISO(iso);
+  if (!dayISO) return null;
+  const [y, m, d] = dayISO.split('-').map(Number);
+  const [ty, tm, td] = todayISO().split('-').map(Number);
+  const diff = Math.round((Date.UTC(ty, (tm || 1) - 1, td || 1) - Date.UTC(y, (m || 1) - 1, d || 1)) / 86400000);
+  // A future stamp only happens on clock skew; it is still "today" to a reader.
+  if (diff <= 0) return t('family.tile.today');
+  if (diff === 1) return t('family.tile.yesterday');
+  return t('family.tile.daysAgo', { days: diff });
+}
+
+type BarSegment = { key: string; value: number; color: string; emphasized: boolean };
+
+// Proportion bar drawn from plain Views: each segment's percentage width is the
+// number it represents. Purely decorative — every figure it encodes is also
+// printed in the legend and summary line beneath it.
+function ProportionBar({ segments, styles }: { segments: BarSegment[]; styles: Styles }) {
+  const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0);
+  if (total <= 0) return null;
+  return (
+    <View style={styles.barTrack} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      {segments.map((s) => {
+        const value = Math.max(0, s.value);
+        if (value === 0) return null;
+        return (
+          <View
+            key={s.key}
+            testID={`bar-seg-${s.key}`}
+            style={[
+              styles.barSegment,
+              { width: `${(value / total) * 100}%`, backgroundColor: s.color, opacity: s.emphasized ? 1 : 0.4 },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+function LegendRow({
+  color,
+  label,
+  value,
+  emphasized,
+  styles,
+}: {
+  color: string;
+  label: string;
+  value: number;
+  emphasized: boolean;
+  styles: Styles;
+}) {
+  return (
+    <View style={styles.legendRow}>
+      <View style={[styles.legendDot, { backgroundColor: color, opacity: emphasized ? 1 : 0.4 }]} />
+      <Text style={[styles.legendLabel, emphasized ? styles.legendLabelOn : null]}>{label}</Text>
+      <Text style={styles.legendValue}>{value}</Text>
+    </View>
+  );
+}
+
+// Accordion tile: the whole head is the button, the chevron rotates, and the
+// detail block fades in beneath it. One tile open at a time is handled by the
+// parent, so this only reports taps.
+function StatTile({
+  tileKey,
+  label,
+  value,
+  expanded,
+  onToggle,
+  basis,
+  colors,
+  styles,
+  children,
+}: {
+  tileKey: TileKey;
+  label: string;
+  value: string;
+  expanded: boolean;
+  onToggle: () => void;
+  basis: `${number}%`;
+  colors: AppColors;
+  styles: Styles;
+  children: React.ReactNode;
+}) {
+  const { t } = useTranslation();
+  const rotation = useSharedValue(expanded ? 1 : 0);
+
+  useEffect(() => {
+    rotation.value = withTiming(expanded ? 1 : 0, {
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [expanded, rotation]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value * 180}deg` }],
+  }));
+
+  return (
+    <Animated.View layout={tileLayout} style={[styles.statTileOuter, { flexBasis: basis }]}>
+      <Card style={styles.statCard}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          // react-native-web does not forward accessibilityState.expanded to the
+          // DOM; the aria prop is what actually reaches a browser screen reader.
+          aria-expanded={expanded}
+          accessibilityLabel={`${label}: ${value}`}
+          accessibilityHint={t(expanded ? 'family.tile.collapse' : 'family.tile.expand')}
+          onPress={onToggle}
+          testID={`tile-${tileKey}`}
+          style={({ pressed }) => [styles.statHeader, pressed ? { opacity: 0.72 } : null]}
+        >
+          <View style={styles.statHeaderText}>
+            {/* No numberOfLines: a full date must wrap, never truncate to "3 Aug 202…". */}
+            <Text style={styles.statValue}>{value}</Text>
+            <Text style={styles.statLabel}>{label}</Text>
+          </View>
+          <Animated.View style={chevronStyle}>
+            <Feather name="chevron-down" size={20} color={colors.textMuted} />
+          </Animated.View>
+        </Pressable>
+        {expanded ? (
+          <Animated.View entering={tileDetailIn} style={styles.tileDetail} testID={`tile-detail-${tileKey}`}>
+            {children}
+          </Animated.View>
+        ) : null}
+      </Card>
+    </Animated.View>
+  );
+}
+
 // ----- Overview -----
 
 function OverviewSection({
@@ -466,6 +643,7 @@ function OverviewSection({
   styles,
   colors,
   isWide,
+  onOpenCareTeam,
 }: {
   token: string;
   parentId: string;
@@ -473,9 +651,13 @@ function OverviewSection({
   styles: Styles;
   colors: AppColors;
   isWide: boolean;
+  onOpenCareTeam: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<ParentAnalytics | null>(null);
+  // One tile open at a time. Keyed by tile identity, not list position, so the
+  // live poll replacing `data` never closes or reassigns the open tile.
+  const [openTile, setOpenTile] = useState<TileKey | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
@@ -642,29 +824,232 @@ function OverviewSection({
     );
   }
 
-  const lastActive = data.lastActiveAt
-    ? formatISTStamp(data.lastActiveAt)
+  // Collapsed value stays short so it can never clip; the full IST stamp is
+  // what the expanded body is for.
+  const lastActiveRelative = data.lastActiveAt
+    ? relativeDayLabel(data.lastActiveAt, t) ?? formatISTStamp(data.lastActiveAt)
     : t('family.neverActive');
 
-  const stats: { label: string; value: string | number }[] = [
-    { label: t('family.lastActiveLabel'), value: lastActive },
-    { label: t('family.assistantEvents7d'), value: data.assistantEvents7d },
-    { label: t('family.assistantEvents30d'), value: data.assistantEvents30d },
-    { label: t('family.upcomingCount'), value: data.reminders.upcoming },
-    { label: t('family.overdueCount'), value: data.reminders.overdue },
-    { label: t('family.doneThisWeek'), value: data.reminders.done7d },
-    { label: t('family.careTeamCount'), value: data.careTeamCount },
-    { label: t('family.favoritesCount'), value: data.favoritesCount },
+  const upcoming = Math.max(0, data.reminders.upcoming);
+  const overdue = Math.max(0, data.reminders.overdue);
+  const done7d = Math.max(0, data.reminders.done7d);
+  const reminderTotal = upcoming + overdue + done7d;
+
+  const events7d = Math.max(0, data.assistantEvents7d);
+  const events30d = Math.max(0, data.assistantEvents30d);
+  // 30d should contain 7d, but never trust it: a negative remainder would draw
+  // a bar that lies. Clamp at zero and widen the denominator instead.
+  const eventsEarlier = Math.max(0, events30d - events7d);
+  const eventsTotal = events7d + eventsEarlier;
+
+  const openCallbacks = data.callbacks.filter((cb) => cb.status !== 'closed' && cb.status !== 'spam');
+
+  function reminderDetail(emphasis: 'upcoming' | 'overdue' | 'done') {
+    if (reminderTotal === 0) {
+      return <Text style={styles.tileText}>{t('family.tile.remindersEmpty')}</Text>;
+    }
+    return (
+      <>
+        <ProportionBar
+          styles={styles}
+          segments={[
+            { key: 'upcoming', value: upcoming, color: colors.accent, emphasized: emphasis === 'upcoming' },
+            { key: 'overdue', value: overdue, color: colors.danger, emphasized: emphasis === 'overdue' },
+            { key: 'done', value: done7d, color: colors.success, emphasized: emphasis === 'done' },
+          ]}
+        />
+        <LegendRow
+          styles={styles}
+          color={colors.accent}
+          label={t('family.upcomingCount')}
+          value={upcoming}
+          emphasized={emphasis === 'upcoming'}
+        />
+        <LegendRow
+          styles={styles}
+          color={colors.danger}
+          label={t('family.overdueCount')}
+          value={overdue}
+          emphasized={emphasis === 'overdue'}
+        />
+        <LegendRow
+          styles={styles}
+          color={colors.success}
+          label={t('family.doneThisWeek')}
+          value={done7d}
+          emphasized={emphasis === 'done'}
+        />
+        <Text style={styles.tileText}>
+          {t('family.tile.remindersSummary', { total: reminderTotal, upcoming, overdue, done: done7d })}
+        </Text>
+      </>
+    );
+  }
+
+  function assistantDetail(emphasis: 'recent' | 'earlier') {
+    if (eventsTotal === 0) {
+      return <Text style={styles.tileText}>{t('family.tile.assistantEmpty')}</Text>;
+    }
+    return (
+      <>
+        <ProportionBar
+          styles={styles}
+          segments={[
+            { key: 'recent', value: events7d, color: colors.accent, emphasized: emphasis === 'recent' },
+            { key: 'earlier', value: eventsEarlier, color: colors.primary, emphasized: emphasis === 'earlier' },
+          ]}
+        />
+        <LegendRow
+          styles={styles}
+          color={colors.accent}
+          label={t('family.tile.assistantLegendRecent')}
+          value={events7d}
+          emphasized={emphasis === 'recent'}
+        />
+        <LegendRow
+          styles={styles}
+          color={colors.primary}
+          label={t('family.tile.assistantLegendEarlier')}
+          value={eventsEarlier}
+          emphasized={emphasis === 'earlier'}
+        />
+        <Text style={styles.tileText}>
+          {t('family.tile.assistantSummary', { total: eventsTotal, recent: events7d, earlier: eventsEarlier })}
+        </Text>
+      </>
+    );
+  }
+
+  const tiles: { key: TileKey; label: string; value: string; detail: React.ReactNode }[] = [
+    {
+      key: 'lastActive',
+      label: t('family.lastActiveLabel'),
+      value: lastActiveRelative,
+      detail: (
+        <Text style={styles.tileText}>
+          {data.lastActiveAt
+            ? t('family.tile.lastActiveFull', { stamp: formatISTStamp(data.lastActiveAt) })
+            : t('family.tile.lastActiveNever')}
+        </Text>
+      ),
+    },
+    {
+      key: 'assistant7d',
+      label: t('family.assistantEvents7d'),
+      value: String(data.assistantEvents7d),
+      detail: assistantDetail('recent'),
+    },
+    {
+      key: 'assistant30d',
+      label: t('family.assistantEvents30d'),
+      value: String(data.assistantEvents30d),
+      detail: (
+        <>
+          {assistantDetail('earlier')}
+          <Text style={styles.tileText}>{t('family.tile.assistantWhat')}</Text>
+        </>
+      ),
+    },
+    {
+      key: 'upcoming',
+      label: t('family.upcomingCount'),
+      value: String(data.reminders.upcoming),
+      detail: reminderDetail('upcoming'),
+    },
+    {
+      key: 'overdue',
+      label: t('family.overdueCount'),
+      value: String(data.reminders.overdue),
+      detail: reminderDetail('overdue'),
+    },
+    {
+      key: 'done7d',
+      label: t('family.doneThisWeek'),
+      value: String(data.reminders.done7d),
+      detail: reminderDetail('done'),
+    },
+    {
+      key: 'careTeam',
+      label: t('family.careTeamCount'),
+      value: String(data.careTeamCount),
+      // The care team list lives in its own tab and its own fetch; sending the
+      // guardian there beats firing a second request from a stat tile.
+      detail: (
+        <>
+          <Text style={styles.tileText}>{t('family.tile.careTeamSummary', { n: data.careTeamCount })}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('family.tile.careTeamOpen')}
+            onPress={onOpenCareTeam}
+            style={({ pressed }) => [styles.tileLink, pressed ? { backgroundColor: colors.surfaceTint } : null]}
+          >
+            <Feather name="users" size={16} color={colors.accent} />
+            <Text style={[styles.tileLinkText, { color: colors.accent }]}>{t('family.tile.careTeamOpen')}</Text>
+          </Pressable>
+        </>
+      ),
+    },
+    {
+      key: 'favorites',
+      label: t('family.favoritesCount'),
+      value: String(data.favoritesCount),
+      detail: (
+        <>
+          <Text style={styles.tileText}>{t('family.tile.favoritesSummary', { n: data.favoritesCount })}</Text>
+          <Text style={styles.tileText}>{t('family.tile.favoritesWhat')}</Text>
+        </>
+      ),
+    },
+    {
+      key: 'callbacks',
+      label: t('family.tile.callbacksLabel'),
+      value: String(openCallbacks.length),
+      detail:
+        data.callbacks.length === 0 ? (
+          <Text style={styles.tileText}>{t('family.tile.callbacksNone')}</Text>
+        ) : (
+          <>
+            <Text style={styles.tileText}>
+              {t('family.tile.callbacksSummary', { open: openCallbacks.length, total: data.callbacks.length })}
+            </Text>
+            {data.callbacks.map((cb) => (
+              // Keyed by the row's own data, not its index: the live poll swaps
+              // the array wholesale and index keys would remount every row.
+              <View key={`${cb.created_at}|${cb.status}|${cb.issue ?? ''}`} style={styles.callbackRow}>
+                <Text style={styles.callbackIssue}>{cb.issue || t('family.tile.callbackNoIssue')}</Text>
+                <Text style={styles.callbackMeta}>
+                  {[
+                    t(`family.callbackStatus.${cb.status}`, { defaultValue: cb.status }),
+                    relativeDayLabel(cb.created_at, t),
+                    formatISTStamp(cb.created_at),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+              </View>
+            ))}
+          </>
+        ),
+    },
   ];
 
   return (
     <View style={styles.sectionBody}>
       <View style={styles.statGrid}>
-        {stats.map((s) => (
-          <Card key={s.label} style={[styles.statCard, { flexBasis: isWide ? '31%' : '47%' }]}>
-            <Text style={styles.statValue} numberOfLines={1}>{String(s.value)}</Text>
-            <Text style={styles.statLabel}>{s.label}</Text>
-          </Card>
+        {tiles.map((tile) => (
+          <StatTile
+            key={tile.key}
+            tileKey={tile.key}
+            label={tile.label}
+            value={tile.value}
+            expanded={openTile === tile.key}
+            onToggle={() => setOpenTile((current) => (current === tile.key ? null : tile.key))}
+            basis={openTile === tile.key ? '100%' : isWide ? '31%' : '47%'}
+            colors={colors}
+            styles={styles}
+          >
+            {tile.detail}
+          </StatTile>
         ))}
       </View>
 
@@ -732,28 +1117,6 @@ function OverviewSection({
         ) : null}
       </Card>
 
-      <H2 style={styles.subHeader}>{t('family.recentCallbacks')}</H2>
-      <Card style={styles.listCard}>
-        {data.callbacks.length === 0 ? (
-          <View style={styles.stateBlock}>
-            <Muted style={styles.stateText}>{t('family.noCallbacks')}</Muted>
-          </View>
-        ) : (
-          data.callbacks.map((cb, index) => (
-            <View key={`${cb.created_at}-${index}`}>
-              <View style={styles.listRow}>
-                <View style={styles.rowBody}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{cb.issue || '—'}</Text>
-                  <Text style={styles.rowMeta}>
-                    {t(`family.callbackStatus.${cb.status}`, { defaultValue: cb.status })} · {formatISTStamp(cb.created_at)}
-                  </Text>
-                </View>
-              </View>
-              {index < data.callbacks.length - 1 ? <View style={styles.rowDivider} /> : null}
-            </View>
-          ))
-        )}
-      </Card>
     </View>
   );
 }
@@ -1535,9 +1898,55 @@ function makeStyles(colors: AppColors, isWide: boolean) {
     sectionIntro: { marginBottom: space.xs },
     subHeader: { marginTop: space.md, marginBottom: space.sm },
     statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
-    statCard: { flexGrow: 1, gap: 4, paddingVertical: space.lg },
+    statTileOuter: { flexGrow: 1, minWidth: 0 },
+    statCard: { flexGrow: 1, gap: 4, paddingVertical: space.sm },
+    statHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: TAP, paddingVertical: space.sm },
+    statHeaderText: { flex: 1, minWidth: 0, gap: 4 },
     statValue: { fontSize: font.xl, fontFamily: family.semibold, color: colors.text },
     statLabel: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted, lineHeight: Math.round(font.sm * 1.4) },
+    tileDetail: {
+      marginTop: space.sm,
+      paddingTop: space.md,
+      gap: space.xs,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    tileText: {
+      fontSize: font.sm,
+      fontFamily: family.regular,
+      color: colors.textMuted,
+      lineHeight: Math.round(font.sm * 1.45),
+      marginTop: space.xs,
+    },
+    barTrack: {
+      flexDirection: 'row',
+      height: 14,
+      borderRadius: radius.pill,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceTint,
+      marginTop: space.xs,
+      marginBottom: space.xs,
+    },
+    barSegment: { height: '100%' },
+    legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 28 },
+    legendDot: { width: 12, height: 12, borderRadius: radius.pill },
+    legendLabel: { flex: 1, minWidth: 0, fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
+    legendLabelOn: { fontFamily: family.semibold, color: colors.text },
+    legendValue: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text },
+    tileLink: {
+      minHeight: TAP,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingHorizontal: space.sm,
+      marginLeft: -space.sm,
+      borderRadius: radius.pill,
+    },
+    tileLinkText: { fontSize: font.sm, fontFamily: family.semibold },
+    callbackRow: { gap: 2, paddingVertical: space.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+    callbackIssue: { fontSize: font.sm, fontFamily: family.semibold, color: colors.text, lineHeight: Math.round(font.sm * 1.45) },
+    callbackMeta: { fontSize: font.xs, fontFamily: family.medium, color: colors.textSubtle, lineHeight: Math.round(font.xs * 1.4) },
     cardTitle: { fontSize: font.md, fontFamily: family.semibold, lineHeight: Math.round(font.md * 1.5), color: colors.text },
     formAction: { marginTop: space.lg },
     listCard: { paddingHorizontal: 0, paddingVertical: space.xs },
