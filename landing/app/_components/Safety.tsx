@@ -3,7 +3,7 @@
 import { Phone } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
-import { Device } from "./mockups/Device";
+import { Panel } from "./mockups/Device";
 import { SceneAsk } from "./mockups/scenes";
 
 export function Safety() {
@@ -16,11 +16,12 @@ export function Safety() {
         <Reveal className="lg:col-span-5">
           {/* The moderation queue itself, coded, so the claim beside it is
               illustrated by the state it describes: a post sitting in review. */}
-          <div className="mx-auto w-[290px] rounded-[28px] border-[7px] border-ink bg-ink shadow-[0_24px_60px_rgba(10,10,10,0.16)] lg:mx-0">
-            <Device tab="ask" className="h-[420px] rounded-[21px] border-0">
-              <SceneAsk />
-            </Device>
-          </div>
+          <Panel
+            label="ask"
+            className="w-full shadow-[0_18px_44px_rgba(10,10,10,0.10)]"
+          >
+            <SceneAsk />
+          </Panel>
         </Reveal>
 
         <div className="lg:col-span-7">

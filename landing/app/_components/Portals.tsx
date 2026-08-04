@@ -3,7 +3,7 @@
 import { Buildings, HouseLine, UsersThree } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
-import { Device, type TabKey } from "./mockups/Device";
+import { Panel, type TabKey } from "./mockups/Device";
 import { SceneGuardian, SceneServices } from "./mockups/scenes";
 
 function Chip({
@@ -32,22 +32,15 @@ function Chip({
  */
 function ScreenPeek({
   children,
-  width,
   tab,
 }: {
   children: React.ReactNode;
-  width: number;
   tab: TabKey;
 }) {
   return (
-    <div
-      style={{ maxWidth: width, height: Math.round(width * 1.5) }}
-      className="-mb-7 w-full overflow-hidden sm:-mb-8"
-    >
-      <Device tab={tab} showSignIn={false} className="h-full">
-        {children}
-      </Device>
-    </div>
+    <Panel label={tab} className="w-full shadow-[0_12px_32px_rgba(10,10,10,0.07)]">
+      {children}
+    </Panel>
   );
 }
 
@@ -89,7 +82,7 @@ export function Portals() {
             <p className={`mt-4 max-w-[44ch] text-[16px] leading-relaxed text-ink-muted ${deva}`}>
               {p.parent.body}
             </p>
-            <div className="mt-8 grid grow grid-cols-1 items-end gap-8 sm:grid-cols-[1fr_220px]">
+            <div className="mt-8 grid grow grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
               <ul className={`space-y-3 self-start text-[15px] text-ink ${deva}`}>
                 {p.parent.bullets.map((item) => (
                   <li key={item} className="flex gap-3">
@@ -98,7 +91,7 @@ export function Portals() {
                   </li>
                 ))}
               </ul>
-              <ScreenPeek width={220} tab="services">
+              <ScreenPeek tab="services">
                 <SceneServices />
               </ScreenPeek>
             </div>
@@ -119,8 +112,8 @@ export function Portals() {
             <p className={`mt-4 text-[16px] leading-relaxed text-ink-muted ${deva}`}>
               {p.guardian.body}
             </p>
-            <div className="mt-auto flex justify-center pt-10">
-              <ScreenPeek width={220} tab="home">
+            <div className="mt-8">
+              <ScreenPeek tab="home">
                 <SceneGuardian />
               </ScreenPeek>
             </div>

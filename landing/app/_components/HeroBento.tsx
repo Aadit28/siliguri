@@ -18,8 +18,8 @@ const ease = [0.16, 1, 0.3, 1] as const;
 function DitherCorner({ fill }: { fill: string }) {
   return (
     <svg
-      width="28"
-      height="28"
+      width="32"
+      height="32"
       viewBox="0 0 28 28"
       fill="none"
       aria-hidden="true"
@@ -75,7 +75,7 @@ function Tile({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, delay, ease }}
       whileHover={reduce ? undefined : { y: -6 }}
-      className={`relative flex flex-col overflow-hidden rounded-[18px] border p-5 shadow-[0_10px_28px_rgba(10,10,10,0.05)] transition-shadow duration-300 hover:shadow-[0_18px_44px_rgba(10,10,10,0.12)] lg:p-6 xl:p-7 ${tones[tone]} ${span}`}
+      className={`relative flex flex-col overflow-hidden rounded-[20px] border p-6 shadow-[0_10px_28px_rgba(10,10,10,0.05)] transition-shadow duration-300 hover:shadow-[0_18px_44px_rgba(10,10,10,0.12)] lg:p-7 xl:p-8 ${tones[tone]} ${span}`}
     >
       {/* Texture on the green tiles only: the same mask and blend the amphi
           tiles use, so the pastel reads as a surface rather than a flat fill. */}
@@ -99,7 +99,7 @@ function Tile({
         />
       )}
 
-      <p className="relative z-10 pr-9 font-mono text-[10.5px] font-medium tracking-[0.18em] uppercase">
+      <p className="relative z-10 pr-9 font-mono text-[12px] font-medium tracking-[0.18em] uppercase">
         <span className="opacity-55">{num} · </span>
         {tag}
       </p>
@@ -114,8 +114,8 @@ function Tile({
 /** Inset panel, inheriting its tile's ink through currentColor. */
 function Inset({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div data-inset className="mt-auto rounded-[12px] border border-current/15 bg-current/[0.06] p-3 backdrop-blur-[2px]">
-      <p className="font-mono text-[9.5px] tracking-[0.16em] uppercase opacity-60">
+    <div data-inset className="mt-auto rounded-[13px] border border-current/15 bg-current/[0.06] p-3.5 backdrop-blur-[2px]">
+      <p className="font-mono text-[11px] tracking-[0.16em] uppercase opacity-60">
         {label}
       </p>
       <div className="mt-1.5">{children}</div>
@@ -130,7 +130,7 @@ function PhoneCell({ delay }: { delay: number }) {
       initial={reduce ? false : { opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, delay, ease }}
-      className="col-span-2 flex min-h-0 flex-col sm:col-span-3 sm:row-span-3"
+      className="col-span-2 flex min-h-0 flex-col sm:col-span-4 sm:row-span-2"
     >
       <AppMockup
         className="min-h-0 grow drop-shadow-[0_18px_40px_rgba(10,10,10,0.14)]"
@@ -170,12 +170,12 @@ function DirectoryTile({ delay }: { delay: number }) {
       span="col-span-2 sm:col-span-4"
     >
       <div ref={ref} className="mt-4 flex items-center gap-3">
-        <SealCheck size={26} weight="fill" className="shrink-0 opacity-80" />
+        <SealCheck size={30} weight="fill" className="shrink-0 opacity-80" />
         <span className="flex items-baseline gap-2">
-          <span data-figure className="text-[34px] leading-none font-bold tracking-[-0.04em] tabular-nums xl:text-[42px]">
+          <span data-figure className="text-[39px] leading-none font-bold tracking-[-0.04em] tabular-nums xl:text-[48px]">
             {shown}
           </span>
-          <span className={`text-[16px] font-semibold xl:text-[18px] ${deva}`}>
+          <span className={`text-[18px] font-semibold xl:text-[21px] ${deva}`}>
             {t.hero.cards.listingsLabel}
           </span>
         </span>
@@ -187,14 +187,14 @@ function DirectoryTile({ delay }: { delay: number }) {
         {CITIES.map((c, i) => (
           <li key={c.key}>
             <div className="flex items-baseline justify-between gap-1">
-              <span className={`truncate text-[13px] font-medium ${deva}`}>
+              <span className={`truncate text-[15px] font-medium ${deva}`}>
                 {t.cities[c.key]}
               </span>
-              <span className="shrink-0 text-[13px] font-semibold tabular-nums">
+              <span className="shrink-0 text-[15px] font-semibold tabular-nums">
                 {c.total}
               </span>
             </div>
-            <span className="mt-1.5 block h-2 overflow-hidden rounded-full bg-current/15">
+            <span className="mt-2 block h-2.5 overflow-hidden rounded-full bg-current/15">
               <motion.span
                 className="block h-full rounded-full bg-current"
                 initial={reduce ? false : { width: 0 }}
@@ -205,53 +205,6 @@ function DirectoryTile({ delay }: { delay: number }) {
           </li>
         ))}
       </ul>
-    </Tile>
-  );
-}
-
-function AssistantTile({ delay }: { delay: number }) {
-  const { t, deva } = useLang();
-  return (
-    <Tile
-      num="02"
-      tag={t.hero.cards.tags.assistant}
-      tone="paper"
-      index={1}
-      delay={delay}
-      span="col-span-2"
-    >
-      <p className={`mt-4 text-[17px] leading-snug font-semibold xl:text-[19px] ${deva}`}>
-        {t.hero.cards.assistantLabel}
-      </p>
-      <Inset label="hi-IN">
-        {/* Always Hindi: this is the sentence a parent actually says. */}
-        <p lang="hi" className="deva truncate text-[13px] leading-snug">
-          “मुझे रोज़ शाम 8 बजे…”
-        </p>
-      </Inset>
-    </Tile>
-  );
-}
-
-function RemindersTile({ delay }: { delay: number }) {
-  const { t, deva } = useLang();
-  return (
-    <Tile
-      num="03"
-      tag={t.hero.cards.tags.reminders}
-      tone="sage"
-      index={2}
-      delay={delay}
-      span="col-span-2"
-    >
-      <p className={`mt-4 text-[17px] leading-snug font-semibold xl:text-[19px] ${deva}`}>
-        {t.hero.cards.remindersLabel}
-      </p>
-      <Inset label="8:00 PM">
-        <p className={`text-[13px] leading-snug ${deva}`}>
-          {t.hero.cards.remindersNote}
-        </p>
-      </Inset>
     </Tile>
   );
 }
@@ -271,8 +224,8 @@ function SosTile({ delay }: { delay: number }) {
       span="col-span-2 sm:col-span-4"
     >
       <div className="mt-4 flex items-center gap-4">
-        <span className="relative grid size-11 shrink-0 place-items-center rounded-full bg-emergency text-paper">
-          <Phone size={20} weight="fill" />
+        <span className="relative grid size-13 shrink-0 place-items-center rounded-full bg-emergency text-paper">
+          <Phone size={23} weight="fill" />
           {!reduce && (
             <motion.span
               className="absolute inset-0 rounded-full"
@@ -287,10 +240,10 @@ function SosTile({ delay }: { delay: number }) {
           )}
         </span>
         <span>
-          <span className="block text-[22px] leading-none font-bold text-emergency xl:text-[26px]">
+          <span className="block text-[25px] leading-none font-bold text-emergency xl:text-[30px]">
             SOS 112
           </span>
-          <span className={`mt-1.5 block text-[14px] leading-snug text-ink-muted ${deva}`}>
+          <span className={`mt-2 block text-[16px] leading-snug text-ink-muted ${deva}`}>
             {t.hero.cards.sosNote}
           </span>
         </span>
@@ -301,11 +254,9 @@ function SosTile({ delay }: { delay: number }) {
 
 export function HeroBento() {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-7 sm:gap-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-8 sm:gap-4">
       <PhoneCell delay={0.1} />
       <DirectoryTile delay={0.18} />
-      <AssistantTile delay={0.26} />
-      <RemindersTile delay={0.3} />
       <SosTile delay={0.34} />
     </div>
   );

@@ -26,7 +26,7 @@ export function Hero() {
       id="top"
       className="hero-canvas relative overflow-hidden border-b border-line lg:flex lg:min-h-[calc(100dvh-68px)] lg:items-center"
     >
-      <div className="relative z-10 mx-auto grid w-full max-w-[1440px] grid-cols-1 items-center gap-12 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-12 lg:gap-10 lg:py-8 xl:gap-12 xl:py-12">
+      <div className="relative z-10 mx-auto grid w-full max-w-[1560px] grid-cols-1 items-center gap-12 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-12 lg:gap-10 lg:py-8 xl:gap-12 xl:py-12">
         <div className="lg:col-span-6">
           <motion.p
             {...rise(0)}

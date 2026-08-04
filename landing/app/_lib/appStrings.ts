@@ -20,6 +20,14 @@ export type AppStrings = {
   today: { title: string; done: string; due: string; walk: string; call: string; morning: string; evening: string };
   guardian: { title: string; forWhom: string; note: string };
   ask: { title: string; inReview: string; reviewNote: string; postTitle: string; postBody: string; author: string };
+  admin: {
+    title: string;
+    scope: string;
+    queue: string;
+    pending: string;
+    done: string;
+    rows: [string, string, string];
+  };
 };
 
 const en: AppStrings = {
@@ -68,6 +76,14 @@ const en: AppStrings = {
     postBody: "My father had a knee operation. Looking for someone who can visit at home…",
     author: "Priya · London",
   },
+  admin: {
+    title: "City desk",
+    scope: "Scoped to Siliguri",
+    queue: "Callback queue",
+    pending: "Waiting",
+    done: "Called",
+    rows: ["Pradhan Nagar · water", "Ward 12 · street light", "Bhaktinagar · elder care"],
+  },
 };
 
 const hi: AppStrings = {
@@ -115,6 +131,14 @@ const hi: AppStrings = {
     postTitle: "पिताजी के लिए भरोसेमंद फ़िज़ियोथेरेपिस्ट?",
     postBody: "पिताजी के घुटने का ऑपरेशन हुआ है। कोई जो घर आकर देख सके…",
     author: "प्रिया · लंदन",
+  },
+  admin: {
+    title: "सिटी डेस्क",
+    scope: "सिर्फ़ सिलीगुड़ी तक सीमित",
+    queue: "कॉलबैक कतार",
+    pending: "प्रतीक्षा में",
+    done: "कॉल हो गया",
+    rows: ["प्रधान नगर · पानी", "वार्ड 12 · स्ट्रीट लाइट", "भक्तिनगर · बुज़ुर्ग देखभाल"],
   },
 };
 
