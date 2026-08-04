@@ -54,6 +54,17 @@ module.exports = async function handler(req, res) {
       .then(({ error }) => {
         if (error) console.warn('push_tokens purge failed:', error.message);
       });
+    // Sessions last 30 days and authenticate() already refuses an expired row,
+    // so nothing here is still a working credential. Dropping them a week past
+    // expiry keeps the table from growing forever, and keeps a short window in
+    // which "my login stopped working" can still be looked up.
+    await client
+      .from('auth_tokens')
+      .delete()
+      .lt('expires_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .then(({ error }) => {
+        if (error) console.warn('auth_tokens purge failed:', error.message);
+      });
 
     const todayISO = istTodayISO();
     // Bound the scan: a reminder more than 30 days overdue has been reported
