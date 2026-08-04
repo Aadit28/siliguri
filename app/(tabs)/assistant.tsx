@@ -37,6 +37,7 @@ import {
 import { addEvent, listEvents, parseWhenToDate, toLocalISODate } from '../../src/lib/calendar';
 import { appendTurn, buildAssistantContext } from '../../src/lib/memory';
 import { requestMicPermission, speechRecognitionSupported, startListening, speak, stopSpeaking, voiceErrorKey } from '../../src/lib/voice';
+import { listActivities } from '../../src/lib/activities';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { notifyFamilySos } from '../../src/lib/family';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -44,7 +45,7 @@ import { categoryColor } from '../../src/lib/categories';
 import { openUpiPayment } from '../../src/lib/payments';
 import { family, radius, shadow, TAB_BAR_CLEARANCE, Tokens } from '../../src/lib/theme';
 import { useTokens } from '../../src/lib/useTokens';
-import { Service } from '../../src/lib/types';
+import { Activity, Service } from '../../src/lib/types';
 import { openWhatsAppCall, openWhatsAppShare } from '../../src/lib/whatsapp';
 
 const EXAMPLE_KEYS = ['doctor', 'medicine', 'travel', 'reminder'] as const;
@@ -175,6 +176,9 @@ export default function AssistantScreen() {
   const { width } = useWindowDimensions();
   const initialChatState = getInitialChatState(t);
   const [services, setServices] = useState<Service[]>([]);
+  // Catalog context for the planner. An unavailable catalog leaves the array
+  // empty and the assistant simply answers without activity detail.
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<AssistantAttachment[]>([]);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -235,6 +239,24 @@ export default function AssistantScreen() {
       mounted = false;
     };
   }, [city]);
+
+  useEffect(() => {
+    let mounted = true;
+    // Same loader the Activities tab uses, so demo/preview and live catalogs
+    // reach the assistant identically. A failed catalog read must not block
+    // chat, so the assistant answers without activity context instead.
+    listActivities(session?.access_token, undefined, city)
+      .then((items) => {
+        if (mounted) setActivities(items);
+      })
+      .catch((error) => {
+        console.warn('Activity catalog unavailable for the assistant:', error?.message || error);
+        if (mounted) setActivities([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [city, session?.access_token]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -387,6 +409,7 @@ export default function AssistantScreen() {
         requestAssistantPlan({
           message: body,
           services,
+          activities,
           lang: lang === 'hi' ? 'hi' : 'en',
           imageAttachments: currentAttachments,
           token: session?.access_token,
@@ -647,7 +670,14 @@ export default function AssistantScreen() {
     }
     if (action.kind === 'open_screen') {
       const payload = parseActionPayload(action.value);
-      const target = SCREEN_ROUTES[String(payload?.screen ?? '')];
+      const screen = String(payload?.screen ?? '');
+      // One catalog listing rather than the whole tab. The id is validated
+      // against the sent catalog server-side, so it is a known activity.
+      if (screen === 'activity' && typeof payload?.id === 'string' && payload.id) {
+        router.push({ pathname: '/activity/[id]', params: { id: payload.id } });
+        return;
+      }
+      const target = SCREEN_ROUTES[screen];
       if (target) {
         router.push(target);
         return;

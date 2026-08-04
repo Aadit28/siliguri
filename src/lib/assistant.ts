@@ -1,7 +1,8 @@
+import { localizeActivity } from '../data/mockActivities';
 import { backendRequest } from './backend';
 import { toLocalISODate } from './calendar';
 import { parseReminderRequest, ProposedReminder } from './reminderParse';
-import { Service, ServiceCategory } from './types';
+import { Activity, Service, ServiceCategory } from './types';
 
 export type { ProposedReminder } from './reminderParse';
 
@@ -66,6 +67,21 @@ export interface AssistantMessage {
   plan?: AssistantPlan;
   // Set on a failed turn so the bubble can offer a Retry that re-runs this input.
   errorRetry?: { message: string; attachments?: AssistantAttachment[] };
+}
+
+// The compact catalog row the assistant is given. It mirrors the services
+// pattern: the client sends what it already shows on the Activities tab, and
+// the server validates any id the model names against exactly this list.
+export interface CompactActivity {
+  id: string;
+  title: string;
+  category: string;
+  description: string | null;
+  schedule: string | null;
+  venue: string | null;
+  price: string | null;
+  spots: string | null;
+  enrollmentStatus: 'joined' | 'waitlisted' | null;
 }
 
 export interface AssistantPlanContext {
@@ -193,6 +209,13 @@ const COPY = {
           connectors: 'See what Saathi can connect',
         } as Record<string, string>
       )[screen] || 'Open in Saathi',
+    openActivity: (title: string) => `Open ${title}`,
+    activityMatches: (list: string) =>
+      `Saathi activities include ${list}. Open Activities to see the full list and details.`,
+    activityNextSteps: [
+      'Open Activities to check the venue, timing and accessibility notes.',
+      'Confirm the session with the organiser before travelling.',
+    ],
     greeting: (name: string) => `Namaste ${name} ji.`,
     calendarReminder: (title: string, day: string, time: string | null) =>
       `Reminder: ${title} is ${day === 'today' ? 'today' : 'tomorrow'}${time ? ` at ${time}` : ''}.`,
@@ -237,6 +260,13 @@ const COPY = {
           connectors: 'देखें साथी किनसे जुड़ सकता है',
         } as Record<string, string>
       )[screen] || 'साथी में खोलें',
+    openActivity: (title: string) => `${title} खोलें`,
+    activityMatches: (list: string) =>
+      `साथी गतिविधियों में ${list} शामिल हैं। पूरी सूची और विवरण के लिए गतिविधियाँ खोलें।`,
+    activityNextSteps: [
+      'स्थान, समय और सुलभता की जानकारी देखने के लिए गतिविधियाँ खोलें।',
+      'जाने से पहले आयोजक से सत्र की पुष्टि कर लें।',
+    ],
     greeting: (name: string) => `नमस्ते ${name} जी।`,
     calendarReminder: (title: string, day: string, time: string | null) =>
       `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
@@ -258,6 +288,9 @@ export async function requestAssistantPlan(input: {
   message: string;
   services: Service[];
   lang: AssistantLang;
+  // The Activities-tab catalog (live list or preview seeds, whichever that tab
+  // is showing). Optional so callers without a catalog keep working.
+  activities?: Activity[];
   imageAttachments?: AssistantAttachment[];
   token?: string | null;
   participantId?: string | null;
@@ -265,6 +298,9 @@ export async function requestAssistantPlan(input: {
 }): Promise<AssistantPlan> {
   const message = input.message.trim();
   const compactServices = input.services.map(compactService).slice(0, 60);
+  const compactActivities = (input.activities ?? [])
+    .slice(0, MAX_ASSISTANT_ACTIVITIES)
+    .map((activity) => compactActivity(activity, input.lang));
   const imageAttachments = (input.imageAttachments ?? []).slice(0, 3).map((attachment) => ({
     id: attachment.id,
     type: attachment.type,
@@ -284,6 +320,7 @@ export async function requestAssistantPlan(input: {
         message,
         lang: input.lang,
         services: compactServices,
+        activities: compactActivities,
         imageAttachments,
         participantId: input.participantId ?? undefined,
         context: input.context ?? null,
@@ -295,7 +332,13 @@ export async function requestAssistantPlan(input: {
     if (!urgent && !reminder && isActivityEnrollmentQuestion(message)) {
       return buildActivityRecordsUnavailablePlan(input.lang, Boolean(input.token));
     }
-    return buildLocalAssistantPlan(message, input.services, input.lang, input.context ?? null);
+    return buildLocalAssistantPlan(
+      message,
+      input.services,
+      input.lang,
+      input.context ?? null,
+      compactActivities,
+    );
   }
 }
 
@@ -386,6 +429,7 @@ export function buildLocalAssistantPlan(
   services: Service[],
   lang: AssistantLang = 'en',
   context: AssistantPlanContext | null = null,
+  activities: CompactActivity[] = [],
 ): AssistantPlan {
   const copy = COPY[lang] ?? COPY.en;
   const normalized = message.toLowerCase();
@@ -401,6 +445,12 @@ export function buildLocalAssistantPlan(
     return buildRouteTimePlan(route, lang);
   }
   const intent = detectIntent(normalized, urgent);
+  // Catalog answers only take over a general question. An emergency, a medical
+  // intent or a reminder keeps its own plan untouched.
+  if (!urgent && intent === 'general') {
+    const matchedActivities = matchCatalogActivities(normalized, activities);
+    if (matchedActivities.length) return buildActivityCatalogPlan(matchedActivities, lang);
+  }
   const category = categoryForIntent(intent, urgent, normalized);
   const when = extractWhen(message);
   const suggestedServices = rankServices(services, category, normalized).slice(0, 3);
@@ -489,6 +539,201 @@ function buildReminderPlan(reminder: ProposedReminder, lang: AssistantLang): Ass
       { kind: 'open_screen', label: copy.openScreen('calendar'), value: JSON.stringify({ screen: 'calendar' }), serviceId: null },
     ],
     proposedReminder: reminder,
+  };
+}
+
+// Catalog rows are interpolated into the LLM prompt, so the count is capped on
+// the client as well as the server.
+const MAX_ASSISTANT_ACTIVITIES = 20;
+const ACTIVITY_DESCRIPTION_MAX = 120;
+
+// Words that name the catalog as a whole rather than one listing. They answer
+// "what activities are there" without matching a single title.
+const GENERIC_ACTIVITY_WORDS = [
+  'activity',
+  'activities',
+  'class',
+  'classes',
+  'course',
+  'courses',
+  'session',
+  'sessions',
+  'gatividhi',
+  'kaksha',
+  'गतिविधि',
+  'गतिविधियाँ',
+  'गतिविधियां',
+  'कक्षा',
+  'सत्र',
+];
+
+// Question scaffolding. Without this, "is there a walking group near me" lets
+// "there" or "near" score unrelated listings on a description substring.
+const ACTIVITY_QUERY_STOPWORDS = [
+  'is', 'are', 'the', 'there', 'any', 'some', 'what', 'which', 'when', 'where', 'who', 'how',
+  'does', 'did', 'do', 'have', 'has', 'can', 'could', 'would', 'should', 'will', 'for', 'and',
+  'with', 'near', 'about', 'from', 'this', 'that', 'these', 'those', 'you', 'your', 'our', 'me',
+  'my', 'mine', 'us', 'saathi', 'app', 'please', 'tell', 'show', 'find', 'want', 'need', 'join',
+  'kya', 'koi', 'hai', 'hain', 'kahan', 'kab', 'kaun', 'kaunsi', 'mujhe', 'batao', 'hum', 'main',
+  'क्या', 'कोई', 'है', 'हैं', 'कहाँ', 'कहां', 'कब', 'कौन', 'कौनसी', 'मुझे', 'बताओ', 'बताएं', 'मेरी', 'मेरा',
+];
+
+// Devanagari terms an elder is likely to type for a catalog subject; the
+// catalog titles themselves are English.
+const ACTIVITY_TERM_ALIASES: Record<string, string> = {
+  योग: 'yoga',
+  संगीत: 'music',
+  चलना: 'walking',
+  सैर: 'walking',
+  नृत्य: 'dance',
+  कला: 'art',
+  स्मार्टफोन: 'smartphone',
+  स्मार्टफ़ोन: 'smartphone',
+  भुगतान: 'payments',
+  अंग्रेज़ी: 'english',
+  अंग्रेजी: 'english',
+  याददाश्त: 'memory',
+  बुनाई: 'knitting',
+  yog: 'yoga',
+  sangeet: 'music',
+};
+
+function formatActivitySchedule(activity: Activity, lang: AssistantLang): string | null {
+  const now = Date.now();
+  const next = activity.sessions
+    .filter((session) => session.status === 'scheduled' && Date.parse(session.startsAt) >= now)
+    .sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt))[0];
+  if (!next) return null;
+  const date = new Date(next.startsAt);
+  if (!Number.isFinite(date.getTime())) return null;
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  };
+  try {
+    return new Intl.DateTimeFormat(`${lang}-IN`, { ...options, timeZone: next.timezone }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat(`${lang}-IN`, options).format(date);
+  }
+}
+
+function activitySpotsLabel(activity: Activity, lang: AssistantLang): string | null {
+  if (!activity.registrationOpen) {
+    return lang === 'hi' ? 'अभी पंजीकरण बंद है' : 'Registration not open';
+  }
+  const next = activity.sessions.find((session) => session.status === 'scheduled');
+  const spots = next?.spotsRemaining ?? null;
+  if (typeof spots === 'number' && spots > 0) {
+    return lang === 'hi' ? `${spots} स्थान बाकी` : `${spots} spots left`;
+  }
+  if (typeof spots === 'number' && spots <= 0) {
+    return activity.waitlistSpotsRemaining > 0
+      ? lang === 'hi'
+        ? 'भरा हुआ, वेटलिस्ट खुली है'
+        : 'Full, waitlist open'
+      : lang === 'hi'
+        ? 'भरा हुआ'
+        : 'Full';
+  }
+  return null;
+}
+
+export function compactActivity(activity: Activity, lang: AssistantLang): CompactActivity {
+  const description =
+    activity.catalogSource === 'preview'
+      ? localizeActivity(activity, lang, 'description')
+      : activity.description ?? '';
+  const title =
+    activity.catalogSource === 'preview' ? localizeActivity(activity, lang, 'title') : activity.title;
+  const enrollmentStatus =
+    activity.enrollment?.status === 'joined' || activity.enrollment?.status === 'waitlisted'
+      ? activity.enrollment.status
+      : null;
+
+  return {
+    id: activity.id,
+    title,
+    category: activity.category,
+    description: description ? description.slice(0, ACTIVITY_DESCRIPTION_MAX) : null,
+    schedule: formatActivitySchedule(activity, lang),
+    venue: [activity.venueName, activity.town].filter(Boolean).join(', ') || null,
+    price:
+      activity.costPaise > 0
+        ? `₹${Math.round(activity.costPaise / 100)}`
+        : lang === 'hi'
+          ? 'निःशुल्क'
+          : 'Free',
+    spots: activitySpotsLabel(activity, lang),
+    enrollmentStatus,
+  };
+}
+
+function matchCatalogActivities(normalized: string, activities: CompactActivity[]): CompactActivity[] {
+  if (!activities.length) return [];
+  const tokens = (normalized.match(/[\p{L}\p{N}]+/gu) || [])
+    .map((token) => ACTIVITY_TERM_ALIASES[token] || token)
+    .filter(
+      (token) =>
+        token.length >= 3 &&
+        !GENERIC_ACTIVITY_WORDS.includes(token) &&
+        !ACTIVITY_QUERY_STOPWORDS.includes(token),
+    );
+
+  const scored = activities
+    .map((activity) => {
+      const title = activity.title.toLowerCase();
+      const rest = `${activity.category} ${activity.description ?? ''}`.toLowerCase();
+      const score = tokens.reduce(
+        (total, token) => total + (title.includes(token) ? 3 : 0) + (rest.includes(token) ? 1 : 0),
+        0,
+      );
+      return { activity, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .map((item) => item.activity);
+
+  if (scored.length) return scored.slice(0, 2);
+  // "What activities are there?" names no subject, so answer with the top of
+  // the same list the Activities tab shows rather than nothing.
+  const generic = GENERIC_ACTIVITY_WORDS.some((word) => normalized.includes(word));
+  return generic ? activities.slice(0, 2) : [];
+}
+
+function activityLine(activity: CompactActivity): string {
+  const detail = [activity.schedule, activity.venue, activity.price].filter(Boolean).join(', ');
+  return detail ? `${activity.title} (${detail})` : activity.title;
+}
+
+function buildActivityCatalogPlan(activities: CompactActivity[], lang: AssistantLang): AssistantPlan {
+  const copy = COPY[lang] ?? COPY.en;
+  const actions: AssistantAction[] = activities.map((activity) => ({
+    kind: 'open_screen',
+    label: copy.openActivity(activity.title),
+    value: JSON.stringify({ screen: 'activity', id: activity.id }),
+    serviceId: null,
+  }));
+  actions.push({
+    kind: 'open_screen',
+    label: copy.openScreen('activities'),
+    value: JSON.stringify({ screen: 'activities' }),
+    serviceId: null,
+  });
+
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'handoff',
+    summary: copy.activityMatches(activities.map(activityLine).join('; ')),
+    followUpQuestion: null,
+    safetyNote: copy.safety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [...copy.activityNextSteps],
+    actions,
   };
 }
 

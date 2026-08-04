@@ -296,6 +296,13 @@ const COPY = {
         help: 'Open help',
         connectors: 'See what Saathi can connect',
       })[screen] || 'Open in Saathi',
+    openActivity: (title) => `Open ${title}`,
+    activityMatches: (list) =>
+      `Saathi activities include ${list}. Open Activities to see the full list and details.`,
+    activityNextSteps: [
+      'Open Activities to check the venue, timing and accessibility notes.',
+      'Confirm the session with the organiser before travelling.',
+    ],
     greeting: (name) => `Namaste ${name} ji.`,
     calendarReminder: (title, day, time) =>
       `Reminder: ${title} is ${day === 'today' ? 'today' : 'tomorrow'}${time ? ` at ${time}` : ''}.`,
@@ -334,6 +341,13 @@ const COPY = {
         help: 'मदद खोलें',
         connectors: 'देखें साथी किनसे जुड़ सकता है',
       })[screen] || 'साथी में खोलें',
+    openActivity: (title) => `${title} खोलें`,
+    activityMatches: (list) =>
+      `साथी गतिविधियों में ${list} शामिल हैं। पूरी सूची और विवरण के लिए गतिविधियाँ खोलें।`,
+    activityNextSteps: [
+      'स्थान, समय और सुलभता की जानकारी देखने के लिए गतिविधियाँ खोलें।',
+      'जाने से पहले आयोजक से सत्र की पुष्टि कर लें।',
+    ],
     greeting: (name) => `नमस्ते ${name} जी।`,
     calendarReminder: (title, day, time) =>
       `याद दिला दूं: ${title} ${day === 'today' ? 'आज' : 'कल'}${time ? ` ${time} बजे` : ''} है।`,
@@ -448,6 +462,9 @@ module.exports = async function handler(req, res) {
 
     const effectiveMessage = message || imageOnlyFallbackText(lang);
     const urgent = URGENT_WORDS.some((word) => effectiveMessage.toLowerCase().includes(word));
+    // Urgent help does no catalog work at all: an emergency answer must not be
+    // shaped by, or spend prompt budget on, the activities list.
+    const activities = urgent ? [] : sanitizeActivities(body.activities);
     const activityQuestion =
       !urgent &&
       !imageAttachments.length &&
@@ -492,7 +509,7 @@ module.exports = async function handler(req, res) {
         ? buildSignedOutActivityPlan(lang)
         : activityDataUnavailable
           ? buildUnavailableActivityPlan(lang)
-          : buildActivityEnrollmentPlan(effectiveMessage, activityEnrollments, lang);
+          : buildActivityEnrollmentPlan(effectiveMessage, activityEnrollments, lang, activities);
       await logAssistantEvent(userId, { message: effectiveMessage, imageCount: 0, plan });
       return send(res, 200, plan);
     }
@@ -514,6 +531,7 @@ module.exports = async function handler(req, res) {
         message: message || imageOnlyVisionPrompt(lang),
         lang,
         services,
+        activities,
         imageAttachments,
         context,
         urgent,
@@ -530,7 +548,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const plan = buildLocalAssistantPlan(effectiveMessage, services, lang, context);
+    const plan = buildLocalAssistantPlan(effectiveMessage, services, lang, context, activities);
     await logAssistantEvent(userId, { message: effectiveMessage, imageCount: imageAttachments.length, plan });
     return send(res, 200, plan);
   } catch (error) {
@@ -551,19 +569,30 @@ function pickLlmProvider(imageAttachments) {
 
 function buildSystemPrompt(urgent) {
   return (
-    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. When the user asks to be reminded of something, fill proposedReminder (use context.todayISO as today when resolving "tomorrow" or weekday names) and never claim the reminder is saved — the app asks the user to confirm it. context.facts are true, current facts supplied by the app (often a guardian\'s live summary of their parent); when the question asks how someone is doing, answer directly FROM those facts instead of saying you have no updates. When context.activityEnrollments is present it is the only authoritative source for joined or waitlisted activities; never infer enrollment from the user message or ordinary calendar entries. Upcoming activity sessions in context.calendar may be used alongside other calendar items for general schedule questions. Return compact JSON only.' +
+    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. When the user asks to be reminded of something, fill proposedReminder (use context.todayISO as today when resolving "tomorrow" or weekday names) and never claim the reminder is saved — the app asks the user to confirm it. context.facts are true, current facts supplied by the app (often a guardian\'s live summary of their parent); when the question asks how someone is doing, answer directly FROM those facts instead of saying you have no updates. When context.activityEnrollments is present it is the only authoritative source for joined or waitlisted activities; never infer enrollment from the user message or ordinary calendar entries. Upcoming activity sessions in context.calendar may be used alongside other calendar items for general schedule questions. The "activities" array is the Saathi activities catalog the app is currently showing: when the user asks what activities exist, when a class runs, or where one is held, answer from that list by name, schedule and venue, invent no listing that is not in it, and put the ids you referenced in suggestedActivityIds. An activity is not a service — never place it in suggestedServiceIds. Return compact JSON only.' +
     (urgent
       ? ' URGENT: the message contains emergency symptoms. Set status to "urgent" and tell the user to call emergency help or the nearest hospital first, before answering anything else (including route or traffic questions).'
       : '')
   );
 }
 
-function buildRequestPayload({ message, lang, services, imageAttachments, context }) {
+function buildRequestPayload({ message, lang, services, activities, imageAttachments, context }) {
   return {
     message,
     language: lang,
     context: context || undefined,
     imageCount: imageAttachments.length,
+    activities: (activities || []).map((activity) => ({
+      id: activity.id,
+      title: activity.title,
+      category: activity.category,
+      description: activity.description,
+      schedule: activity.schedule,
+      venue: activity.venue,
+      price: activity.price,
+      spots: activity.spots,
+      enrollmentStatus: activity.enrollmentStatus,
+    })),
     services: services.map((service) => ({
       id: service.id,
       name: service.name,
@@ -590,13 +619,14 @@ const PLAN_JSON_INSTRUCTIONS =
   '"summary" (short string in the user\'s language), ' +
   '"followUpQuestion" (string or null), ' +
   '"suggestedServiceIds" (array of at most 3 ids taken only from the provided services), ' +
+  '"suggestedActivityIds" (array of at most 3 ids taken only from the provided activities; empty when the question is not about activities), ' +
   '"checklist" (array of at most 5 short strings), ' +
   '"nextSteps" (array of at most 4 short strings), ' +
   '"actions" (array of at most 4 objects, each {"kind":"call"|"directions"|"source"|"family_update"|"details","label":string,"value":string|null,"serviceId":string|null}), ' +
   '"proposedReminder" (null, or when the user asks to be reminded of something: {"title":string,"dateISO":"YYYY-MM-DD","time":"HH:MM" or null,"repeat":"once"|"daily"|"weekly"|"monthly"} — the app shows it as a card the user must confirm). ' +
   'No other keys.';
 
-async function planWithDeepSeek({ message, lang, services, imageAttachments, context, urgent }) {
+async function planWithDeepSeek({ message, lang, services, activities, imageAttachments, context, urgent }) {
   const baseUrl = String(process.env.DEEPSEEK_BASE_URL || 'https://opencode.ai/zen/go/v1').replace(/\/+$/, '');
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 
@@ -611,7 +641,7 @@ async function planWithDeepSeek({ message, lang, services, imageAttachments, con
       model,
       messages: [
         { role: 'system', content: `${buildSystemPrompt(urgent)} ${PLAN_JSON_INSTRUCTIONS}` },
-        { role: 'user', content: JSON.stringify(buildRequestPayload({ message, lang, services, imageAttachments, context })) },
+        { role: 'user', content: JSON.stringify(buildRequestPayload({ message, lang, services, activities, imageAttachments, context })) },
       ],
       response_format: { type: 'json_object' },
       // DeepSeek V4 hybrid thinking mode: disabled keeps replies fast enough
@@ -642,15 +672,15 @@ async function planWithDeepSeek({ message, lang, services, imageAttachments, con
     console.warn(`LLM returned unparseable JSON (${model}), using local plan`);
     return null;
   }
-  return normalizeModelPlan(parsed, services, lang, { message, context, urgent, source: 'deepseek' });
+  return normalizeModelPlan(parsed, services, lang, { message, context, urgent, activities, source: 'deepseek' });
 }
 
-async function planWithOpenAI({ message, lang, services, imageAttachments, context, urgent }) {
+async function planWithOpenAI({ message, lang, services, activities, imageAttachments, context, urgent }) {
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   const userContent = [
     {
       type: 'input_text',
-      text: JSON.stringify(buildRequestPayload({ message, lang, services, imageAttachments, context })),
+      text: JSON.stringify(buildRequestPayload({ message, lang, services, activities, imageAttachments, context })),
     },
     ...imageAttachments.map((attachment) => ({
       type: 'input_image',
@@ -704,6 +734,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
               summary: { type: 'string' },
               followUpQuestion: { type: ['string', 'null'] },
               suggestedServiceIds: { type: 'array', items: { type: 'string' }, maxItems: 3 },
+              suggestedActivityIds: { type: 'array', items: { type: 'string' }, maxItems: 3 },
               checklist: { type: 'array', items: { type: 'string' }, maxItems: 5 },
               nextSteps: { type: 'array', items: { type: 'string' }, maxItems: 4 },
               actions: {
@@ -745,7 +776,7 @@ async function planWithOpenAI({ message, lang, services, imageAttachments, conte
   if (!text) return null;
 
   const parsed = JSON.parse(text);
-  return normalizeModelPlan(parsed, services, lang, { message, context, urgent, source: 'openai' });
+  return normalizeModelPlan(parsed, services, lang, { message, context, urgent, activities, source: 'openai' });
 }
 
 async function logAssistantEvent(userId, { message, imageCount, plan }) {
@@ -799,11 +830,18 @@ function extractOutputText(data) {
   return chunks.join('\n').trim();
 }
 
-function normalizeModelPlan(plan, services, lang, { message, context, urgent, source } = {}) {
+function normalizeModelPlan(plan, services, lang, { message, context, urgent, activities, source } = {}) {
   // Fallback intent/status must come from the USER message, never from LLM output,
   // otherwise a prompt-injected summary could steer the keyword fallback.
-  const local = buildLocalAssistantPlan(message || '', services, lang, context || null);
+  const local = buildLocalAssistantPlan(message || '', services, lang, context || null, activities || []);
   const byId = new Map(services.map((service) => [service.id, service]));
+  // Exactly the service-id rule: an activity the model names must exist in the
+  // catalog the client sent, or the app would deep-link to nothing.
+  const activityById = new Map((activities || []).map((activity) => [activity.id, activity]));
+  const suggestedActivities = (Array.isArray(plan.suggestedActivityIds) ? plan.suggestedActivityIds : [])
+    .map((id) => activityById.get(String(id)))
+    .filter(Boolean)
+    .slice(0, 3);
   const suggestedServices = (Array.isArray(plan.suggestedServiceIds) ? plan.suggestedServiceIds : [])
     .map((id) => byId.get(String(id)))
     .filter(Boolean)
@@ -824,7 +862,7 @@ function normalizeModelPlan(plan, services, lang, { message, context, urgent, so
     suggestedServices: fallbackServices,
     checklist: safeStringList(plan.checklist, local.checklist, 5),
     nextSteps: safeStringList(plan.nextSteps, local.nextSteps, 4),
-    actions: normalizeActions(plan.actions, fallbackServices, lang),
+    actions: normalizeActions(plan.actions, fallbackServices, lang, suggestedActivities),
     // Validated hard (real date, real time, known repeat) or dropped; the
     // deterministic parser is the fallback when the LLM offered nothing usable.
     proposedReminder:
@@ -832,9 +870,12 @@ function normalizeModelPlan(plan, services, lang, { message, context, urgent, so
   };
 }
 
-function normalizeActions(actions, services, lang) {
+function normalizeActions(actions, services, lang, suggestedActivities = []) {
   const copy = COPY[lang] || COPY.en;
   const byId = new Map(services.map((service) => [service.id, service]));
+  // The model never gets to choose an action kind for activities: the server
+  // builds the deep links itself from ids it has already validated.
+  const activityActions = activityDeepLinkActions(suggestedActivities, lang);
   const normalized = Array.isArray(actions)
     ? actions
         .map((action) => {
@@ -862,8 +903,26 @@ function normalizeActions(actions, services, lang) {
         .slice(0, 4)
     : [];
 
+  // Activity links lead, because when the model named an activity that is what
+  // the answer was about; the 4-action ceiling still holds.
+  if (activityActions.length) return [...activityActions, ...normalized].slice(0, 4);
   if (normalized.length) return normalized;
   return buildLocalAssistantPlan('', services, lang).actions;
+}
+
+// { screen: 'activity', id } is routed to /activity/[id] by the assistant
+// screen; the plain { screen: 'activities' } tab link stays as the last stop.
+function activityDeepLinkActions(activities, lang) {
+  const copy = COPY[lang] || COPY.en;
+  if (!activities || !activities.length) return [];
+  const actions = activities.slice(0, 3).map((activity) => ({
+    kind: 'open_screen',
+    label: copy.openActivity(activity.title),
+    value: JSON.stringify({ screen: 'activity', id: activity.id }),
+    serviceId: null,
+  }));
+  actions.push(activityOpenAction(lang));
+  return actions;
 }
 
 function defaultActionLabel(kind, service, copy) {
@@ -985,16 +1044,23 @@ function buildUnavailableActivityPlan(lang) {
   };
 }
 
-function buildActivityEnrollmentPlan(message, enrollments, lang) {
+function buildActivityEnrollmentPlan(message, enrollments, lang, activities = []) {
   const copy = COPY[lang] || COPY.en;
   const activityCopy = ACTIVITY_ASSISTANT_COPY[lang] || ACTIVITY_ASSISTANT_COPY.en;
   const { matches, wasSpecific } = relevantActivityEnrollments(message, enrollments);
+  // Enrollment records stay the only source for what the user JOINED. The
+  // catalog only fills the gap after the honest "you are not enrolled" answer,
+  // so "when is yoga" still gets the class time.
+  const catalogMatches = matchCatalogActivities(String(message || '').toLowerCase(), activities);
+  const catalogSuffix = catalogMatches.length
+    ? ` ${copy.activityMatches(catalogMatches.map(activityLine).join('; '))}`
+    : '';
   let summary;
 
   if (!enrollments.length) {
-    summary = `${activityCopy.checked} ${activityCopy.none}`;
+    summary = `${activityCopy.checked} ${activityCopy.none}${catalogSuffix}`;
   } else if (!matches.length && wasSpecific) {
-    summary = `${activityCopy.checked} ${activityCopy.noMatch}`;
+    summary = `${activityCopy.checked} ${activityCopy.noMatch}${catalogSuffix}`;
   } else {
     const details = matches.map((enrollment) => {
       const title = enrollment.activity?.title || 'Activity';
@@ -1008,7 +1074,9 @@ function buildActivityEnrollmentPlan(message, enrollments, lang) {
     summary = `${activityCopy.checked} ${details.join(' ')}`;
   }
 
-  const actions = [activityOpenAction(lang)];
+  const actions = catalogSuffix && !matches.length
+    ? activityDeepLinkActions(catalogMatches, lang)
+    : [activityOpenAction(lang)];
   if (matches.some((enrollment) => enrollment.status === 'joined')) {
     actions.unshift({
       kind: 'open_screen',
@@ -1109,7 +1177,7 @@ function mergeActivityContext(context, enrollments, hasAuthoritativeContext) {
   };
 }
 
-function buildLocalAssistantPlan(message, services, lang = 'en', context = null) {
+function buildLocalAssistantPlan(message, services, lang = 'en', context = null, activities = []) {
   const copy = COPY[lang] || COPY.en;
   const normalized = String(message || '').toLowerCase();
   const urgent = URGENT_WORDS.some((word) => normalized.includes(word));
@@ -1120,6 +1188,12 @@ function buildLocalAssistantPlan(message, services, lang = 'en', context = null)
   const route = urgent ? null : extractRouteTimeRequest(message, services);
   if (route) return buildRouteTimePlan(route);
   const intent = detectIntent(normalized, urgent);
+  // Catalog answers only take over a general question. An emergency, a medical
+  // intent or a reminder keeps its own plan untouched.
+  if (!urgent && intent === 'general') {
+    const matchedActivities = matchCatalogActivities(normalized, activities);
+    if (matchedActivities.length) return buildActivityCatalogPlan(matchedActivities, lang);
+  }
   const category = categoryForIntent(intent, urgent, normalized);
   const when = extractWhen(message);
   const suggestedServices = rankServices(services, category, normalized).slice(0, 3);
@@ -1164,6 +1238,108 @@ function buildLocalAssistantPlan(message, services, lang = 'en', context = null)
     checklist: intent === 'medical_appointment' ? copy.checklistDoctor : copy.checklistGeneral,
     nextSteps: [copy.nextCall, copy.nextShare],
     actions,
+  };
+}
+
+// ----- Deterministic catalog matching (port of src/lib/assistant.ts) -----
+// Words naming the catalog as a whole rather than one listing.
+const GENERIC_ACTIVITY_WORDS = [
+  'activity',
+  'activities',
+  'class',
+  'classes',
+  'course',
+  'courses',
+  'session',
+  'sessions',
+  'gatividhi',
+  'kaksha',
+  'गतिविधि',
+  'गतिविधियाँ',
+  'गतिविधियां',
+  'कक्षा',
+  'सत्र',
+];
+
+// Question scaffolding. Without this, "is there a walking group near me" lets
+// "there" or "near" score unrelated listings on a description substring.
+const ACTIVITY_QUERY_STOPWORDS = [
+  'is', 'are', 'the', 'there', 'any', 'some', 'what', 'which', 'when', 'where', 'who', 'how',
+  'does', 'did', 'do', 'have', 'has', 'can', 'could', 'would', 'should', 'will', 'for', 'and',
+  'with', 'near', 'about', 'from', 'this', 'that', 'these', 'those', 'you', 'your', 'our', 'me',
+  'my', 'mine', 'us', 'saathi', 'app', 'please', 'tell', 'show', 'find', 'want', 'need', 'join',
+  'kya', 'koi', 'hai', 'hain', 'kahan', 'kab', 'kaun', 'kaunsi', 'mujhe', 'batao', 'hum', 'main',
+  'क्या', 'कोई', 'है', 'हैं', 'कहाँ', 'कहां', 'कब', 'कौन', 'कौनसी', 'मुझे', 'बताओ', 'बताएं', 'मेरी', 'मेरा',
+];
+
+const ACTIVITY_TERM_ALIASES = {
+  योग: 'yoga',
+  संगीत: 'music',
+  चलना: 'walking',
+  सैर: 'walking',
+  नृत्य: 'dance',
+  कला: 'art',
+  स्मार्टफोन: 'smartphone',
+  स्मार्टफ़ोन: 'smartphone',
+  भुगतान: 'payments',
+  'अंग्रेज़ी': 'english',
+  'अंग्रेजी': 'english',
+  'याददाश्त': 'memory',
+  बुनाई: 'knitting',
+  yog: 'yoga',
+  sangeet: 'music',
+};
+
+function matchCatalogActivities(normalized, activities) {
+  if (!activities || !activities.length) return [];
+  const tokens = (String(normalized || '').match(/[\p{L}\p{N}]+/gu) || [])
+    .map((token) => ACTIVITY_TERM_ALIASES[token] || token)
+    .filter(
+      (token) =>
+        token.length >= 3 &&
+        !GENERIC_ACTIVITY_WORDS.includes(token) &&
+        !ACTIVITY_QUERY_STOPWORDS.includes(token),
+    );
+
+  const scored = activities
+    .map((activity) => {
+      const title = String(activity.title || '').toLowerCase();
+      const rest = `${activity.category || ''} ${activity.description || ''}`.toLowerCase();
+      const score = tokens.reduce(
+        (total, token) => total + (title.includes(token) ? 3 : 0) + (rest.includes(token) ? 1 : 0),
+        0,
+      );
+      return { activity, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .map((item) => item.activity);
+
+  if (scored.length) return scored.slice(0, 2);
+  // "What activities are there?" names no subject, so answer from the top of
+  // the same list the Activities tab shows rather than with nothing.
+  const generic = GENERIC_ACTIVITY_WORDS.some((word) => String(normalized || '').includes(word));
+  return generic ? activities.slice(0, 2) : [];
+}
+
+function activityLine(activity) {
+  const detail = [activity.schedule, activity.venue, activity.price].filter(Boolean).join(', ');
+  return detail ? `${activity.title} (${detail})` : activity.title;
+}
+
+function buildActivityCatalogPlan(activities, lang) {
+  const copy = COPY[lang] || COPY.en;
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'handoff',
+    summary: copy.activityMatches(activities.map(activityLine).join('; ')),
+    followUpQuestion: null,
+    safetyNote: copy.safety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [...copy.activityNextSteps],
+    actions: activityDeepLinkActions(activities, lang),
   };
 }
 
@@ -1491,6 +1667,37 @@ function sanitizeServices(services) {
     }))
     .filter((service) => service.id && service.name)
     .slice(0, 60);
+}
+
+// The catalog rows are interpolated into the LLM prompt exactly like services,
+// so the same per-field caps and row ceiling apply. Unknown keys are dropped.
+const ACTIVITY_FIELD_MAX = 160;
+const ACTIVITY_DESCRIPTION_MAX = 120;
+const MAX_ACTIVITIES = 20;
+const ACTIVITY_ENROLLMENT_STATUSES = ['joined', 'waitlisted'];
+
+function cappedActivityString(value, limit = ACTIVITY_FIELD_MAX) {
+  return value ? String(value).slice(0, limit) : null;
+}
+
+function sanitizeActivities(activities) {
+  if (!Array.isArray(activities)) return [];
+  return activities
+    .map((activity) => ({
+      id: String(activity?.id || '').slice(0, 80),
+      title: String(activity?.title || '').slice(0, ACTIVITY_FIELD_MAX),
+      category: String(activity?.category || '').slice(0, 40),
+      description: cappedActivityString(activity?.description, ACTIVITY_DESCRIPTION_MAX),
+      schedule: cappedActivityString(activity?.schedule),
+      venue: cappedActivityString(activity?.venue),
+      price: cappedActivityString(activity?.price, 40),
+      spots: cappedActivityString(activity?.spots, 60),
+      enrollmentStatus: ACTIVITY_ENROLLMENT_STATUSES.includes(activity?.enrollmentStatus)
+        ? activity.enrollmentStatus
+        : null,
+    }))
+    .filter((activity) => activity.id && activity.title)
+    .slice(0, MAX_ACTIVITIES);
 }
 
 function sanitizeContext(value) {
