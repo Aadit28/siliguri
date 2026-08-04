@@ -1,8 +1,11 @@
 const {
   adminClient,
+  allowDurable,
   authenticate,
   makeRateLimiter,
+  normalizePhone,
   readBody,
+  recordDurable,
   requestIp,
   send,
   sendServerError,
@@ -14,6 +17,14 @@ const SOURCES = new Set(['help', 'assistant', 'service']);
 // Unauthenticated endpoint that stores PII — pace it per IP on top of the
 // per-phone dedupe below (per-instance; burst protection only).
 const allowByIp = makeRateLimiter({ max: 5, windowMs: 10 * 60 * 1000 });
+
+// The in-memory limiter above resets on every cold start and does not add up
+// across serverless instances, so a slow flood from one source gets a fresh
+// allowance per instance. These caps are durable (migration 12) and bound the
+// day: a human asking for a call back needs one or two, not twenty.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const IP_PER_DAY = 20;
+const PHONE_PER_DAY = 5;
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -31,8 +42,24 @@ module.exports = async function handler(req, res) {
     if (!name || !phone) return send(res, 400, { error: 'Add a name and phone number.' });
     if (phone.replace(/\D/g, '').length < 8) return send(res, 400, { error: 'Add a valid phone number.' });
 
-    if (!allowByIp(requestIp(req))) {
+    const ip = requestIp(req);
+    if (!allowByIp(ip)) {
       return send(res, 429, { error: 'Too many requests. Please wait a few minutes.' });
+    }
+
+    // Bucket on the normalized number, not the typed one: "9800000001" and
+    // "+91 98000 00001" are the same phone, and a per-day cap keyed on the raw
+    // string would be bypassed by retyping the spacing.
+    const phoneKey = normalizePhone(phone) || phone;
+    const admin = adminClient();
+    const [ipUnderCap, phoneUnderCap] = await Promise.all([
+      allowDurable(admin, `callback:ip:${ip}`, { max: IP_PER_DAY, windowMs: DAY_MS }),
+      allowDurable(admin, `callback:phone:${phoneKey}`, { max: PHONE_PER_DAY, windowMs: DAY_MS }),
+    ]);
+    if (!ipUnderCap || !phoneUnderCap) {
+      return send(res, 429, {
+        error: 'We already have your requests. Our team will call you back soon.',
+      });
     }
 
     let userId = null;
@@ -86,6 +113,10 @@ module.exports = async function handler(req, res) {
     });
 
     if (error) throw error;
+
+    // Only a row that actually reached the desk spends the budget, so a caller
+    // whose request was rejected for a bad phone number is not penalised.
+    await recordDurable(admin, [`callback:ip:${ip}`, `callback:phone:${phoneKey}`]);
     return send(res, 200, { ok: true });
   } catch (error) {
     return sendServerError(res, error, 'Could not save callback request. Please try again.');
