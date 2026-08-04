@@ -104,6 +104,7 @@ const en = {
     ],
     cards: {
       listingsLabel: "verified listings",
+      tags: { directory: "Verified", assistant: "Assistant", reminders: "Reminders", sos: "Emergency" },
       assistantLabel: "Ask in Hindi or English",
       remindersLabel: "Reminders that ring",
       remindersNote: "Saved on one confirming tap.",
@@ -297,6 +298,7 @@ const hi: Dict = {
     ],
     cards: {
       listingsLabel: "जाँची हुई लिस्टिंग",
+      tags: { directory: "जाँच", assistant: "सहायक", reminders: "रिमाइंडर", sos: "आपातकाल" },
       assistantLabel: "हिंदी या अंग्रेज़ी में पूछिए",
       remindersLabel: "बजने वाले रिमाइंडर",
       remindersNote: "एक पुष्टि वाले टैप पर सेव।",
@@ -488,6 +490,7 @@ const mr: Dict = {
     ],
     cards: {
       listingsLabel: "तपासलेल्या नोंदी",
+      tags: { directory: "तपासणी", assistant: "असिस्टंट", reminders: "रिमाइंडर", sos: "आणीबाणी" },
       assistantLabel: "हिंदी किंवा इंग्रजीत विचारा",
       remindersLabel: "वाजणारे रिमाइंडर",
       remindersNote: "एका होकाराच्या टॅपवर सेव्ह.",

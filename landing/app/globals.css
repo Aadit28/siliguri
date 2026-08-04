@@ -36,6 +36,7 @@
 
   --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   --font-deva: var(--font-noto-deva), var(--font-dm-sans), sans-serif;
+  --font-mono: var(--font-jet), ui-monospace, monospace;
 
   /* One radius scale: cards 16, chips/inputs 10, buttons pill. */
   --radius-card: 16px;
@@ -121,6 +122,50 @@ body {
     rgba(255, 255, 255, 0) 82%,
     rgba(246, 246, 246, 0.9) 100%
   );
+}
+
+/* Ken Burns, borrowed from the amphi landing along with its texture mask: the
+   tile keeps breathing instead of sitting dead. Transform only, and the image
+   is object-cover so the overscan never reveals an edge. */
+@keyframes kenBurns {
+  from {
+    transform: scale(1.02) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(var(--kb-scale, 1.18))
+      translate3d(var(--kb-x, 0px), var(--kb-y, -6px), 0);
+  }
+}
+.ken-burns {
+  will-change: transform;
+  animation: kenBurns var(--kb-duration, 19s) ease-in-out infinite alternate;
+  animation-delay: var(--kb-delay, 0s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ken-burns {
+    animation: none;
+  }
+}
+
+/* Short desktop screens — 1280x720 and 1366x768 are still everywhere — cannot
+   hold the full-height hero at full padding, and the first thing to fall off
+   the bottom is the pair of CTAs. Rather than shrink the hero for everyone,
+   the tiles compact only when the viewport is short. */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .hero-canvas > div {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+  .hero-canvas [data-tile] {
+    padding: 1rem;
+  }
+  .hero-canvas [data-inset] {
+    padding: 0.5rem;
+  }
+  .hero-canvas [data-figure] {
+    font-size: 26px;
+  }
 }
 
 /* Hairline grid behind the distance band. Two 1px gradients, no image. */

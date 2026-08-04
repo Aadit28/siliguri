@@ -1,83 +1,150 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  animate,
-  motion,
-  useInView,
-  useReducedMotion,
-} from "motion/react";
-import {
-  BellRinging,
-  Microphone,
-  Phone,
-  SealCheck,
-} from "@phosphor-icons/react/dist/ssr";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
+import { animate, motion, useInView, useReducedMotion } from "motion/react";
+import { Phone, SealCheck } from "@phosphor-icons/react/dist/ssr";
 import { CITIES, TOTAL_LISTINGS } from "../_lib/copy";
 import { useLang } from "../_lib/lang";
 import { AppMockup } from "./mockups/AppMockup";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
-const cell =
-  "relative flex flex-col overflow-hidden rounded-[18px] border border-line bg-paper/90 p-5 shadow-[0_10px_28px_rgba(10,10,10,0.05)] backdrop-blur-sm";
-
-function enter(delay: number, reduce: boolean | null) {
-  return {
-    initial: reduce ? false : { opacity: 0, y: 22 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.7, delay, ease },
-  };
-}
-
-function Chip({
-  tone,
-  children,
-}: {
-  tone: "sky" | "sage" | "emergency";
-  children: React.ReactNode;
-}) {
-  const tones = {
-    sky: "bg-chip-sky text-chip-skyink",
-    sage: "bg-chip-sage text-chip-sageink",
-    emergency: "bg-emergency text-paper",
-  } as const;
+/**
+ * Stepped pixel cluster on a 4px grid, lifted from the amphi landing's idea
+ * tiles. The one piece of pure decoration on the page; it earns its place by
+ * marking a tile as a tile.
+ */
+function DitherCorner({ fill }: { fill: string }) {
   return (
-    <span className={`grid size-9 shrink-0 place-items-center rounded-full ${tones[tone]}`}>
-      {children}
-    </span>
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 28 28"
+      fill="none"
+      aria-hidden="true"
+      className="absolute top-4 right-4 opacity-70"
+    >
+      <rect x="20" y="20" width="8" height="8" fill={fill} />
+      <rect x="16" y="24" width="4" height="4" fill={fill} />
+      <rect x="24" y="16" width="4" height="4" fill={fill} />
+      <rect x="16" y="16" width="4" height="4" fill={fill} />
+      <rect x="8" y="24" width="4" height="4" fill={fill} />
+      <rect x="24" y="8" width="4" height="4" fill={fill} />
+    </svg>
   );
 }
 
-/**
- * A phone-shaped phone: bezel, notch, 9:19.5. The mock-up inside is the
- * product's real UI, so giving it the device's real proportions costs nothing
- * and stops it reading as a floating rectangle of app.
- */
-function PhoneCell({ delay }: { delay: number }) {
+const tones = {
+  // Pastel green is the app's own sage chip colour, promoted from the icon slot
+  // to a tile surface. Its dark green ink stays well clear of AA on that tint.
+  sage: "bg-chip-sage text-chip-sageink border-chip-sageink/15",
+  paper: "bg-paper/90 text-ink border-line",
+  emergency: "bg-emergency-soft text-ink border-emergency/20",
+} as const;
+
+const ditherFill = {
+  sage: "#2e5d3c",
+  paper: "#0a0a0a",
+  emergency: "#e11900",
+} as const;
+
+function Tile({
+  num,
+  tag,
+  tone,
+  span,
+  delay,
+  index,
+  children,
+}: {
+  num: string;
+  tag: string;
+  tone: keyof typeof tones;
+  span: string;
+  delay: number;
+  index: number;
+  children: ReactNode;
+}) {
   const reduce = useReducedMotion();
 
   return (
     <motion.div
-      {...enter(delay, reduce)}
-      className="col-span-2 row-span-3 flex min-h-0 flex-col"
+      data-tile
+      initial={reduce ? false : { opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, delay, ease }}
+      whileHover={reduce ? undefined : { y: -6 }}
+      className={`relative flex flex-col overflow-hidden rounded-[18px] border p-5 shadow-[0_10px_28px_rgba(10,10,10,0.05)] transition-shadow duration-300 hover:shadow-[0_18px_44px_rgba(10,10,10,0.12)] lg:p-6 xl:p-7 ${tones[tone]} ${span}`}
     >
-      <div className="relative flex min-h-0 grow flex-col">
-        <AppMockup
-          className="min-h-0 grow drop-shadow-[0_18px_40px_rgba(10,10,10,0.14)]"
-          rounded="rounded-[24px]"
+      {/* Texture on the green tiles only: the same mask and blend the amphi
+          tiles use, so the pastel reads as a surface rather than a flat fill. */}
+      {tone === "sage" && (
+        <Image
+          src="/textures/tile-mask.png"
+          alt=""
+          aria-hidden
+          fill
+          sizes="(max-width: 1024px) 100vw, 460px"
+          className="ken-burns pointer-events-none object-cover opacity-[0.22] mix-blend-overlay select-none"
+          style={
+            {
+              "--kb-scale": "1.2",
+              "--kb-x": index % 2 ? "-14px" : "14px",
+              "--kb-y": index % 2 ? "14px" : "-16px",
+              "--kb-duration": `${15 + index * 2}s`,
+              "--kb-delay": `${-index * 4}s`,
+            } as React.CSSProperties
+          }
         />
-      </div>
+      )}
+
+      <p className="relative z-10 pr-9 font-mono text-[10.5px] font-medium tracking-[0.18em] uppercase">
+        <span className="opacity-55">{num} · </span>
+        {tag}
+      </p>
+
+      <div className="relative z-10 flex grow flex-col">{children}</div>
+
+      <DitherCorner fill={ditherFill[tone]} />
     </motion.div>
   );
 }
 
-/** The directory, broken down by the three shipped datasets. */
-function DirectoryCell({ delay }: { delay: number }) {
+/** Inset panel, inheriting its tile's ink through currentColor. */
+function Inset({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div data-inset className="mt-auto rounded-[12px] border border-current/15 bg-current/[0.06] p-3 backdrop-blur-[2px]">
+      <p className="font-mono text-[9.5px] tracking-[0.16em] uppercase opacity-60">
+        {label}
+      </p>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
+}
+
+function PhoneCell({ delay }: { delay: number }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, delay, ease }}
+      className="col-span-2 flex min-h-0 flex-col sm:col-span-3 sm:row-span-3"
+    >
+      <AppMockup
+        className="min-h-0 grow drop-shadow-[0_18px_40px_rgba(10,10,10,0.14)]"
+        rounded="rounded-[24px]"
+      />
+    </motion.div>
+  );
+}
+
+function DirectoryTile({ delay }: { delay: number }) {
   const { t, deva } = useLang();
   const reduce = useReducedMotion();
   const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, amount: 0.5 });
+  const inView = useInView(ref, { once: true, amount: 0.4 });
   const [shown, setShown] = useState(reduce ? TOTAL_LISTINGS : 0);
 
   useEffect(() => {
@@ -94,37 +161,42 @@ function DirectoryCell({ delay }: { delay: number }) {
   const widest = Math.max(...CITIES.map((c) => c.total));
 
   return (
-    <motion.div {...enter(delay, reduce)} ref={ref} className={`${cell} col-span-2 sm:col-span-4`}>
-      <div className="flex items-center gap-3">
-        <Chip tone="sage">
-          <SealCheck size={18} weight="fill" />
-        </Chip>
+    <Tile
+      num="01"
+      tag={t.hero.cards.tags.directory}
+      tone="sage"
+      index={0}
+      delay={delay}
+      span="col-span-2 sm:col-span-4"
+    >
+      <div ref={ref} className="mt-4 flex items-center gap-3">
+        <SealCheck size={26} weight="fill" className="shrink-0 opacity-80" />
         <span className="flex items-baseline gap-2">
-          <span className="text-[30px] leading-none font-bold tracking-[-0.04em] tabular-nums">
+          <span data-figure className="text-[34px] leading-none font-bold tracking-[-0.04em] tabular-nums xl:text-[42px]">
             {shown}
           </span>
-          <span className={`text-[14px] font-semibold ${deva}`}>
+          <span className={`text-[16px] font-semibold xl:text-[18px] ${deva}`}>
             {t.hero.cards.listingsLabel}
           </span>
         </span>
       </div>
 
-      {/* Bars are the real ratios between the three datasets, not a shape drawn
-          to look balanced. Ahilyanagar is genuinely the smallest. */}
-      <ul className="mt-4 grid grid-cols-3 gap-x-4 gap-y-1">
+      {/* Bars are the real ratios between the three shipped datasets, not a
+          shape drawn to look balanced. Ahilyanagar is genuinely the smallest. */}
+      <ul className="mt-auto grid grid-cols-3 gap-x-4 pt-4">
         {CITIES.map((c, i) => (
           <li key={c.key}>
             <div className="flex items-baseline justify-between gap-1">
-              <span className={`truncate text-[11.5px] font-medium ${deva}`}>
+              <span className={`truncate text-[13px] font-medium ${deva}`}>
                 {t.cities[c.key]}
               </span>
-              <span className="shrink-0 text-[11.5px] font-semibold tabular-nums">
+              <span className="shrink-0 text-[13px] font-semibold tabular-nums">
                 {c.total}
               </span>
             </div>
-            <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-paper-tint">
+            <span className="mt-1.5 block h-2 overflow-hidden rounded-full bg-current/15">
               <motion.span
-                className="block h-full rounded-full bg-ink"
+                className="block h-full rounded-full bg-current"
                 initial={reduce ? false : { width: 0 }}
                 animate={inView ? { width: `${(c.total / widest) * 100}%` } : {}}
                 transition={{ duration: 0.8, delay: delay + 0.35 + i * 0.1, ease }}
@@ -133,97 +205,108 @@ function DirectoryCell({ delay }: { delay: number }) {
           </li>
         ))}
       </ul>
-    </motion.div>
+    </Tile>
   );
 }
 
-/** The assistant, with the sentence it is built to understand. */
-function AssistantCell({ delay }: { delay: number }) {
+function AssistantTile({ delay }: { delay: number }) {
   const { t, deva } = useLang();
-  const reduce = useReducedMotion();
-
   return (
-    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2`}>
-      <Chip tone="sky">
-        <Microphone size={18} weight="fill" />
-      </Chip>
-      <p className={`mt-3 text-[15px] font-semibold ${deva}`}>
+    <Tile
+      num="02"
+      tag={t.hero.cards.tags.assistant}
+      tone="paper"
+      index={1}
+      delay={delay}
+      span="col-span-2"
+    >
+      <p className={`mt-4 text-[17px] leading-snug font-semibold xl:text-[19px] ${deva}`}>
         {t.hero.cards.assistantLabel}
       </p>
-      <p
-        lang="hi"
-        className="deva mt-auto truncate text-[12.5px] text-ink-subtle"
-        title="मुझे रोज़ शाम 8 बजे बीपी की दवा याद दिलाना"
-      >
-        “मुझे रोज़ शाम 8 बजे…”
-      </p>
-    </motion.div>
+      <Inset label="hi-IN">
+        {/* Always Hindi: this is the sentence a parent actually says. */}
+        <p lang="hi" className="deva truncate text-[13px] leading-snug">
+          “मुझे रोज़ शाम 8 बजे…”
+        </p>
+      </Inset>
+    </Tile>
   );
 }
 
-/** Reminders, shown as the card the assistant produces. */
-function RemindersCell({ delay }: { delay: number }) {
+function RemindersTile({ delay }: { delay: number }) {
   const { t, deva } = useLang();
-  const reduce = useReducedMotion();
-
   return (
-    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2`}>
-      <Chip tone="sage">
-        <BellRinging size={18} weight="fill" />
-      </Chip>
-      <p className={`mt-3 text-[15px] font-semibold ${deva}`}>
+    <Tile
+      num="03"
+      tag={t.hero.cards.tags.reminders}
+      tone="sage"
+      index={2}
+      delay={delay}
+      span="col-span-2"
+    >
+      <p className={`mt-4 text-[17px] leading-snug font-semibold xl:text-[19px] ${deva}`}>
         {t.hero.cards.remindersLabel}
       </p>
-      <p className={`mt-auto text-[12.5px] text-ink-subtle ${deva}`}>
-        {t.hero.cards.remindersNote}
-      </p>
-    </motion.div>
+      <Inset label="8:00 PM">
+        <p className={`text-[13px] leading-snug ${deva}`}>
+          {t.hero.cards.remindersNote}
+        </p>
+      </Inset>
+    </Tile>
   );
 }
 
-/** The page's only red, and its only infinite loop. */
-function SosCell({ delay }: { delay: number }) {
+/** The page's only red, and its only pulsing loop. */
+function SosTile({ delay }: { delay: number }) {
   const { t, deva } = useLang();
   const reduce = useReducedMotion();
 
   return (
-    <motion.div
-      {...enter(delay, reduce)}
-      className={`${cell} col-span-2 border-emergency/20 bg-emergency-soft sm:col-span-4`}
+    <Tile
+      num="04"
+      tag={t.hero.cards.tags.sos}
+      tone="emergency"
+      index={3}
+      delay={delay}
+      span="col-span-2 sm:col-span-4"
     >
-      <span className="relative w-fit">
-        <Chip tone="emergency">
-          <Phone size={17} weight="fill" />
-        </Chip>
-        {!reduce && (
-          <motion.span
-            className="absolute inset-0 rounded-full"
-            animate={{
-              boxShadow: [
-                "0 0 0 0 rgba(225,25,0,0.35)",
-                "0 0 0 14px rgba(225,25,0,0)",
-              ],
-            }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
-          />
-        )}
-      </span>
-      <p className="mt-3 text-[18px] font-bold text-emergency">SOS 112</p>
-      <p className={`mt-auto text-[12.5px] leading-snug text-ink-muted ${deva}`}>
-        {t.hero.cards.sosNote}
-      </p>
-    </motion.div>
+      <div className="mt-4 flex items-center gap-4">
+        <span className="relative grid size-11 shrink-0 place-items-center rounded-full bg-emergency text-paper">
+          <Phone size={20} weight="fill" />
+          {!reduce && (
+            <motion.span
+              className="absolute inset-0 rounded-full"
+              animate={{
+                boxShadow: [
+                  "0 0 0 0 rgba(225,25,0,0.35)",
+                  "0 0 0 14px rgba(225,25,0,0)",
+                ],
+              }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
+            />
+          )}
+        </span>
+        <span>
+          <span className="block text-[22px] leading-none font-bold text-emergency xl:text-[26px]">
+            SOS 112
+          </span>
+          <span className={`mt-1.5 block text-[14px] leading-snug text-ink-muted ${deva}`}>
+            {t.hero.cards.sosNote}
+          </span>
+        </span>
+      </div>
+    </Tile>
   );
 }
 
 export function HeroBento() {
   return (
-    <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-6 sm:gap-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-7 sm:gap-4">
       <PhoneCell delay={0.1} />
-      <DirectoryCell delay={0.18} />
-      <AssistantCell delay={0.26} />
-      <RemindersCell delay={0.3} />
-      <SosCell delay={0.34} />
+      <DirectoryTile delay={0.18} />
+      <AssistantTile delay={0.26} />
+      <RemindersTile delay={0.3} />
+      <SosTile delay={0.34} />
     </div>
   );
 }

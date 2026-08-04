@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, Noto_Sans_Devanagari } from "next/font/google";
+import { DM_Sans, JetBrains_Mono, Noto_Sans_Devanagari } from "next/font/google";
 import "./globals.css";
 
 // The product ships DM Sans on iOS, Android and web. The landing page uses the
@@ -8,6 +8,15 @@ const dmSans = DM_Sans({
   variable: "--font-dm-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+// Mono is for the numbered tile labels only, the way the amphi landing uses it:
+// a second voice for chrome, never for reading copy.
+const mono = JetBrains_Mono({
+  variable: "--font-jet",
+  subsets: ["latin"],
+  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -40,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${notoDeva.variable} h-full antialiased`}
+      className={`${dmSans.variable} ${mono.variable} ${notoDeva.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-paper text-ink">{children}</body>
     </html>
