@@ -21,6 +21,10 @@ const {
 } = require('../_lib/auth');
 
 // Burst protection against credential stuffing (per-instance; see auth.js).
+// Only FAILED attempts are charged. Indian mobile carriers put many subscribers
+// behind one public address, so a shared IP reaching 20 sign-ins in a quarter of
+// an hour is a normal morning for a hundred users, not an attack — charging
+// successes would lock out the people who typed their password correctly.
 const allowByIp = makeRateLimiter({ max: 20, windowMs: 15 * 60 * 1000 });
 const allowByIdentifier = makeRateLimiter({ max: 10, windowMs: 15 * 60 * 1000 });
 
@@ -38,7 +42,9 @@ module.exports = async function handler(req, res) {
       (phone ? validatePhone(phone) : validateUsername(username)) || validatePassword(password);
     if (validationError) return send(res, 400, { error: validationError });
 
-    if (!allowByIp(requestIp(req)) || !allowByIdentifier(phone || username)) {
+    const ip = requestIp(req);
+    const identifier = phone || username;
+    if (!allowByIp.check(ip) || !allowByIdentifier.check(identifier)) {
       return send(res, 429, { error: 'Too many sign-in attempts. Try again in a few minutes.' });
     }
 
@@ -49,10 +55,14 @@ module.exports = async function handler(req, res) {
     // an actual ceiling. Successful sign-ins are never counted — a family
     // sharing one tablet must not lock themselves out by using it.
     const DAY_MS = 24 * 60 * 60 * 1000;
-    const failBuckets = [
-      `signin-fail:id:${phone || username}`,
-      `signin-fail:ip:${requestIp(req)}`,
-    ];
+    const failBuckets = [`signin-fail:id:${identifier}`, `signin-fail:ip:${ip}`];
+    // Every 401 below goes through here, so the burst window and the daily
+    // ceiling always move together.
+    const recordFailure = async () => {
+      allowByIp.record(ip);
+      allowByIdentifier.record(identifier);
+      await recordDurable(supabase, failBuckets);
+    };
     const [idAllowed, ipAllowed] = await Promise.all([
       allowDurable(supabase, failBuckets[0], { max: 15, windowMs: DAY_MS }),
       allowDurable(supabase, failBuckets[1], { max: 60, windowMs: DAY_MS }),
@@ -76,6 +86,7 @@ module.exports = async function handler(req, res) {
       if (phone && String(error.message || '').toLowerCase().includes('phone_number')) {
         const userId = localPhoneUserId(phone);
         if (!userId) {
+          await recordFailure();
           return send(res, 401, { error: 'Invalid phone number or password.' });
         }
         const fallback = await supabase
@@ -89,7 +100,7 @@ module.exports = async function handler(req, res) {
       if (error) throw error;
     }
     if (!user || !hashesMatch(passwordHash(password, user.password_salt), user.password_hash)) {
-      await recordDurable(supabase, failBuckets);
+      await recordFailure();
       return send(res, 401, {
         error: phone ? 'Invalid phone number or password.' : 'Invalid username or password.',
       });

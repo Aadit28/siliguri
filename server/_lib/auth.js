@@ -147,22 +147,49 @@ function hashesMatch(a, b) {
 // start, so this is burst protection, not a durable quota (roadmap: DB-backed).
 function makeRateLimiter({ max, windowMs }) {
   const hits = new Map();
-  return function allow(key) {
+
+  function prune(now) {
+    if (hits.size <= 2000) return;
+    for (const [k, timestamps] of hits) {
+      if (!timestamps.some((ts) => now - ts < windowMs)) hits.delete(k);
+    }
+  }
+
+  function live(key, now) {
+    return (hits.get(key) || []).filter((ts) => now - ts < windowMs);
+  }
+
+  function allow(key) {
     const now = Date.now();
-    const list = (hits.get(key) || []).filter((ts) => now - ts < windowMs);
+    const list = live(key, now);
     if (list.length >= max) {
       hits.set(key, list);
       return false;
     }
     list.push(now);
     hits.set(key, list);
-    if (hits.size > 2000) {
-      for (const [k, timestamps] of hits) {
-        if (!timestamps.some((ts) => now - ts < windowMs)) hits.delete(k);
-      }
-    }
+    prune(now);
     return true;
+  }
+
+  // check/record split, for the callers that must only count the attempts worth
+  // counting. allow() charges every call, which is right when the call itself is
+  // the expensive thing (an SMS, a WhatsApp message) and wrong when it is not:
+  // a shared mobile IP would otherwise spend its budget on people signing in
+  // successfully. Indian carriers put many subscribers behind one address, so
+  // "20 requests from this IP" is a normal morning, not an attack.
+  allow.check = function check(key) {
+    return live(key, Date.now()).length < max;
   };
+  allow.record = function record(key) {
+    const now = Date.now();
+    const list = live(key, now);
+    list.push(now);
+    hits.set(key, list);
+    prune(now);
+  };
+
+  return allow;
 }
 
 // Durable limiter backed by rate_events (migration 12): counts survive cold
