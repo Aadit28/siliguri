@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -17,13 +17,13 @@ export default function AppHeader({ title }: { title?: string }) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const { lang, toggle } = useLocale();
-  const { displayName, user, signOut } = useAuth();
+  const { displayName, user } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
   const { isComputerMode, toggleDisplayMode } = useDisplayMode();
   const tk = useTokens();
   const styles = useMemo(() => makeStyles(tk), [tk]);
 
-  const accountLabel = user ? displayName?.split(' ')[0] || t('common.signOut') : t('common.signIn');
+  const accountLabel = user ? displayName?.split(' ')[0] || t('common.you') : t('common.signIn');
   const navItems = [
     { label: t('tabs.home'), href: '/' },
     { label: t('tabs.services'), href: '/services' },
@@ -40,33 +40,6 @@ export default function AppHeader({ title }: { title?: string }) {
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  // Two-tap confirm on web: native confirm() is blocked in embedded webviews
-  // and cannot be styled for elder-sized touch targets.
-  const [signOutArmed, setSignOutArmed] = useState(false);
-  useEffect(() => {
-    if (!signOutArmed) return;
-    // Long enough for an unhurried reader to notice the prompt and decide.
-    const timer = setTimeout(() => setSignOutArmed(false), 10000);
-    return () => clearTimeout(timer);
-  }, [signOutArmed]);
-
-  const confirmSignOut = () => {
-    const question = `${t('common.signOut')}?`;
-    if (Platform.OS === 'web') {
-      if (signOutArmed) {
-        setSignOutArmed(false);
-        signOut();
-      } else {
-        setSignOutArmed(true);
-      }
-    } else {
-      Alert.alert(question, undefined, [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.signOut'), style: 'destructive', onPress: () => signOut() },
-      ]);
-    }
-  };
-
   const DisplayModeToggle =
     Platform.OS === 'web' ? (
       <Pressable
@@ -79,21 +52,21 @@ export default function AppHeader({ title }: { title?: string }) {
       </Pressable>
     ) : null;
 
+  // The account pill is a door, not an action: settings and sign-out live on
+  // the profile screen where they have room to be labelled.
   const AccountButton = (
     <Pressable
       accessibilityRole="button"
-      onPress={() => (user ? confirmSignOut() : router.push('/login'))}
+      accessibilityLabel={user ? t('profile.open') : t('common.signIn')}
+      onPress={() => router.push(user ? '/profile' : '/login')}
       style={({ pressed }) => [
         styles.accountButton,
-        { borderColor: signOutArmed ? colors.danger : colors.border },
+        { borderColor: colors.border },
         pressed && styles.pressed,
       ]}
     >
-      <Text
-        style={[styles.accountText, { color: signOutArmed ? colors.danger : colors.text }]}
-        numberOfLines={1}
-      >
-        {signOutArmed ? `${t('common.signOut')}?` : accountLabel}
+      <Text style={[styles.accountText, { color: colors.text }]} numberOfLines={1}>
+        {accountLabel}
       </Text>
     </Pressable>
   );
