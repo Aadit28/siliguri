@@ -40,7 +40,7 @@ export function AppMockup({ className = "" }: { className?: string }) {
 
   return (
     <div className={`flex flex-col ${className}`}>
-      <Device tab={tab} className="grow">
+      <Device tab={tab} showSignIn={false} className="grow">
         <AnimatePresence mode="wait">
           <motion.div
             key={index}

@@ -13,7 +13,7 @@ import {
   type MotionValue,
 } from "motion/react";
 import { Phone } from "@phosphor-icons/react/dist/ssr";
-import { TOTAL_LISTINGS } from "../_lib/copy";
+import { CITIES, TOTAL_LISTINGS } from "../_lib/copy";
 import { useLang } from "../_lib/lang";
 import { AppMockup } from "./mockups/AppMockup";
 
@@ -43,7 +43,7 @@ function PhotoCell({
   const { t } = useLang();
   const reduce = useReducedMotion();
   return (
-    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2 h-[236px]`}>
+    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2 h-[220px] lg:h-[286px]`}>
       <motion.div style={reduce ? undefined : { x, y }} className="absolute -inset-4">
         <Image
           src="/care-siliguri.png"
@@ -99,17 +99,49 @@ function ListingsCell({ delay }: { delay: number }) {
     return () => controls.stop();
   }, [inView, reduce, delay]);
 
+  const widest = Math.max(...CITIES.map((c) => c.total));
+
   return (
-    <motion.div {...enter(delay, reduce)} ref={ref} className={`${cell} h-[152px] p-5`}>
-      <p className="text-[38px] leading-none font-bold tracking-[-0.04em] tabular-nums">
-        {shown}
-      </p>
-      <p className={`mt-1.5 text-[15px] font-semibold ${deva}`}>
-        {t.hero.cards.listingsLabel}
-      </p>
-      <p className={`mt-1 text-[13px] leading-snug text-ink-subtle ${deva}`}>
-        {t.hero.cards.listingsNote}
-      </p>
+    <motion.div
+      {...enter(delay, reduce)}
+      ref={ref}
+      className={`${cell} flex h-[196px] flex-col p-5 lg:h-[236px] lg:p-6`}
+    >
+      <div className="flex items-baseline gap-2">
+        <p className="text-[38px] leading-none font-bold tracking-[-0.04em] tabular-nums lg:text-[46px]">
+          {shown}
+        </p>
+        <p className={`text-[14px] font-semibold ${deva}`}>
+          {t.hero.cards.listingsLabel}
+        </p>
+      </div>
+
+      {/* Bars are the real proportions between the three datasets, not a shape
+          drawn to look balanced. Ahilyanagar is genuinely the smallest. */}
+      {/* Label and bar stack rather than sit side by side: in a third-width
+          card an inline label leaves the bar too short to compare against. */}
+      <ul className="mt-auto space-y-2.5">
+        {CITIES.map((c, i) => (
+          <li key={c.key}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={`truncate text-[11.5px] font-medium ${deva}`}>
+                {t.cities[c.key]}
+              </span>
+              <span className="shrink-0 text-[11.5px] font-semibold tabular-nums">
+                {c.total}
+              </span>
+            </div>
+            <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-paper-tint">
+              <motion.span
+                className="block h-full rounded-full bg-ink"
+                initial={reduce ? false : { width: 0 }}
+                animate={inView ? { width: `${(c.total / widest) * 100}%` } : {}}
+                transition={{ duration: 0.8, delay: delay + 0.35 + i * 0.1, ease }}
+              />
+            </span>
+          </li>
+        ))}
+      </ul>
     </motion.div>
   );
 }
@@ -122,7 +154,7 @@ function SosCell({ delay }: { delay: number }) {
   return (
     <motion.div
       {...enter(delay, reduce)}
-      className={`${cell} h-[152px] border-emergency/20 bg-emergency-soft p-5`}
+      className={`${cell} flex h-[196px] flex-col border-emergency/20 bg-emergency-soft p-5 lg:h-[236px] lg:p-6`}
     >
       <span className="relative grid size-10 place-items-center rounded-full bg-emergency text-paper">
         <Phone size={18} weight="fill" />
@@ -139,7 +171,7 @@ function SosCell({ delay }: { delay: number }) {
           />
         )}
       </span>
-      <p className="mt-4 text-[19px] font-bold text-emergency">SOS 112</p>
+      <p className="mt-auto text-[24px] font-bold text-emergency lg:text-[28px]">SOS 112</p>
       <p className={`mt-1 text-[13px] leading-snug text-ink-muted ${deva}`}>
         {t.hero.cards.sosNote}
       </p>

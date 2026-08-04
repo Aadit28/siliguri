@@ -6,8 +6,11 @@ import {
   BellRinging,
   CheckCircle,
   Clock,
+  Broom,
   HandHeart,
+  Hospital,
   MagnifyingGlass,
+  Pill,
   SealCheck,
 } from "@phosphor-icons/react/dist/ssr";
 import { appStrings, mockIsDeva, SAMPLE_LISTINGS } from "../../_lib/appStrings";
@@ -15,6 +18,13 @@ import { useLang } from "../../_lib/lang";
 import { chipTone } from "./Device";
 
 const ease = [0.16, 1, 0.3, 1] as const;
+
+const listingIcon = {
+  elder: HandHeart,
+  hospital: Hospital,
+  pharmacy: Pill,
+  civic: Broom,
+} as const;
 
 /** Children slide up in sequence, the way a list paints in as data arrives. */
 function stagger(i: number, reduce: boolean | null, base = 0.18) {
@@ -51,7 +61,9 @@ export function SceneServices() {
       </motion.div>
 
       <ul className="flex flex-col gap-2">
-        {SAMPLE_LISTINGS.map((item, i) => (
+        {SAMPLE_LISTINGS.map((item, i) => {
+          const Icon = listingIcon[item.icon];
+          return (
           <motion.li
             key={item.name}
             {...stagger(i + 1, reduce)}
@@ -60,7 +72,7 @@ export function SceneServices() {
             <span
               className={`grid size-7 shrink-0 place-items-center rounded-[7px] ${chipTone[item.tone]}`}
             >
-              <HandHeart size={14} />
+              <Icon size={14} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[11px] font-semibold">
@@ -74,7 +86,8 @@ export function SceneServices() {
               </span>
             </span>
           </motion.li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );
@@ -149,8 +162,9 @@ export function SceneToday() {
   const { s, deva, reduce } = useMock();
 
   const rows = [
+    { label: s.today.walk, time: s.today.morning, done: true },
     { label: s.reminder.medicine, time: s.today.due, done: true },
-    { label: s.guardian.forWhom, time: s.today.due, done: false },
+    { label: s.today.call, time: s.today.evening, done: false },
   ];
 
   return (

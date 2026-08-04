@@ -93,8 +93,8 @@ const en = {
   },
   hero: {
     eyebrow: "Three cities · India",
-    headline: "Care for your parents at home, from anywhere.",
-    sub: "Verified local services, reminders that ring, and an assistant that answers in your language.",
+    headline: "Care for your parents, from anywhere.",
+    sub: "Verified services near their home, reminders that ring, and an assistant that answers in your language.",
     ctaPrimary: "Get early access",
     ctaSecondary: "See how it works",
     photoAlt:

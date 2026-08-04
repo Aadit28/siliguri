@@ -31,10 +31,17 @@ export function Device({
   tab,
   children,
   className = "",
+  /**
+   * Drop the sign-in pill. The shell renders as narrow as ~175px inside the
+   * hero grid, where brand + SOS + sign-in cannot all fit and the last one gets
+   * clipped by the card's overflow.
+   */
+  showSignIn = true,
 }: {
   tab: TabKey;
   children: ReactNode;
   className?: string;
+  showSignIn?: boolean;
 }) {
   const { lang } = useLang();
   const s = appStrings(lang);
@@ -50,17 +57,19 @@ export function Device({
         <span className="grid size-5 shrink-0 place-items-center rounded-[6px] bg-ink text-[10px] font-bold text-paper">
           S
         </span>
-        <span className={`shrink-0 text-[12px] font-semibold ${deva}`}>
+        <span className={`min-w-0 truncate text-[12px] font-semibold ${deva}`}>
           {s.brand}
         </span>
         <span className="ml-auto shrink-0 rounded-full bg-emergency px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap text-paper">
           SOS 112
         </span>
-        <span
-          className={`shrink-0 rounded-full border border-line px-1.5 py-0.5 text-[9px] font-semibold whitespace-nowrap ${deva}`}
-        >
-          {s.signIn}
-        </span>
+        {showSignIn && (
+          <span
+            className={`shrink-0 rounded-full border border-line px-1.5 py-0.5 text-[9px] font-semibold whitespace-nowrap ${deva}`}
+          >
+            {s.signIn}
+          </span>
+        )}
       </header>
 
       <div className="relative grow overflow-hidden">{children}</div>

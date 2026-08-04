@@ -44,7 +44,7 @@ function ScreenPeek({
       style={{ maxWidth: width, height: Math.round(width * 1.5) }}
       className="-mb-7 w-full overflow-hidden sm:-mb-8"
     >
-      <Device tab={tab} className="h-full">
+      <Device tab={tab} showSignIn={false} className="h-full">
         {children}
       </Device>
     </div>

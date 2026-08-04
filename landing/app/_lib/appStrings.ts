@@ -17,7 +17,7 @@ export type AppStrings = {
   services: { title: string; search: string; verified: string };
   assistant: { title: string; online: string; newChat: string; saved: string };
   reminder: { title: string; what: string; when: string; repeats: string; daily: string; time: string; medicine: string };
-  today: { title: string; done: string; due: string };
+  today: { title: string; done: string; due: string; walk: string; call: string; morning: string; evening: string };
   guardian: { title: string; forWhom: string; note: string };
   ask: { title: string; inReview: string; reviewNote: string; postTitle: string; postBody: string; author: string };
 };
@@ -46,7 +46,15 @@ const en: AppStrings = {
     time: "8:00 PM",
     medicine: "BP medicine",
   },
-  today: { title: "Today", done: "Done", due: "8:00 PM" },
+  today: {
+    title: "Today",
+    done: "Done",
+    due: "8:00 PM",
+    walk: "Morning walk",
+    call: "Call Priya",
+    morning: "7:00 AM",
+    evening: "9:00 PM",
+  },
   guardian: {
     title: "Set a reminder",
     forWhom: "For Ma",
@@ -86,7 +94,15 @@ const hi: AppStrings = {
     time: "रात 8:00",
     medicine: "बीपी की दवा",
   },
-  today: { title: "आज", done: "हो गया", due: "रात 8:00" },
+  today: {
+    title: "आज",
+    done: "हो गया",
+    due: "रात 8:00",
+    walk: "सुबह की सैर",
+    call: "प्रिया को फ़ोन",
+    morning: "सुबह 7:00",
+    evening: "रात 9:00",
+  },
   guardian: {
     title: "रिमाइंडर लगाएँ",
     forWhom: "माँ के लिए",
@@ -115,7 +131,9 @@ export const mockIsDeva = (lang: Lang) => lang !== "en";
  * doctors: a marketing page does not need a real person's name on it.
  */
 export const SAMPLE_LISTINGS = [
-  { name: "Siliguri Bhawna Society", area: "Pradhan Nagar", tone: "sage" },
-  { name: "Hope Wellness Retreat", area: "Greater Siliguri", tone: "sky" },
-  { name: "Shanti Mindcare Old Age Care", area: "Dabgram", tone: "peach" },
+  { name: "Siliguri Bhawna Society", area: "Pradhan Nagar", tone: "sage", icon: "elder" },
+  { name: "North Bengal Medical College", area: "Siliguri", tone: "peach", icon: "hospital" },
+  { name: "Apollo Pharmacy, Netaji More", area: "Siliguri", tone: "lilac", icon: "pharmacy" },
+  { name: "Hope Wellness Retreat", area: "Greater Siliguri", tone: "sky", icon: "elder" },
+  { name: "Siliguri Municipal Control Room", area: "Siliguri", tone: "butter", icon: "civic" },
 ] as const;
