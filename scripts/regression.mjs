@@ -8,6 +8,8 @@
 // inferred. Set SAATHI_REGRESSION_API to point somewhere other than the local
 // dev API. The suite creates and removes its own rows; it leaves inbox alert
 // rows behind (they age out via the daily cron).
+import { readFile } from 'node:fs/promises';
+
 const API = process.env.SAATHI_REGRESSION_API || 'http://127.0.0.1:8788';
 let pass = 0;
 let fail = 0;
@@ -78,7 +80,17 @@ const parentId = links.asGuardian?.[0]?.parentId;
 check('guardian sees a linked parent', Boolean(parentId));
 
 const before = (await post('/api/family/reminders', { action: 'list', parentId }, guardian)).json;
-check('seeded reminders intact', before.reminders?.length === 3, `got ${before.reminders?.length}`);
+// Assert on the seeded titles, not on a row count: the demo seeder writes 28
+// days of adherence history, so any fixed number goes stale the next time that
+// window changes and reports a green suite as a failure.
+const seededTitles = new Set((before.reminders || []).map((r) => r.title));
+check(
+  'seeded reminders intact',
+  ['Blood pressure medicine', 'Evening sugar tablet', 'Refill diabetes strips'].every((title) =>
+    seededTitles.has(title),
+  ),
+  `got ${before.reminders?.length} rows: ${[...seededTitles].join(', ')}`,
+);
 
 const badDate = await post('/api/family/reminders', { action: 'add', parentId, title: 'QA regression', dateISO: '31-08-2026' }, guardian);
 check('malformed date rejected', badDate.status === 400, `status ${badDate.status}`);
@@ -116,7 +128,17 @@ check('mark-read clears unread', markRead.status === 200 && afterRead.json.unrea
 
 // ADMIN: directory, partial patch keeps other fields, callback queue scoped.
 const list = await post('/api/admin/service', { action: 'list' }, admin);
-check('admin sees the directory', list.json.services?.length === 58, `got ${list.json.services?.length}`);
+// The Siliguri admin sees the Siliguri directory, so the expected count comes
+// from that city's audited source file rather than a literal that has to be
+// edited by hand every time a listing is added or removed.
+const siliguriCatalog = JSON.parse(
+  await readFile(new URL('../src/data/services.json', import.meta.url), 'utf8'),
+);
+check(
+  'admin sees the directory',
+  list.json.services?.length === siliguriCatalog.length,
+  `got ${list.json.services?.length}, source file has ${siliguriCatalog.length}`,
+);
 check('map_url present in list payload', 'map_url' in (list.json.services?.[0] ?? {}));
 
 const target = list.json.services.find((s) => s.phone && s.address);
