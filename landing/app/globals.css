@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+/* Tokens mirror the app's design system (siliguri/src/lib/theme.ts).
+   Monochrome surfaces, one blue for interactive, red reserved for emergency,
+   pastels allowed in icon chips only. The page is light-locked: the app's
+   dark mode is a user setting inside the product, not a marketing surface. */
+@theme {
+  --color-ink: #0a0a0a;
+  --color-ink-muted: #4f4f4f;
+  --color-ink-subtle: #6b6b6b;
+
+  --color-paper: #ffffff;
+  --color-paper-alt: #f6f6f6;
+  --color-paper-tint: #f3f3f3;
+  --color-line: #e8e8e8;
+
+  --color-brand: #276ef1;
+  --color-brand-dark: #1e54c4;
+  --color-brand-soft: rgba(39, 110, 241, 0.1);
+
+  --color-emergency: #e11900;
+  --color-emergency-dark: #b71500;
+  --color-emergency-soft: rgba(225, 25, 0, 0.08);
+
+  /* Icon-chip pastels, straight from the app palette. */
+  --color-chip-sage: #e3f0e4;
+  --color-chip-sageink: #2e5d3c;
+  --color-chip-sky: #e1eefa;
+  --color-chip-skyink: #22537f;
+  --color-chip-peach: #fdebdc;
+  --color-chip-peachink: #8a4a1b;
+  --color-chip-lilac: #ece6f8;
+  --color-chip-lilacink: #4e3a80;
+  --color-chip-butter: #fbf0d4;
+  --color-chip-butterink: #6f5716;
+
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-deva: var(--font-noto-deva), var(--font-dm-sans), sans-serif;
+
+  /* One radius scale: cards 16, chips/inputs 10, buttons pill. */
+  --radius-card: 16px;
+  --radius-field: 10px;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Devanagari strings get a face built for the script rather than DM Sans'
+   Latin-only fallback chain. */
+.deva {
+  font-family: var(--font-deva);
+  font-feature-settings: "kern" 1;
+}
+
+/* Hairline grid behind the distance band. Two 1px gradients, no image. */
+.grid-lines {
+  background-image:
+    linear-gradient(to right, rgba(10, 10, 10, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(10, 10, 10, 0.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
