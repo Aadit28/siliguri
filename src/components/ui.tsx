@@ -25,10 +25,16 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { family, font, radius, space, shadow, TAP, tracking } from '../lib/theme';
+import { family, radius, shadow, tracking, tokensFor } from '../lib/theme';
+import { useTokens, ScreenTokens } from '../lib/useTokens';
 import { useTheme } from '../context/ThemeContext';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// OS accessibility text scaling multiplies on top of easy view's 1.15, and an
+// elder with the system slider at max would otherwise push a button label past
+// its container. 1.3 keeps large-text users served without breaking rows.
+const MAX_FONT_SCALE = 1.3;
 
 // ---------------------------------------------------------------------------
 // Dialling
@@ -65,13 +71,15 @@ export function useDialer() {
 export function DialFallbackDialog({ number, onClose }: { number: string | null; onClose: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const tk = useTokens();
+  const styles = useUiStyles();
   return (
     <Dialog
       visible={Boolean(number)}
       onClose={onClose}
       title={t('dialer.failedTitle', { defaultValue: 'Could not open the phone app' })}
     >
-      <Body style={{ marginBottom: space.md }}>
+      <Body style={{ marginBottom: tk.space.md }}>
         {t('dialer.failedBody', { defaultValue: 'Please dial this number on your phone:' })}
       </Body>
       <Text selectable style={[styles.dialNumber, { color: colors.text }]}>
@@ -144,6 +152,7 @@ const dialogIn = FadeInDown.duration(200)
 // Quiet surface tile (Uber pattern): gray fill, no border, no shadow.
 export function Card({ style, ...props }: ViewProps) {
   const { colors } = useTheme();
+  const styles = useUiStyles();
   return (
     <View
       style={[
@@ -160,22 +169,38 @@ export function Card({ style, ...props }: ViewProps) {
 
 export function H1({ style, ...props }: TextProps) {
   const { colors } = useTheme();
-  return <Text style={[styles.h1, { color: colors.text }, style]} {...props} />;
+  const styles = useUiStyles();
+  return (
+    <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.h1, { color: colors.text }, style]} {...props} />
+  );
 }
 
 export function H2({ style, ...props }: TextProps) {
   const { colors } = useTheme();
-  return <Text style={[styles.h2, { color: colors.text }, style]} {...props} />;
+  const styles = useUiStyles();
+  return (
+    <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.h2, { color: colors.text }, style]} {...props} />
+  );
 }
 
 export function Body({ style, ...props }: TextProps) {
   const { colors } = useTheme();
-  return <Text style={[styles.body, { color: colors.text }, style]} {...props} />;
+  const styles = useUiStyles();
+  return (
+    <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.body, { color: colors.text }, style]} {...props} />
+  );
 }
 
 export function Muted({ style, ...props }: TextProps) {
   const { colors } = useTheme();
-  return <Text style={[styles.muted, { color: colors.textMuted }, style]} {...props} />;
+  const styles = useUiStyles();
+  return (
+    <Text
+      maxFontSizeMultiplier={MAX_FONT_SCALE}
+      style={[styles.muted, { color: colors.textMuted }, style]}
+      {...props}
+    />
+  );
 }
 
 export function Button({
@@ -194,6 +219,7 @@ export function Button({
   icon?: React.ReactNode;
 }) {
   const { colors } = useTheme();
+  const styles = useUiStyles();
   const isSecondary = variant === 'secondary';
   const filled =
     variant === 'primary'
@@ -232,8 +258,16 @@ export function Button({
         <ActivityIndicator color={fg} />
       ) : (
         <View style={styles.btnContent}>
-          {typeof icon === 'string' ? <Text style={[styles.btnText, { color: fg }]}>{icon}</Text> : icon}
-          <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+          {typeof icon === 'string' ? (
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.btnText, { color: fg }]}>
+              {icon}
+            </Text>
+          ) : (
+            icon
+          )}
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.btnText, { color: fg }]}>
+            {label}
+          </Text>
         </View>
       )}
     </TouchableOpacity>
@@ -254,6 +288,7 @@ export function Chip({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const styles = useUiStyles();
   const scale = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -308,6 +343,7 @@ function contrastText(background: string) {
 
 export function Badge({ label, color }: { label: string; color?: string }) {
   const { colors } = useTheme();
+  const styles = useUiStyles();
   return (
     <View style={[styles.badge, { backgroundColor: color ?? colors.successSoft, borderColor: colors.border }]}>
       <Text style={[styles.badgeText, { color: color ? contrastText(color) : colors.success }]}>{label}</Text>
@@ -317,9 +353,10 @@ export function Badge({ label, color }: { label: string; color?: string }) {
 
 export function Stars({ rating }: { rating: number | null }) {
   const { colors } = useTheme();
+  const tk = useTokens();
   if (!rating) return null;
   return (
-    <Text style={{ color: colors.star, fontFamily: family.medium, fontSize: font.sm }}>
+    <Text style={{ color: colors.star, fontFamily: family.medium, fontSize: tk.font.sm }}>
       {rating.toFixed(1)}/5
     </Text>
   );
@@ -327,6 +364,7 @@ export function Stars({ rating }: { rating: number | null }) {
 
 function ModalHeading({ title }: { title?: React.ReactNode }) {
   const { colors } = useTheme();
+  const styles = useUiStyles();
   if (!title) return null;
   return typeof title === 'string' ? (
     <Text style={[styles.modalTitle, { color: colors.text }]}>{title}</Text>
@@ -340,6 +378,7 @@ function ModalHeading({ title }: { title?: React.ReactNode }) {
 function SheetCloseButton({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const styles = useUiStyles();
   return (
     <Pressable
       accessibilityRole="button"
@@ -370,14 +409,16 @@ export function Sheet({
   children: React.ReactNode;
 }) {
   const { colors, mode } = useTheme();
+  const { isSimple } = useTokens();
+  const styles = useUiStyles();
   const { height } = useWindowDimensions();
   return (
     <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.sheetRoot}>
-        <Animated.View entering={scrimIn} style={styles.modalScrim}>
+        <Animated.View entering={isSimple ? undefined : scrimIn} style={styles.modalScrim}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
         </Animated.View>
-        <Animated.View entering={sheetIn} style={[styles.sheetShell, { borderColor: colors.glassBorder, maxHeight: height * 0.88 }]}>
+        <Animated.View entering={isSimple ? undefined : sheetIn} style={[styles.sheetShell, { borderColor: colors.glassBorder, maxHeight: height * 0.88 }]}>
           <BlurView
             intensity={22}
             tint={mode}
@@ -418,15 +459,17 @@ export function Dialog({
   children: React.ReactNode;
 }) {
   const { colors, mode } = useTheme();
+  const { isSimple } = useTokens();
+  const styles = useUiStyles();
   const { width } = useWindowDimensions();
   return (
     <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.dialogRoot}>
-        <Animated.View entering={scrimIn} style={styles.modalScrim}>
+        <Animated.View entering={isSimple ? undefined : scrimIn} style={styles.modalScrim}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
         </Animated.View>
         <Animated.View
-          entering={dialogIn}
+          entering={isSimple ? undefined : dialogIn}
           style={[styles.dialogShell, { borderColor: colors.glassBorder, width: Math.min(width - 32, 440) }]}
         >
           <BlurView
@@ -444,102 +487,117 @@ export function Dialog({
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: radius.lg,
-    padding: space.lg,
-    borderWidth: 0,
-    overflow: 'hidden',
-  },
-  h1: { fontFamily: family.semibold, fontSize: font.xxl, lineHeight: font.xxl * 1.13, letterSpacing: tracking.display },
-  h2: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: font.lg * 1.2, letterSpacing: tracking.lg },
-  body: { fontFamily: family.regular, fontSize: font.md, lineHeight: font.md * 1.5 },
-  muted: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.5 },
-  btn: {
-    minHeight: TAP,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.lg,
-    borderWidth: 1,
-  },
-  btnSecondary: {
-    borderWidth: 1,
-    ...shadow.sm,
-  },
-  btnText: { fontFamily: family.medium, fontSize: font.md },
-  btnContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
-  chip: {
-    minHeight: 48,
-    paddingHorizontal: space.md,
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.xs,
-    marginRight: space.sm,
-    flexShrink: 0,
-    borderWidth: 1,
-  },
-  chipText: { fontFamily: family.medium, fontSize: font.sm },
-  chipCount: { fontFamily: family.regular, fontSize: font.xs },
-  badge: {
-    paddingHorizontal: space.sm,
-    paddingVertical: 5,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  badgeText: { fontFamily: family.medium, fontSize: font.xs },
-  modalScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.52)' },
-  sheetRoot: { flex: 1, justifyContent: 'flex-end' },
-  // Shell clips the blur to the radius; panel carries the translucent fill.
-  sheetShell: {
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...shadow.md,
-  },
-  sheetPanel: {
-    flexShrink: 1,
-    paddingHorizontal: space.lg,
-    paddingBottom: space.xl,
-  },
-  // 44px+ grab zone around the visual handle so elders can tap-to-close.
-  sheetHandleTap: { minHeight: 44, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
-  sheetHandle: { width: 48, height: 5, borderRadius: 999 },
-  sheetTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  sheetTopHeading: { flex: 1, minWidth: 0, justifyContent: 'center' },
-  sheetClose: {
-    minHeight: TAP,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: space.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    marginBottom: space.md,
-    flexShrink: 0,
-  },
-  sheetCloseLabel: { fontFamily: family.semibold, fontSize: font.sm },
-  dialNumber: {
-    fontFamily: family.heavy,
-    fontSize: font.xxl,
-    lineHeight: font.xxl * 1.2,
-    letterSpacing: tracking.display,
-    textAlign: 'center',
-    marginBottom: space.lg,
-  },
-  dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
-  dialogShell: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...shadow.md,
-  },
-  dialogPanel: { padding: space.lg },
-  modalTitle: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: 28, marginBottom: space.md },
-  modalTitleNode: { marginBottom: space.md },
-});
+function makeUiStyles(tk: ScreenTokens) {
+  const { font, space } = tk;
+  return StyleSheet.create({
+    card: {
+      borderRadius: radius.lg,
+      padding: space.lg,
+      borderWidth: 0,
+      overflow: 'hidden',
+    },
+    h1: { fontFamily: family.semibold, fontSize: font.xxl, lineHeight: font.xxl * 1.13, letterSpacing: tracking.display },
+    h2: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: font.lg * 1.2, letterSpacing: tracking.lg },
+    body: { fontFamily: family.regular, fontSize: font.md, lineHeight: font.md * 1.5 },
+    muted: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.5 },
+    btn: {
+      minHeight: tk.TAP,
+      borderRadius: radius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: space.lg,
+      borderWidth: 1,
+    },
+    btnSecondary: {
+      borderWidth: 1,
+      ...shadow.sm,
+    },
+    btnText: { fontFamily: family.medium, fontSize: font.md },
+    btnContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
+    chip: {
+      // Chips sit below the TAP floor by design (they are filters in a scroll
+      // rail, not primary actions); easy view lifts them to the floor.
+      minHeight: tk.isSimple ? 56 : 48,
+      paddingHorizontal: space.md,
+      borderRadius: radius.pill,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.xs,
+      marginRight: space.sm,
+      flexShrink: 0,
+      borderWidth: 1,
+    },
+    chipText: { fontFamily: family.medium, fontSize: font.sm },
+    chipCount: { fontFamily: family.regular, fontSize: font.xs },
+    badge: {
+      paddingHorizontal: space.sm,
+      paddingVertical: 5,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      alignSelf: 'flex-start',
+    },
+    badgeText: { fontFamily: family.medium, fontSize: font.xs },
+    modalScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.52)' },
+    sheetRoot: { flex: 1, justifyContent: 'flex-end' },
+    // Shell clips the blur to the radius; panel carries the translucent fill.
+    sheetShell: {
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      borderWidth: 1,
+      overflow: 'hidden',
+      ...shadow.md,
+    },
+    sheetPanel: {
+      flexShrink: 1,
+      paddingHorizontal: space.lg,
+      paddingBottom: space.xl,
+    },
+    // 44px+ grab zone around the visual handle so elders can tap-to-close.
+    sheetHandleTap: { minHeight: 44, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+    sheetHandle: { width: 48, height: 5, borderRadius: 999 },
+    sheetTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+    sheetTopHeading: { flex: 1, minWidth: 0, justifyContent: 'center' },
+    sheetClose: {
+      minHeight: tk.TAP,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingHorizontal: space.md,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      marginBottom: space.md,
+      flexShrink: 0,
+    },
+    sheetCloseLabel: { fontFamily: family.semibold, fontSize: font.sm },
+    dialNumber: {
+      fontFamily: family.heavy,
+      fontSize: font.xxl,
+      lineHeight: font.xxl * 1.2,
+      letterSpacing: tracking.display,
+      textAlign: 'center',
+      marginBottom: space.lg,
+    },
+    dialogRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.md },
+    dialogShell: {
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      overflow: 'hidden',
+      ...shadow.md,
+    },
+    dialogPanel: { padding: space.lg },
+    modalTitle: { fontFamily: family.semibold, fontSize: font.lg, lineHeight: 28, marginBottom: space.md },
+    modalTitleNode: { marginBottom: space.md },
+  });
+}
+
+// Only two sheets can ever exist, so both are built once at module load. Doing
+// this per render would allocate a new StyleSheet on every keystroke in a chat.
+const normalUiStyles = makeUiStyles({ ...tokensFor(false), isSimple: false });
+const simpleUiStyles = makeUiStyles({ ...tokensFor(true), isSimple: true });
+
+function useUiStyles() {
+  const { isSimple } = useTokens();
+  return isSimple ? simpleUiStyles : normalUiStyles;
+}

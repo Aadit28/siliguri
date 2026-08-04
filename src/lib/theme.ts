@@ -240,6 +240,48 @@ export const ROW_MIN_HEIGHT = 64;
 // 52 capsule + 14 bottom offset + breathing room.
 export const TAB_BAR_CLEARANCE = 92;
 
+// ---------------------------------------------------------------------------
+// Easy view scaling
+//
+// Simple mode does not fork the design system; it scales the two token groups
+// that carry legibility (type and rhythm) and lifts the touch floors. Radius,
+// family, tracking and shadow stay put so the app still looks like itself.
+// 1.15 was chosen over a larger jump because 1.25+ overflows the service and
+// reminder rows on a 320pt screen at the existing copy lengths.
+// ---------------------------------------------------------------------------
+
+export const SIMPLE_FONT_SCALE = 1.15;
+
+export type Tokens = {
+  font: typeof font;
+  space: typeof space;
+  TAP: number;
+  ROW_MIN_HEIGHT: number;
+};
+
+const normalTokens: Tokens = { font, space, TAP, ROW_MIN_HEIGHT };
+
+function scaleGroup<T extends Record<string, number>>(group: T): T {
+  const out = {} as Record<string, number>;
+  for (const key of Object.keys(group)) {
+    out[key] = Math.round(group[key] * SIMPLE_FONT_SCALE);
+  }
+  return out as T;
+}
+
+// Computed once: a StyleSheet built from these is cached by identity, so a new
+// object per call would defeat every downstream memo.
+const simpleTokens: Tokens = {
+  font: scaleGroup(font),
+  space: scaleGroup(space),
+  TAP: 64,
+  ROW_MIN_HEIGHT: 72,
+};
+
+export function tokensFor(isSimple: boolean): Tokens {
+  return isSimple ? simpleTokens : normalTokens;
+}
+
 // Flat surfaces separated by hairline borders; elevation only for floating layers.
 export const shadow = {
   sm: {

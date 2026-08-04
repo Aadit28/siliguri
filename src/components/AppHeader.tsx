@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,8 @@ import { useDisplayMode } from '../context/DisplayModeContext';
 import { useLocale } from '../context/LocaleContext';
 import { useTheme } from '../context/ThemeContext';
 import NotificationBell from './NotificationBell';
-import { family, font, radius, space } from '../lib/theme';
+import { family, radius } from '../lib/theme';
+import { useTokens, ScreenTokens } from '../lib/useTokens';
 
 export default function AppHeader({ title }: { title?: string }) {
   const insets = useSafeAreaInsets();
@@ -19,6 +20,8 @@ export default function AppHeader({ title }: { title?: string }) {
   const { displayName, user, signOut } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
   const { isComputerMode, toggleDisplayMode } = useDisplayMode();
+  const tk = useTokens();
+  const styles = useMemo(() => makeStyles(tk), [tk]);
 
   const accountLabel = user ? displayName?.split(' ')[0] || t('common.signOut') : t('common.signIn');
   const navItems = [
@@ -100,7 +103,7 @@ export default function AppHeader({ title }: { title?: string }) {
       style={[
         styles.header,
         {
-          paddingTop: insets.top + space.sm,
+          paddingTop: insets.top + tk.space.sm,
           backgroundColor: colors.nav,
         },
       ]}
@@ -193,71 +196,84 @@ export default function AppHeader({ title }: { title?: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  // No rule under the bar. It read as a divider between a fixed chrome strip
-  // and the page below it; now that the bar scrolls away with the content,
-  // there are no two regions left for it to separate.
-  header: {
-    paddingHorizontal: space.md,
-    paddingBottom: space.sm,
-  },
-  shell: {
-    width: '100%',
-    maxWidth: 1920,
-    alignSelf: 'center',
-  },
-  shellDesktop: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.lg,
-  },
-  shellMobile: {
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.sm,
-  },
-  brandButton: {
-    minWidth: 0,
-    flexShrink: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  brandCopy: { minWidth: 0, flexShrink: 1 },
-  brandName: { fontFamily: family.bold, fontSize: 20, lineHeight: 24, letterSpacing: -0.3 },
-  brandSubtitle: { maxWidth: 210, marginTop: 1, fontFamily: family.medium, fontSize: font.xs, lineHeight: 18 },
-  desktopNav: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: space.sm },
-  navItem: {
-    minHeight: 44,
-    paddingHorizontal: space.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navText: { fontSize: font.md },
-  utilityRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  utilityButton: {
-    minHeight: 44,
-    minWidth: 58,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: space.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  utilityText: { fontFamily: family.semibold, fontSize: font.xs },
-  mobileActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0 },
-  accountButton: {
-    minHeight: 44,
-    maxWidth: 96,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accountText: { fontFamily: family.semibold, fontSize: font.sm },
-  pressed: { opacity: 0.72 },
-});
+function makeStyles(tk: ScreenTokens) {
+  const { font, space } = tk;
+  // The wordmark and the utility pills are the one place the header carries
+  // hardcoded sizes; easy view scales them off the same 1.15 as everything else
+  // and lifts the pills from the 44 web floor to the app's own TAP floor.
+  const brandSize = tk.isSimple ? 23 : 20;
+  const utilityTap = tk.isSimple ? tk.TAP : 44;
+  return StyleSheet.create({
+    // No rule under the bar. It read as a divider between a fixed chrome strip
+    // and the page below it; now that the bar scrolls away with the content,
+    // there are no two regions left for it to separate.
+    header: {
+      paddingHorizontal: space.md,
+      paddingBottom: space.sm,
+    },
+    shell: {
+      width: '100%',
+      maxWidth: 1920,
+      alignSelf: 'center',
+    },
+    shellDesktop: {
+      minHeight: 64,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.lg,
+    },
+    shellMobile: {
+      minHeight: tk.isSimple ? 64 : 56,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: space.sm,
+    },
+    brandButton: {
+      minWidth: 0,
+      flexShrink: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+    },
+    brandCopy: { minWidth: 0, flexShrink: 1 },
+    brandName: {
+      fontFamily: family.bold,
+      fontSize: brandSize,
+      lineHeight: Math.round(brandSize * 1.2),
+      letterSpacing: -0.3,
+    },
+    brandSubtitle: { maxWidth: 210, marginTop: 1, fontFamily: family.medium, fontSize: font.xs, lineHeight: 18 },
+    desktopNav: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: space.sm },
+    navItem: {
+      minHeight: utilityTap,
+      paddingHorizontal: space.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    navText: { fontSize: font.md },
+    utilityRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    utilityButton: {
+      minHeight: utilityTap,
+      minWidth: tk.isSimple ? 66 : 58,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      paddingHorizontal: space.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    utilityText: { fontFamily: family.semibold, fontSize: font.xs },
+    mobileActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0 },
+    accountButton: {
+      minHeight: utilityTap,
+      maxWidth: tk.isSimple ? 112 : 96,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      paddingHorizontal: space.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    accountText: { fontFamily: family.semibold, fontSize: font.sm },
+    pressed: { opacity: 0.72 },
+  });
+}

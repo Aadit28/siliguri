@@ -20,6 +20,7 @@ import { LocaleProvider } from '../src/context/LocaleContext';
 import { CityProvider } from '../src/context/CityContext';
 import { AppThemeProvider, useTheme } from '../src/context/ThemeContext';
 import { DisplayModeProvider, useDisplayMode } from '../src/context/DisplayModeContext';
+import { SimpleModeProvider } from '../src/context/SimpleModeContext';
 import { FONT_BOLD } from '../src/lib/fonts';
 import WebScrollbarStyle from '../src/components/WebScrollbarStyle';
 
@@ -49,15 +50,17 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AppThemeProvider>
-        <DisplayModeProvider>
-          <AuthProvider>
-            <LocaleProvider>
-              <CityProvider>
-                <RootStack />
-              </CityProvider>
-            </LocaleProvider>
-          </AuthProvider>
-        </DisplayModeProvider>
+        <SimpleModeProvider>
+          <DisplayModeProvider>
+            <AuthProvider>
+              <LocaleProvider>
+                <CityProvider>
+                  <RootStack />
+                </CityProvider>
+              </LocaleProvider>
+            </AuthProvider>
+          </DisplayModeProvider>
+        </SimpleModeProvider>
       </AppThemeProvider>
     </SafeAreaProvider>
   );

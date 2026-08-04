@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +16,9 @@ import {
   localizedServerError,
   useDialer,
 } from '../../src/components/ui';
-import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP, tracking, ROW_MIN_HEIGHT } from '../../src/lib/theme';
+import { AppColors, family, radius, TAB_BAR_CLEARANCE, tracking, Tokens } from '../../src/lib/theme';
+import { useTokens } from '../../src/lib/useTokens';
+import { useSimpleMode } from '../../src/context/SimpleModeContext';
 import {
   EMERGENCY_LINES,
   EMERGENCY_PRIMARY_DISPLAY,
@@ -49,7 +51,9 @@ export default function Help() {
   const { session, isCityStaff } = useAuth();
   const { colors } = useTheme();
   const { lang } = useLocale();
-  const styles = makeStyles(colors);
+  const tk = useTokens();
+  const { isSimple, toggleSimple } = useSimpleMode();
+  const styles = useMemo(() => makeStyles(colors, tk), [colors, tk]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [issue, setIssue] = useState('');
@@ -335,6 +339,30 @@ export default function Help() {
           </View>
         </Card>
 
+        <H2 style={styles.sectionHeader}>{t('help.simpleTitle')}</H2>
+        <Card style={styles.card}>
+          <Body>{t('help.simpleHint')}</Body>
+          {/* Rendered as a switch, not a plain button: the label states the
+              action the tap performs, and accessibilityState carries the
+              current setting for a screen reader. */}
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: isSimple }}
+            accessibilityLabel={isSimple ? t('help.simpleTurnOff') : t('help.simpleTurnOn')}
+            onPress={toggleSimple}
+            style={({ pressed }) => [
+              styles.simpleToggle,
+              { backgroundColor: colors.cardStrong, borderColor: colors.border },
+              pressed && { opacity: 0.72 },
+            ]}
+          >
+            <Feather name={isSimple ? 'check-square' : 'square'} size={24} color={colors.text} />
+            <Text style={[styles.simpleToggleLabel, { color: colors.text }]}>
+              {isSimple ? t('help.simpleTurnOff') : t('help.simpleTurnOn')}
+            </Text>
+          </Pressable>
+        </Card>
+
         <H2 style={styles.sectionHeader}>{t('help.privacyTitle')}</H2>
         <Card style={styles.card}>
           <Body>{t('help.privacyBody')}</Body>
@@ -372,20 +400,31 @@ export default function Help() {
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, tk: Tokens) {
   return StyleSheet.create({
+    simpleToggle: {
+      minHeight: tk.TAP,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: tk.space.sm,
+      paddingHorizontal: tk.space.md,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+    },
+    simpleToggleLabel: { fontFamily: family.semibold, fontSize: tk.font.md },
     pageOuter: { width: '100%' },
     content: {
       width: '100%',
       maxWidth: 720,
       alignSelf: 'center',
-      padding: space.md,
-      paddingTop: space.sm,
+      padding: tk.space.md,
+      paddingTop: tk.space.sm,
       paddingBottom: TAB_BAR_CLEARANCE,
       gap: 0,
     },
-    subtitle: { marginTop: space.xs, marginBottom: space.lg },
-    sosCard: { gap: space.sm, marginBottom: space.md },
+    subtitle: { marginTop: tk.space.xs, marginBottom: tk.space.lg },
+    sosCard: { gap: tk.space.sm, marginBottom: tk.space.md },
     sosNumber: {
       textAlign: 'center',
       fontSize: 64,
@@ -395,16 +434,16 @@ function makeStyles(colors: AppColors) {
       color: colors.text,
     },
     sosHint: { textAlign: 'center' },
-    sectionHeader: { marginTop: space.lg, marginBottom: space.sm },
-    sectionBody: { marginBottom: space.sm },
-    card: { gap: space.md },
+    sectionHeader: { marginTop: tk.space.lg, marginBottom: tk.space.sm },
+    sectionBody: { marginBottom: tk.space.sm },
+    card: { gap: tk.space.md },
     listCard: { padding: 0 },
     row: {
-      minHeight: ROW_MIN_HEIGHT,
+      minHeight: tk.ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
       paddingVertical: 12,
     },
     // Same reasoning as the row glyphs on Home and Services: a filled disc
@@ -416,46 +455,46 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    govList: { marginTop: space.xs },
+    govList: { marginTop: tk.space.xs },
     govRow: {
-      minHeight: ROW_MIN_HEIGHT,
+      minHeight: tk.ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.md,
-      paddingVertical: space.sm,
+      gap: tk.space.md,
+      paddingVertical: tk.space.sm,
     },
     rowBody: { flex: 1 },
-    rowTitle: { fontSize: font.md, fontFamily: family.semibold, color: colors.text },
-    rowMeta: { fontSize: font.sm, fontFamily: family.regular, color: colors.textMuted, marginTop: 2 },
+    rowTitle: { fontSize: tk.font.md, fontFamily: family.semibold, color: colors.text },
+    rowMeta: { fontSize: tk.font.sm, fontFamily: family.regular, color: colors.textMuted, marginTop: 2 },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 72 },
-    helpDeskNumber: { fontSize: font.xl, fontFamily: family.bold, color: colors.text },
-    formStack: { gap: space.md },
+    helpDeskNumber: { fontSize: tk.font.xl, fontFamily: family.bold, color: colors.text },
+    formStack: { gap: tk.space.md },
     field: { gap: 6 },
-    fieldLabel: { fontSize: font.sm, fontFamily: family.medium, color: colors.textMuted },
+    fieldLabel: { fontSize: tk.font.sm, fontFamily: family.medium, color: colors.textMuted },
     input: {
       backgroundColor: colors.surfaceTint,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
-      fontSize: font.md,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
+      fontSize: tk.font.md,
       fontFamily: family.regular,
       color: colors.text,
-      minHeight: TAP,
+      minHeight: tk.TAP,
     },
     inputInvalid: { borderColor: colors.danger, borderWidth: 2 },
-    fieldError: { fontSize: font.sm, fontFamily: family.semibold, color: colors.danger },
+    fieldError: { fontSize: tk.font.sm, fontFamily: family.semibold, color: colors.danger },
     issueInput: { minHeight: 120, textAlignVertical: 'top' },
-    doneRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    doneRow: { flexDirection: 'row', alignItems: 'center', gap: tk.space.sm },
     doneText: { color: colors.success },
     errorText: { color: colors.danger },
-    accessList: { marginTop: space.xs },
-    accessRow: { minHeight: ROW_MIN_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
-    revokeBtn: { minHeight: TAP, justifyContent: 'center', paddingHorizontal: space.sm },
-    revokeLabel: { fontSize: font.sm, fontFamily: family.semibold, color: colors.danger },
-    accessHint: { marginTop: space.sm },
-    dialogBody: { marginBottom: space.md },
-    dialogActions: { flexDirection: 'row', gap: space.sm, justifyContent: 'flex-end' },
+    accessList: { marginTop: tk.space.xs },
+    accessRow: { minHeight: tk.ROW_MIN_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+    revokeBtn: { minHeight: tk.TAP, justifyContent: 'center', paddingHorizontal: tk.space.sm },
+    revokeLabel: { fontSize: tk.font.sm, fontFamily: family.semibold, color: colors.danger },
+    accessHint: { marginTop: tk.space.sm },
+    dialogBody: { marginBottom: tk.space.md },
+    dialogActions: { flexDirection: 'row', gap: tk.space.sm, justifyContent: 'flex-end' },
   });
 }

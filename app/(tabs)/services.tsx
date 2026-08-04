@@ -19,7 +19,8 @@ import AppHeader from '../../src/components/AppHeader';
 import CityPicker from '../../src/components/CityPicker';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
 import { Badge, Card, Chip, DialFallbackDialog, H1, Muted, Stars, useDialer } from '../../src/components/ui';
-import { AppColors, family, font, radius, space, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
+import { AppColors, family, radius, TAB_BAR_CLEARANCE, Tokens } from '../../src/lib/theme';
+import { useTokens } from '../../src/lib/useTokens';
 import { SERVICE_CATEGORIES, expandServiceQuery, serviceSearchAliases } from '../../src/lib/categories';
 import { fetchServices, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service, ServiceCategory } from '../../src/lib/types';
@@ -46,7 +47,8 @@ export default function Services() {
   const { isComputerMode } = useDisplayMode();
   const { city } = useCity();
   const isWide = isComputerMode && width >= 920;
-  const styles = makeStyles(colors, isWide);
+  const tk = useTokens();
+  const styles = useMemo(() => makeStyles(colors, isWide, tk), [colors, isWide, tk]);
 
   const [all, setAll] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -443,7 +445,7 @@ function ServiceRow({
   );
 }
 
-function makeStyles(colors: AppColors, isWide: boolean) {
+function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) {
   return StyleSheet.create({
     screen: { flex: 1 },
     pageOuter: { width: '100%' },
@@ -451,59 +453,59 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       width: '100%',
       maxWidth: 1120,
       alignSelf: 'center',
-      paddingHorizontal: isWide ? space.xl : space.md,
-      paddingTop: isWide ? space.xl : space.md,
-      paddingBottom: isWide ? space.xl * 2 : TAB_BAR_CLEARANCE,
-      gap: space.lg,
+      paddingHorizontal: isWide ? tk.space.xl : tk.space.md,
+      paddingTop: isWide ? tk.space.xl : tk.space.md,
+      paddingBottom: isWide ? tk.space.xl * 2 : TAB_BAR_CLEARANCE,
+      gap: tk.space.lg,
     },
-    hero: { gap: space.xs },
+    hero: { gap: tk.space.xs },
     heroTitle: { fontFamily: family.medium, fontSize: isWide ? 38 : 30, lineHeight: isWide ? 45 : 37 },
     heroBody: { maxWidth: 640 },
     searchRow: {
-      minHeight: TAP,
+      minHeight: tk.TAP,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
+      gap: tk.space.sm,
       borderWidth: 1,
       borderRadius: radius.lg,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
     searchInput: {
       flex: 1,
-      height: TAP,
+      height: tk.TAP,
       fontFamily: family.medium,
-      fontSize: font.md,
+      fontSize: tk.font.md,
     },
     // Single-line rail bleeding to the screen edge; counts live inside the chips.
     filterRailWrap: {
-      marginHorizontal: isWide ? -space.xl : -space.md,
+      marginHorizontal: isWide ? -tk.space.xl : -tk.space.md,
       position: 'relative',
     },
     filterRail: {},
     filterRailContent: {
-      paddingHorizontal: isWide ? space.xl : space.md,
+      paddingHorizontal: isWide ? tk.space.xl : tk.space.md,
     },
     filterRailFade: {
       position: 'absolute',
       right: 0,
       top: 0,
       bottom: 0,
-      width: space.xl,
+      width: tk.space.xl,
     },
     resultBar: { gap: 2 },
-    resultCount: { color: colors.text, fontFamily: family.semibold, fontSize: font.md },
-    resultMeta: { fontFamily: family.regular, fontSize: font.sm },
-    loadingBlock: { marginVertical: space.xl, alignItems: 'center', gap: space.sm },
-    loadingText: { fontFamily: family.regular, fontSize: font.sm },
-    emptyState: { paddingVertical: space.xl, alignItems: 'center', gap: space.sm },
-    emptyTitle: { color: colors.text, fontFamily: family.semibold, fontSize: font.lg },
-    emptyHint: { fontFamily: family.regular, fontSize: font.sm, textAlign: 'center', maxWidth: 360 },
-    list: { gap: space.md },
-    row: { gap: space.md },
+    resultCount: { color: colors.text, fontFamily: family.semibold, fontSize: tk.font.md },
+    resultMeta: { fontFamily: family.regular, fontSize: tk.font.sm },
+    loadingBlock: { marginVertical: tk.space.xl, alignItems: 'center', gap: tk.space.sm },
+    loadingText: { fontFamily: family.regular, fontSize: tk.font.sm },
+    emptyState: { paddingVertical: tk.space.xl, alignItems: 'center', gap: tk.space.sm },
+    emptyTitle: { color: colors.text, fontFamily: family.semibold, fontSize: tk.font.lg },
+    emptyHint: { fontFamily: family.regular, fontSize: tk.font.sm, textAlign: 'center', maxWidth: 360 },
+    list: { gap: tk.space.md },
+    row: { gap: tk.space.md },
     rowTop: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: space.sm,
+      gap: tk.space.sm,
     },
     // No chip behind the glyph: at this size a filled, bordered square reads as
     // a button the row is not, and six of them stacked turn a list into a grid.
@@ -515,68 +517,68 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       justifyContent: 'center',
     },
     rowCopy: { flex: 1, minWidth: 0, gap: 4 },
-    rowNameLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
-    rowName: { color: colors.text, fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.25 },
+    rowNameLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: tk.space.sm },
+    rowName: { color: colors.text, fontFamily: family.semibold, fontSize: tk.font.md, lineHeight: tk.font.md * 1.25 },
     // The address is how someone decides whether this is the shop near them —
     // body-level content, so it clears the caption floor (font.xs).
-    rowMeta: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.35 },
-    rowSignalRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: 2 },
-    categoryTag: { fontFamily: family.regular, fontSize: font.sm },
+    rowMeta: { fontFamily: family.regular, fontSize: tk.font.sm, lineHeight: tk.font.sm * 1.35 },
+    rowSignalRow: { flexDirection: 'row', alignItems: 'center', gap: tk.space.sm, marginTop: 2 },
+    categoryTag: { fontFamily: family.regular, fontSize: tk.font.sm },
     saveBtn: {
-      width: TAP,
-      height: TAP,
+      width: tk.TAP,
+      height: tk.TAP,
       alignItems: 'center',
       justifyContent: 'center',
     },
     rowActions: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: space.sm,
+      gap: tk.space.sm,
     },
     whatsappBtn: {
-      minHeight: TAP,
+      minHeight: tk.TAP,
       minWidth: 130,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
       borderRadius: radius.md,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
     whatsappLinkBtn: {
       minWidth: 130,
-      height: TAP,
-      lineHeight: TAP,
+      height: tk.TAP,
+      lineHeight: tk.TAP,
       borderRadius: radius.md,
       fontFamily: family.semibold,
-      fontSize: font.sm,
+      fontSize: tk.font.sm,
       textAlign: 'center',
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
       overflow: 'hidden',
       flexShrink: 0,
     },
-    whatsappLabel: { fontFamily: family.semibold, fontSize: font.sm },
+    whatsappLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
     callBtn: {
-      minHeight: TAP,
+      minHeight: tk.TAP,
       minWidth: 110,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
       borderRadius: radius.md,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
-    callLabel: { fontFamily: family.semibold, fontSize: font.sm },
+    callLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
     aboutBtn: {
-      minHeight: TAP,
+      minHeight: tk.TAP,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
       borderRadius: radius.md,
       borderWidth: 1,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
-    aboutLabel: { fontFamily: family.semibold, fontSize: font.sm },
+    aboutLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
   });
 }

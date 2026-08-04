@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { TextInputKeyPressEvent } from 'react-native';
 import {
   ActivityIndicator,
@@ -42,7 +42,8 @@ import { notifyFamilySos } from '../../src/lib/family';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { categoryColor } from '../../src/lib/categories';
 import { openUpiPayment } from '../../src/lib/payments';
-import { family, font, radius, space, shadow, TAB_BAR_CLEARANCE, TAP } from '../../src/lib/theme';
+import { family, radius, shadow, TAB_BAR_CLEARANCE, Tokens } from '../../src/lib/theme';
+import { useTokens } from '../../src/lib/useTokens';
 import { Service } from '../../src/lib/types';
 import { openWhatsAppCall, openWhatsAppShare } from '../../src/lib/whatsapp';
 
@@ -146,11 +147,30 @@ async function buildPlanContext(
   };
 }
 
+// The sheet carries no colours, so it varies only with the token set. `tk` is one
+// of two frozen module objects, so this cache holds at most two sheets — without
+// it every MessageBubble in a 40-message thread would build its own.
+const sheetCache = new Map<Tokens, ReturnType<typeof makeStyles>>();
+
+// MessageBubble and SmallAvatar render outside AssistantScreen, so each reads the
+// sheet through this hook rather than a module-level `styles` binding.
+function useStyles() {
+  const tk = useTokens();
+  return useMemo(() => {
+    const cached = sheetCache.get(tk);
+    if (cached) return cached;
+    const created = makeStyles(tk);
+    sheetCache.set(tk, created);
+    return created;
+  }, [tk]);
+}
+
 export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
   const { session, user, displayName } = useAuth();
   const { colors } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const initialChatState = getInitialChatState(t);
@@ -1068,6 +1088,7 @@ function MessageBubble({
 }) {
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
+  const styles = useStyles();
   const router = useRouter();
   const { user } = useAuth();
   const { favoriteSet, toggleFavorite } = useServicePreferences();
@@ -1330,6 +1351,7 @@ function MessageBubble({
 
 function SmallAvatar() {
   const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={[styles.smallAvatar, { backgroundColor: colors.primary }]}>
       <Text style={[styles.smallAvatarText, { color: colors.primaryFg }]}>AI</Text>
@@ -1595,480 +1617,482 @@ function readImageFile(file: any): Promise<AssistantAttachment | null> {
   });
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  assistantLayout: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 1460,
-    alignSelf: 'center',
-    padding: space.md,
-    flexDirection: 'row',
-    gap: space.md,
-  },
-  assistantLayoutStacked: {
-    flexDirection: 'column',
-  },
-  // Floating glass tab bar covers the bottom edge; keep the composer above it.
-  // Full clearance: on iPhone Safari the browser toolbar eats extra bottom
-  // space and the reduced value left the input half-hidden under the dock.
-  assistantLayoutPhone: {
-    paddingBottom: TAB_BAR_CLEARANCE,
-  },
-  historyPanel: {
-    width: 286,
-    minWidth: 240,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: space.sm,
-    gap: space.sm,
-    ...shadow.sm,
-  },
-  historyPanelStacked: {
-    display: 'none',
-  },
-  historyHeader: {
-    gap: space.sm,
-  },
-  historyTitle: {
-    fontSize: font.md,
-    fontFamily: family.bold,
-  },
-  newChatButton: {
-    minHeight: TAP,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-  },
-  newChatButtonText: {
-    fontSize: font.sm,
-    fontFamily: family.semibold,
-  },
-  historyList: { flex: 1 },
-  historyListContent: {
-    gap: space.sm,
-    paddingBottom: space.sm,
-  },
-  historyListContentStacked: {
-    paddingBottom: 0,
-    paddingRight: space.sm,
-  },
-  historyItem: {
-    minHeight: 72,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    padding: space.sm,
-    justifyContent: 'center',
-    gap: 4,
-  },
-  historyItemStacked: {
-    width: 220,
-  },
-  historyItemTitle: {
-    fontSize: font.sm,
-    fontFamily: family.semibold,
-  },
-  historyPreview: {
-    fontFamily: family.regular,
-    fontSize: font.xs,
-    lineHeight: font.xs * 1.25,
-  },
-  chatShell: {
-    flex: 1,
-    width: '100%',
-    gap: space.sm,
-    minWidth: 0,
-  },
-  statusRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    // Narrow phones: the chips drop below the status text instead of
-    // pushing off the right edge.
-    flexWrap: 'wrap',
-    gap: space.sm,
-    paddingHorizontal: 2,
-  },
-  statusText: { fontFamily: family.regular, fontSize: font.sm, flexShrink: 1 },
-  mobileNewChat: {
-    minHeight: 44,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mobileNewChatText: { fontSize: font.sm, fontFamily: family.semibold },
-  statusActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: space.sm,
-  },
-  chatsButton: {
-    flexDirection: 'row',
-    gap: space.xs,
-  },
-  chatsCount: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  chatsCountText: { fontSize: font.xs, fontFamily: family.semibold },
-  sheetNewChat: {
-    minHeight: TAP,
-    borderRadius: radius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.md,
-    marginBottom: space.sm,
-  },
-  sheetNewChatText: { fontSize: font.md, fontFamily: family.semibold },
-  sheetChatList: { flexShrink: 1 },
-  sheetChatListContent: { gap: space.sm, paddingBottom: space.sm },
-  retryButton: {
-    marginTop: space.sm,
-    minHeight: 40,
-    alignSelf: 'flex-start',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.md,
-  },
-  retryText: { fontSize: font.sm, fontFamily: family.semibold },
-  payPayee: { fontSize: font.lg, fontFamily: family.bold, marginBottom: space.sm },
-  payDetails: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    gap: 4,
-  },
-  payUpiId: { fontSize: font.md, fontFamily: family.semibold },
-  payAmount: { fontSize: font.lg, fontFamily: family.bold },
-  payHint: {
-    fontFamily: family.regular,
-    fontSize: font.sm,
-    lineHeight: font.sm * 1.35,
-    marginTop: space.sm,
-  },
-  payActions: {
-    flexDirection: 'row',
-    gap: space.sm,
-    marginTop: space.lg,
-  },
-  payActionButton: { flex: 1 },
-  thread: { flex: 1 },
-  threadContent: {
-    paddingVertical: space.md,
-    gap: space.md,
-  },
-  botRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: space.sm,
-  },
-  userRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  smallAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  smallAvatarText: { fontSize: font.xs, fontFamily: family.bold },
-  message: {
-    maxWidth: '82%',
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    ...shadow.sm,
-  },
-  botMessage: {
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.lg,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
-  },
-  userMessage: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.md,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
-  },
-  messageText: {
-    fontFamily: family.regular,
-    fontSize: font.md,
-    lineHeight: font.md * 1.35,
-  },
-  typingBubble: {
-    minHeight: 46,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    paddingHorizontal: space.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  typingText: { fontSize: font.sm, fontFamily: family.semibold },
-  simplePlan: {
-    marginTop: space.sm,
-    paddingTop: space.sm,
-    borderTopWidth: 1,
-    gap: space.sm,
-  },
-  serviceLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    zIndex: 20,
-  },
-  serviceLink: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  serviceMoreButton: {
-    // Real 56x56, not hitSlop: react-native-web does not use hitSlop for
-    // hit-testing, so on the web build only the painted box is tappable.
-    width: TAP,
-    height: TAP,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serviceMenu: {
-    position: 'absolute',
-    top: 36,
-    right: 0,
-    minWidth: 210,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingVertical: space.xs,
-    zIndex: 60,
-    ...shadow.md,
-  },
-  serviceIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serviceTextWrap: { flex: 1, minWidth: 0 },
-  serviceName: { fontSize: font.md, fontFamily: family.bold },
-  // Address/phone/safety copy is real content, not a caption — font.xs (15) is
-  // the caption floor and reads too small for a 70+ user with cataracts.
-  serviceMeta: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.3 },
-  planHint: {
-    fontFamily: family.regular,
-    fontSize: font.sm,
-    lineHeight: font.sm * 1.4,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.sm,
-  },
-  actionButton: {
-    minHeight: TAP,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-    maxWidth: '100%',
-  },
-  actionText: { fontSize: font.sm, fontFamily: family.semibold },
-  composer: {
-    paddingTop: space.xs,
-    gap: space.sm,
-  },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    borderWidth: 1,
-    borderRadius: 24,
-    paddingHorizontal: 4,
-  },
-  plusButton: {
-    width: TAP,
-    height: TAP,
-    marginBottom: 2,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  plusMenu: {
-    position: 'absolute',
-    bottom: 48,
-    left: 0,
-    minWidth: 230,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingVertical: space.xs,
-    zIndex: 30,
-    ...shadow.md,
-  },
-  plusMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    minHeight: 44,
-    paddingHorizontal: space.md,
-  },
-  plusMenuItemText: {
-    fontSize: font.sm,
-    fontFamily: family.medium,
-  },
-  plusMenuDivider: {
-    height: 1,
-    marginVertical: space.xs,
-    marginHorizontal: space.sm,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    paddingHorizontal: space.sm,
-    paddingVertical: 10,
-    fontFamily: family.regular,
-    fontSize: font.md,
-    lineHeight: font.md * 1.3,
-    textAlignVertical: 'top',
-  },
-  sendButton: {
-    width: TAP,
-    height: TAP,
-    marginBottom: 2,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micButton: {
-    width: TAP,
-    height: TAP,
-    marginBottom: 2,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reminderCard: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: space.md,
-    gap: space.xs,
-  },
-  reminderCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-  },
-  reminderCardHeading: {
-    fontSize: font.sm,
-    fontFamily: family.semibold,
-  },
-  reminderCardTitle: {
-    fontSize: font.md,
-    fontFamily: family.bold,
-  },
-  reminderCardMeta: {
-    fontSize: font.sm,
-    fontFamily: family.regular,
-  },
-  reminderSaveButton: {
-    minHeight: TAP,
-    marginTop: space.xs,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-  },
-  reminderSaveText: {
-    fontSize: font.md,
-    fontFamily: family.semibold,
-  },
-  reminderSavedRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-  },
-  reminderSavedText: {
-    fontSize: font.md,
-    fontFamily: family.semibold,
-  },
-  alertFamilyButton: {
-    minHeight: TAP,
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.md,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-  },
-  alertFamilyText: {
-    fontSize: font.sm,
-    fontFamily: family.semibold,
-  },
-  attachmentList: {
-    gap: space.sm,
-    paddingRight: space.md,
-  },
-  attachmentPreview: {
-    width: 84,
-    height: 84,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  attachmentPreviewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  // The one control that cannot reach 56: it floats on the thumbnail it removes,
-  // and a 56px disc would hide the picture. 48 painted + hitSlop 8 = 64 on native.
-  removeAttachmentButton: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 48,
-    height: 48,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removeAttachmentText: {
-    fontSize: font.md,
-    fontFamily: family.bold,
-    lineHeight: font.md * 1.15,
-  },
-  messageAttachments: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.xs,
-    marginBottom: space.xs,
-  },
-  messageImage: {
-    width: 132,
-    height: 96,
-    borderRadius: radius.md,
-    borderWidth: 1,
-  },
-});
+function makeStyles(tk: Tokens) {
+  return StyleSheet.create({
+    screen: { flex: 1 },
+    assistantLayout: {
+      flex: 1,
+      width: '100%',
+      maxWidth: 1460,
+      alignSelf: 'center',
+      padding: tk.space.md,
+      flexDirection: 'row',
+      gap: tk.space.md,
+    },
+    assistantLayoutStacked: {
+      flexDirection: 'column',
+    },
+    // Floating glass tab bar covers the bottom edge; keep the composer above it.
+    // Full clearance: on iPhone Safari the browser toolbar eats extra bottom
+    // space and the reduced value left the input half-hidden under the dock.
+    assistantLayoutPhone: {
+      paddingBottom: TAB_BAR_CLEARANCE,
+    },
+    historyPanel: {
+      width: 286,
+      minWidth: 240,
+      borderWidth: 1,
+      borderRadius: radius.lg,
+      padding: tk.space.sm,
+      gap: tk.space.sm,
+      ...shadow.sm,
+    },
+    historyPanelStacked: {
+      display: 'none',
+    },
+    historyHeader: {
+      gap: tk.space.sm,
+    },
+    historyTitle: {
+      fontSize: tk.font.md,
+      fontFamily: family.bold,
+    },
+    newChatButton: {
+      minHeight: tk.TAP,
+      borderRadius: radius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: tk.space.md,
+    },
+    newChatButtonText: {
+      fontSize: tk.font.sm,
+      fontFamily: family.semibold,
+    },
+    historyList: { flex: 1 },
+    historyListContent: {
+      gap: tk.space.sm,
+      paddingBottom: tk.space.sm,
+    },
+    historyListContentStacked: {
+      paddingBottom: 0,
+      paddingRight: tk.space.sm,
+    },
+    historyItem: {
+      minHeight: 72,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      padding: tk.space.sm,
+      justifyContent: 'center',
+      gap: 4,
+    },
+    historyItemStacked: {
+      width: 220,
+    },
+    historyItemTitle: {
+      fontSize: tk.font.sm,
+      fontFamily: family.semibold,
+    },
+    historyPreview: {
+      fontFamily: family.regular,
+      fontSize: tk.font.xs,
+      lineHeight: tk.font.xs * 1.25,
+    },
+    chatShell: {
+      flex: 1,
+      width: '100%',
+      gap: tk.space.sm,
+      minWidth: 0,
+    },
+    statusRow: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      // Narrow phones: the chips drop below the status text instead of
+      // pushing off the right edge.
+      flexWrap: 'wrap',
+      gap: tk.space.sm,
+      paddingHorizontal: 2,
+    },
+    statusText: { fontFamily: family.regular, fontSize: tk.font.sm, flexShrink: 1 },
+    mobileNewChat: {
+      minHeight: 44,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      paddingHorizontal: tk.space.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    mobileNewChatText: { fontSize: tk.font.sm, fontFamily: family.semibold },
+    statusActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: tk.space.sm,
+    },
+    chatsButton: {
+      flexDirection: 'row',
+      gap: tk.space.xs,
+    },
+    chatsCount: {
+      minWidth: 22,
+      height: 22,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 6,
+    },
+    chatsCountText: { fontSize: tk.font.xs, fontFamily: family.semibold },
+    sheetNewChat: {
+      minHeight: tk.TAP,
+      borderRadius: radius.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: tk.space.sm,
+      paddingHorizontal: tk.space.md,
+      marginBottom: tk.space.sm,
+    },
+    sheetNewChatText: { fontSize: tk.font.md, fontFamily: family.semibold },
+    sheetChatList: { flexShrink: 1 },
+    sheetChatListContent: { gap: tk.space.sm, paddingBottom: tk.space.sm },
+    retryButton: {
+      marginTop: tk.space.sm,
+      minHeight: 40,
+      alignSelf: 'flex-start',
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.xs,
+      paddingHorizontal: tk.space.md,
+    },
+    retryText: { fontSize: tk.font.sm, fontFamily: family.semibold },
+    payPayee: { fontSize: tk.font.lg, fontFamily: family.bold, marginBottom: tk.space.sm },
+    payDetails: {
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
+      gap: 4,
+    },
+    payUpiId: { fontSize: tk.font.md, fontFamily: family.semibold },
+    payAmount: { fontSize: tk.font.lg, fontFamily: family.bold },
+    payHint: {
+      fontFamily: family.regular,
+      fontSize: tk.font.sm,
+      lineHeight: tk.font.sm * 1.35,
+      marginTop: tk.space.sm,
+    },
+    payActions: {
+      flexDirection: 'row',
+      gap: tk.space.sm,
+      marginTop: tk.space.lg,
+    },
+    payActionButton: { flex: 1 },
+    thread: { flex: 1 },
+    threadContent: {
+      paddingVertical: tk.space.md,
+      gap: tk.space.md,
+    },
+    botRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: tk.space.sm,
+    },
+    userRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+    },
+    smallAvatar: {
+      width: 34,
+      height: 34,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    smallAvatarText: { fontSize: tk.font.xs, fontFamily: family.bold },
+    message: {
+      maxWidth: '82%',
+      borderWidth: 1,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
+      ...shadow.sm,
+    },
+    botMessage: {
+      borderTopLeftRadius: radius.md,
+      borderTopRightRadius: radius.lg,
+      borderBottomLeftRadius: radius.lg,
+      borderBottomRightRadius: radius.lg,
+    },
+    userMessage: {
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.md,
+      borderBottomLeftRadius: radius.lg,
+      borderBottomRightRadius: radius.lg,
+    },
+    messageText: {
+      fontFamily: family.regular,
+      fontSize: tk.font.md,
+      lineHeight: tk.font.md * 1.35,
+    },
+    typingBubble: {
+      minHeight: 46,
+      borderWidth: 1,
+      borderRadius: radius.lg,
+      paddingHorizontal: tk.space.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.sm,
+    },
+    typingText: { fontSize: tk.font.sm, fontFamily: family.semibold },
+    simplePlan: {
+      marginTop: tk.space.sm,
+      paddingTop: tk.space.sm,
+      borderTopWidth: 1,
+      gap: tk.space.sm,
+    },
+    serviceLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.sm,
+      zIndex: 20,
+    },
+    serviceLink: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.sm,
+    },
+    serviceMoreButton: {
+      // Real 56x56, not hitSlop: react-native-web does not use hitSlop for
+      // hit-testing, so on the web build only the painted box is tappable.
+      width: tk.TAP,
+      height: tk.TAP,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    serviceMenu: {
+      position: 'absolute',
+      top: 36,
+      right: 0,
+      minWidth: 210,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingVertical: tk.space.xs,
+      zIndex: 60,
+      ...shadow.md,
+    },
+    serviceIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    serviceTextWrap: { flex: 1, minWidth: 0 },
+    serviceName: { fontSize: tk.font.md, fontFamily: family.bold },
+    // Address/phone/safety copy is real content, not a caption — tk.font.xs (15) is
+    // the caption floor and reads too small for a 70+ user with cataracts.
+    serviceMeta: { fontFamily: family.regular, fontSize: tk.font.sm, lineHeight: tk.font.sm * 1.3 },
+    planHint: {
+      fontFamily: family.regular,
+      fontSize: tk.font.sm,
+      lineHeight: tk.font.sm * 1.4,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: tk.space.sm,
+    },
+    actionButton: {
+      minHeight: tk.TAP,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      justifyContent: 'center',
+      paddingHorizontal: tk.space.md,
+      maxWidth: '100%',
+    },
+    actionText: { fontSize: tk.font.sm, fontFamily: family.semibold },
+    composer: {
+      paddingTop: tk.space.xs,
+      gap: tk.space.sm,
+    },
+    inputBar: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      borderWidth: 1,
+      borderRadius: 24,
+      paddingHorizontal: 4,
+    },
+    plusButton: {
+      width: tk.TAP,
+      height: tk.TAP,
+      marginBottom: 2,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    plusMenu: {
+      position: 'absolute',
+      bottom: 48,
+      left: 0,
+      minWidth: 230,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingVertical: tk.space.xs,
+      zIndex: 30,
+      ...shadow.md,
+    },
+    plusMenuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.sm,
+      minHeight: 44,
+      paddingHorizontal: tk.space.md,
+    },
+    plusMenuItemText: {
+      fontSize: tk.font.sm,
+      fontFamily: family.medium,
+    },
+    plusMenuDivider: {
+      height: 1,
+      marginVertical: tk.space.xs,
+      marginHorizontal: tk.space.sm,
+    },
+    input: {
+      flex: 1,
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      paddingHorizontal: tk.space.sm,
+      paddingVertical: 10,
+      fontFamily: family.regular,
+      fontSize: tk.font.md,
+      lineHeight: tk.font.md * 1.3,
+      textAlignVertical: 'top',
+    },
+    sendButton: {
+      width: tk.TAP,
+      height: tk.TAP,
+      marginBottom: 2,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    micButton: {
+      width: tk.TAP,
+      height: tk.TAP,
+      marginBottom: 2,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    reminderCard: {
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: tk.space.md,
+      gap: tk.space.xs,
+    },
+    reminderCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.xs,
+    },
+    reminderCardHeading: {
+      fontSize: tk.font.sm,
+      fontFamily: family.semibold,
+    },
+    reminderCardTitle: {
+      fontSize: tk.font.md,
+      fontFamily: family.bold,
+    },
+    reminderCardMeta: {
+      fontSize: tk.font.sm,
+      fontFamily: family.regular,
+    },
+    reminderSaveButton: {
+      minHeight: tk.TAP,
+      marginTop: tk.space.xs,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: tk.space.md,
+    },
+    reminderSaveText: {
+      fontSize: tk.font.md,
+      fontFamily: family.semibold,
+    },
+    reminderSavedRow: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tk.space.xs,
+    },
+    reminderSavedText: {
+      fontSize: tk.font.md,
+      fontFamily: family.semibold,
+    },
+    alertFamilyButton: {
+      minHeight: tk.TAP,
+      borderRadius: radius.pill,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: tk.space.xs,
+      paddingHorizontal: tk.space.md,
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
+    },
+    alertFamilyText: {
+      fontSize: tk.font.sm,
+      fontFamily: family.semibold,
+    },
+    attachmentList: {
+      gap: tk.space.sm,
+      paddingRight: tk.space.md,
+    },
+    attachmentPreview: {
+      width: 84,
+      height: 84,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      overflow: 'hidden',
+    },
+    attachmentPreviewImage: {
+      width: '100%',
+      height: '100%',
+    },
+    // The one control that cannot reach 56: it floats on the thumbnail it removes,
+    // and a 56px disc would hide the picture. 48 painted + hitSlop 8 = 64 on native.
+    removeAttachmentButton: {
+      position: 'absolute',
+      top: 2,
+      right: 2,
+      width: 48,
+      height: 48,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    removeAttachmentText: {
+      fontSize: tk.font.md,
+      fontFamily: family.bold,
+      lineHeight: tk.font.md * 1.15,
+    },
+    messageAttachments: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: tk.space.xs,
+      marginBottom: tk.space.xs,
+    },
+    messageImage: {
+      width: 132,
+      height: 96,
+      borderRadius: radius.md,
+      borderWidth: 1,
+    },
+  });
+}

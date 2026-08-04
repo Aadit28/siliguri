@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -27,7 +27,8 @@ import {
   dateLocale,
   useDialer,
 } from '../../src/components/ui';
-import { AppColors, family, font, radius, space, TAP } from '../../src/lib/theme';
+import { AppColors, family, radius, Tokens } from '../../src/lib/theme';
+import { useTokens } from '../../src/lib/useTokens';
 import { fetchService, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
@@ -60,7 +61,8 @@ export default function ServiceDetail() {
   const { width } = useWindowDimensions();
   const { isComputerMode } = useDisplayMode();
   const isWide = isComputerMode && width >= 920;
-  const styles = makeStyles(colors, isWide);
+  const tk = useTokens();
+  const styles = useMemo(() => makeStyles(colors, isWide, tk), [colors, isWide, tk]);
 
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
@@ -337,7 +339,7 @@ export default function ServiceDetail() {
           </View>
         ) : null}
 
-        <View style={{ gap: space.md }}>
+        <View style={{ gap: tk.space.md }}>
           <Button
             label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
             variant="secondary"
@@ -354,7 +356,7 @@ export default function ServiceDetail() {
       </ScrollView>
 
       {service.phone || service.map_url ? (
-        <View style={[styles.footer, { backgroundColor: colors.nav, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, space.sm) }]}>
+        <View style={[styles.footer, { backgroundColor: colors.nav, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, tk.space.sm) }]}>
           <Muted style={styles.footerTitle}>{t('services.contactActions')}</Muted>
           <View style={styles.footerActions}>
             {hasPhone ? (
@@ -392,28 +394,28 @@ export default function ServiceDetail() {
   );
 }
 
-function makeStyles(colors: AppColors, isWide: boolean) {
+function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) {
   return StyleSheet.create({
     screen: { flex: 1 },
-    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: tk.space.lg },
     content: {
       width: '100%',
       maxWidth: 1120,
       alignSelf: 'center',
-      padding: isWide ? space.xl : space.md,
+      padding: isWide ? tk.space.xl : tk.space.md,
       paddingBottom: 170,
-      gap: space.lg,
+      gap: tk.space.lg,
     },
     hero: {
       borderRadius: radius.xl,
       borderWidth: 1,
-      padding: isWide ? space.xl : space.lg,
-      gap: space.lg,
+      padding: isWide ? tk.space.xl : tk.space.lg,
+      gap: tk.space.lg,
     },
     heroTop: {
       flexDirection: isWide ? 'row' : 'column',
       alignItems: isWide ? 'center' : 'flex-start',
-      gap: space.lg,
+      gap: tk.space.lg,
     },
     heroIcon: {
       width: 88,
@@ -424,16 +426,16 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       justifyContent: 'center',
     },
     heroText: { flex: 1, minWidth: 0 },
-    kicker: { fontFamily: family.regular, fontSize: font.sm },
-    title: { fontFamily: family.medium, marginTop: space.sm, fontSize: isWide ? 40 : 32, lineHeight: isWide ? 47 : 38 },
+    kicker: { fontFamily: family.regular, fontSize: tk.font.sm },
+    title: { fontFamily: family.medium, marginTop: tk.space.sm, fontSize: isWide ? 40 : 32, lineHeight: isWide ? 47 : 38 },
     heroSignalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     heroSignal: {
       borderRadius: radius.md,
       borderWidth: 1,
-      paddingHorizontal: space.sm,
+      paddingHorizontal: tk.space.sm,
       paddingVertical: 8,
       fontFamily: family.semibold,
-      fontSize: font.sm,
+      fontSize: tk.font.sm,
       overflow: 'hidden',
     },
     headerBack: {
@@ -442,19 +444,19 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingHorizontal: space.sm,
+      paddingHorizontal: tk.space.sm,
       justifyContent: 'flex-start',
     },
-    headerBackText: { color: colors.text, fontSize: font.md, fontFamily: family.semibold },
-    metaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
-    detailGrid: { flexDirection: isWide ? 'row' : 'column', gap: space.lg },
-    aboutCard: { flex: 1, gap: space.sm },
-    detailLine: { fontFamily: family.regular, fontSize: font.sm },
-    checkCard: { flex: 1, gap: space.sm },
+    headerBackText: { color: colors.text, fontSize: tk.font.md, fontFamily: family.semibold },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: tk.space.sm, marginTop: tk.space.sm },
+    detailGrid: { flexDirection: isWide ? 'row' : 'column', gap: tk.space.lg },
+    aboutCard: { flex: 1, gap: tk.space.sm },
+    detailLine: { fontFamily: family.regular, fontSize: tk.font.sm },
+    checkCard: { flex: 1, gap: tk.space.sm },
     checkRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
+      gap: tk.space.sm,
       paddingVertical: 4,
     },
     checkDot: {
@@ -464,19 +466,19 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkLabel: { color: colors.text, fontFamily: family.semibold, fontSize: font.sm },
+    checkLabel: { color: colors.text, fontFamily: family.semibold, fontSize: tk.font.sm },
     // Verification status / last-verified date is the trust evidence a user
     // reads before calling a stranger — body content, not a caption.
-    checkValue: { fontFamily: family.regular, fontSize: font.sm, lineHeight: font.sm * 1.35 },
-    trustSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    checkValue: { fontFamily: family.regular, fontSize: tk.font.sm, lineHeight: tk.font.sm * 1.35 },
+    trustSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: tk.space.sm },
     trustSummaryText: {
       flex: 1,
       color: colors.text,
       fontFamily: family.semibold,
-      fontSize: font.md,
-      lineHeight: font.md * 1.35,
+      fontSize: tk.font.md,
+      lineHeight: tk.font.md * 1.35,
     },
-    trustHelpline: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2 },
+    trustHelpline: { fontFamily: family.regular, fontSize: tk.font.sm, marginTop: 2 },
     detailsToggle: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -484,67 +486,67 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       alignSelf: 'flex-start',
       minHeight: 44,
     },
-    detailsToggleText: { color: colors.textMuted, fontFamily: family.semibold, fontSize: font.sm },
+    detailsToggleText: { color: colors.textMuted, fontFamily: family.semibold, fontSize: tk.font.sm },
     detailRow: { paddingVertical: 4, gap: 2 },
     warningBanner: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: space.sm,
+      gap: tk.space.sm,
       borderWidth: 1,
       borderLeftWidth: 5,
       borderRadius: radius.md,
-      padding: space.md,
+      padding: tk.space.md,
     },
-    warningTitle: { fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.3 },
-    warningBody: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2, lineHeight: font.sm * 1.35 },
+    warningTitle: { fontFamily: family.semibold, fontSize: tk.font.md, lineHeight: tk.font.md * 1.3 },
+    warningBody: { fontFamily: family.regular, fontSize: tk.font.sm, marginTop: 2, lineHeight: tk.font.sm * 1.35 },
     noticeCard: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: space.sm,
+      gap: tk.space.sm,
       borderWidth: 1,
       borderRadius: radius.md,
-      padding: space.md,
+      padding: tk.space.md,
     },
-    noticeTitle: { color: colors.text, fontFamily: family.semibold, fontSize: font.md },
-    noticeBody: { fontFamily: family.regular, fontSize: font.sm, marginTop: 2, lineHeight: font.sm * 1.4 },
+    noticeTitle: { color: colors.text, fontFamily: family.semibold, fontSize: tk.font.md },
+    noticeBody: { fontFamily: family.regular, fontSize: tk.font.sm, marginTop: 2, lineHeight: tk.font.sm * 1.4 },
     callbackBtn: {
-      marginTop: space.sm,
+      marginTop: tk.space.sm,
       alignSelf: 'flex-start',
-      minHeight: TAP,
+      minHeight: tk.TAP,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
       borderRadius: radius.md,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
-    callbackLabel: { fontFamily: family.semibold, fontSize: font.sm },
+    callbackLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
     careNote: {
-      marginTop: space.xs,
-      paddingTop: space.sm,
+      marginTop: tk.space.xs,
+      paddingTop: tk.space.sm,
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
     callout: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
+      gap: tk.space.sm,
       borderLeftWidth: 5,
       borderRadius: radius.sm,
-      padding: space.md,
+      padding: tk.space.md,
     },
     calloutText: {
       flex: 1,
       fontFamily: family.semibold,
-      fontSize: font.sm,
-      lineHeight: font.sm * 1.4,
+      fontSize: tk.font.sm,
+      lineHeight: tk.font.sm * 1.4,
     },
     footer: {
-      padding: space.md,
+      padding: tk.space.md,
       borderTopWidth: 1,
-      gap: space.sm,
+      gap: tk.space.sm,
     },
-    footerTitle: { fontFamily: family.medium, fontSize: font.xs },
-    footerActions: { flexDirection: 'row', gap: space.sm },
+    footerTitle: { fontFamily: family.medium, fontSize: tk.font.xs },
+    footerActions: { flexDirection: 'row', gap: tk.space.sm },
     waBtn: {
       minHeight: 56,
       flexDirection: 'row',
@@ -552,8 +554,8 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       justifyContent: 'center',
       gap: 6,
       borderRadius: radius.lg,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
-    waText: { fontFamily: family.semibold, fontSize: font.md },
+    waText: { fontFamily: family.semibold, fontSize: tk.font.md },
   });
 }

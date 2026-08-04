@@ -3,10 +3,12 @@ import {
   Linking,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  ViewStyle,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -32,15 +34,13 @@ import {
   AppColors,
   PastelName,
   PastelTone,
-  ROW_MIN_HEIGHT,
   TAB_BAR_CLEARANCE,
-  TAP,
+  Tokens,
   family,
-  font,
   pastelForMode,
   radius,
-  space,
 } from '../../src/lib/theme';
+import { useTokens } from '../../src/lib/useTokens';
 import { CalendarEvent, CareTeamCategory, CareTeamMember, FamilyFavorite, Service } from '../../src/lib/types';
 
 const CARE_TEAM_ICONS: Record<CareTeamCategory, keyof typeof Feather.glyphMap> = {
@@ -61,6 +61,20 @@ const CARE_TEAM_TONES: Record<CareTeamCategory, PastelName> = {
   other: 'peach',
 };
 
+// Easy view drops the entrance animation entirely. AnimatedSection owns its
+// `entering` prop, so the only way to omit it without forking that shared
+// component is to swap in a plain View with the same props.
+function PlainSection({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return <View style={style}>{children}</View>;
+}
+
 
 export default function Home() {
   const router = useRouter();
@@ -74,7 +88,9 @@ export default function Home() {
   // Phone display mode always gets the narrow layout, even when the browser
   // window is wide — the shell is clamped to 480px in that mode.
   const isWide = isComputerMode && width >= 900;
-  const styles = makeStyles(colors, isWide);
+  const tk = useTokens();
+  const styles = useMemo(() => makeStyles(colors, isWide, tk), [colors, isWide, tk]);
+  const Section = tk.isSimple ? PlainSection : AnimatedSection;
   const homeScrollRef = useRef<ScrollView>(null);
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -167,14 +183,14 @@ export default function Home() {
       <ScrollView ref={homeScrollRef} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.scrollContent}>
         <AppHeader />
         <View style={styles.content}>
-          <AnimatedSection style={styles.intro}>
+          <Section style={styles.intro}>
             <Text style={[styles.greeting, { color: colors.textMuted }]}>{t('home.greeting')}</Text>
             <H1 style={styles.title}>{displayName || t('home.guestName')}</H1>
             <Muted style={styles.subtitle}>{t('home.mobileNeedTitle')}</Muted>
             <CityPicker />
-          </AnimatedSection>
+          </Section>
 
-          <AnimatedSection delay={40} style={styles.section}>
+          <Section delay={40} style={styles.section}>
             <View style={styles.sectionHeader}>
               <H2>{t('home.snapshotTitle')}</H2>
               <Pressable
@@ -264,10 +280,10 @@ export default function Home() {
                 </Pressable>
               )}
             </View>
-          </AnimatedSection>
+          </Section>
 
           {user ? (
-            <AnimatedSection delay={100} style={styles.section}>
+            <Section delay={100} style={styles.section}>
               {careTeam.length ? (
                 <>
                   <View style={styles.sectionHeader}>
@@ -377,7 +393,7 @@ export default function Home() {
                 </View>
                 <Feather name="chevron-right" size={22} color={colors.textSubtle} />
               </Pressable>
-            </AnimatedSection>
+            </Section>
           ) : null}
 
                   </View>
@@ -395,7 +411,7 @@ export default function Home() {
   );
 }
 
-function makeStyles(colors: AppColors, isWide: boolean) {
+function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens & { isSimple: boolean }) {
   return StyleSheet.create({
     screen: { flex: 1 },
     scrollContent: { width: '100%' },
@@ -403,27 +419,27 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       width: '100%',
       maxWidth: 760,
       alignSelf: 'center',
-      paddingHorizontal: isWide ? space.lg : space.md,
-      paddingTop: space.lg,
-      paddingBottom: isWide ? space.xl : TAB_BAR_CLEARANCE,
-      gap: space.xl,
+      paddingHorizontal: isWide ? tk.space.lg : tk.space.md,
+      paddingTop: tk.space.lg,
+      paddingBottom: isWide ? tk.space.xl : TAB_BAR_CLEARANCE,
+      gap: tk.space.xl,
     },
-    intro: { gap: space.xs },
-    greeting: { fontFamily: family.medium, fontSize: font.sm, lineHeight: font.sm * 1.4 },
-    title: { fontFamily: family.medium, fontSize: isWide ? font.xxl : 34, lineHeight: isWide ? font.xxl * 1.13 : 41 },
-    subtitle: { fontFamily: family.medium, fontSize: font.md, lineHeight: font.md * 1.4 },
+    intro: { gap: tk.space.xs },
+    greeting: { fontFamily: family.medium, fontSize: tk.font.sm, lineHeight: tk.font.sm * 1.4 },
+    title: { fontFamily: family.medium, fontSize: isWide ? tk.font.xxl : 34, lineHeight: isWide ? tk.font.xxl * 1.13 : 41 },
+    subtitle: { fontFamily: family.medium, fontSize: tk.font.md, lineHeight: tk.font.md * 1.4 },
     list: {
       borderWidth: 1,
       borderRadius: radius.lg,
       overflow: 'hidden',
     },
     row: {
-      minHeight: ROW_MIN_HEIGHT,
+      minHeight: tk.ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.md,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
+      gap: tk.space.md,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
     },
     // No chip behind the glyph: at this size a filled, bordered square reads as
     // a button the row is not, and six of them stacked turn a list into a grid.
@@ -435,78 +451,83 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       justifyContent: 'center',
     },
     rowCopy: { flex: 1, minWidth: 0, gap: 2 },
-    rowLabel: { flex: 1, fontFamily: family.semibold, fontSize: font.md, lineHeight: font.md * 1.3 },
-    rowMeta: { flex: 0, fontFamily: family.regular, fontSize: font.sm },
+    rowLabel: { flex: 1, fontFamily: family.semibold, fontSize: tk.font.md, lineHeight: tk.font.md * 1.3 },
+    rowMeta: { flex: 0, fontFamily: family.regular, fontSize: tk.font.sm },
     addReminder: {
-      minHeight: TAP,
+      minHeight: tk.TAP,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.xs,
+      gap: tk.space.xs,
       borderWidth: 1,
       borderRadius: radius.pill,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
-    addReminderLabel: { fontFamily: family.semibold, fontSize: font.sm },
-    statRow: { flexDirection: 'row', gap: space.sm },
+    addReminderLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
+    // Easy view stacks the three stat tiles one per line: side by side they
+    // squeeze the scaled-up numerals and labels into two-line wraps.
+    statRow: tk.isSimple
+      ? { flexDirection: 'column', gap: tk.space.md }
+      : { flexDirection: 'row', gap: tk.space.sm },
     statTile: {
-      flex: 1,
+      flex: tk.isSimple ? undefined : 1,
+      width: tk.isSimple ? '100%' : undefined,
       minHeight: 96,
-      gap: space.xs,
+      gap: tk.space.xs,
       borderWidth: 1,
       borderRadius: radius.lg,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.sm,
+      paddingHorizontal: tk.space.sm,
+      paddingVertical: tk.space.sm,
       justifyContent: 'center',
     },
-    statValue: { fontFamily: family.heavy, fontSize: font.xl, lineHeight: font.xl * 1.1 },
-    statLabel: { fontFamily: family.medium, fontSize: font.xs, lineHeight: font.xs * 1.3 },
-    section: { gap: space.md },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
-    seeAll: { minHeight: 40, paddingTop: 8, fontFamily: family.semibold, fontSize: font.sm },
-    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    statValue: { fontFamily: family.heavy, fontSize: tk.font.xl, lineHeight: tk.font.xl * 1.1 },
+    statLabel: { fontFamily: family.medium, fontSize: tk.font.xs, lineHeight: tk.font.xs * 1.3 },
+    section: { gap: tk.space.md },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: tk.space.md },
+    seeAll: { minHeight: 40, paddingTop: 8, fontFamily: family.semibold, fontSize: tk.font.sm },
+    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: tk.isSimple ? tk.space.md : tk.space.sm },
     categoryTile: {
       flexGrow: 1,
-      flexBasis: isWide ? '30%' : '47%',
-      minHeight: ROW_MIN_HEIGHT,
+      flexBasis: tk.isSimple ? '100%' : isWide ? '30%' : '47%',
+      minHeight: tk.ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
+      gap: tk.space.sm,
       borderWidth: 1,
       borderRadius: radius.lg,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
     },
-    categoryLabel: { flex: 1, fontFamily: family.semibold, fontSize: font.sm, lineHeight: font.sm * 1.35 },
+    categoryLabel: { flex: 1, fontFamily: family.semibold, fontSize: tk.font.sm, lineHeight: tk.font.sm * 1.35 },
     callBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.xs,
-      minHeight: TAP,
-      paddingHorizontal: space.md,
+      gap: tk.space.xs,
+      minHeight: tk.TAP,
+      paddingHorizontal: tk.space.md,
       borderRadius: radius.pill,
     },
-    callBtnLabel: { fontFamily: family.semibold, fontSize: font.sm },
-    pickStrip: { gap: space.sm, paddingVertical: 2 },
+    callBtnLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
+    pickStrip: { gap: tk.space.sm, paddingVertical: 2 },
     pickCard: {
       width: 148,
       minHeight: 96,
-      gap: space.sm,
+      gap: tk.space.sm,
       borderWidth: 1,
       borderRadius: radius.lg,
-      paddingHorizontal: space.md,
-      paddingVertical: space.md,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.md,
       justifyContent: 'center',
     },
-    pickName: { fontFamily: family.semibold, fontSize: font.sm, lineHeight: font.sm * 1.3 },
+    pickName: { fontFamily: family.semibold, fontSize: tk.font.sm, lineHeight: tk.font.sm * 1.3 },
     guardianRow: {
-      minHeight: ROW_MIN_HEIGHT,
+      minHeight: tk.ROW_MIN_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.md,
+      gap: tk.space.md,
       borderWidth: 1,
       borderRadius: radius.lg,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
     },
     pressed: { opacity: 0.72 },
   });

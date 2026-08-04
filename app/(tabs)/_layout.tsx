@@ -16,7 +16,8 @@ import Animated, {
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
-import { family, font, shadow } from '../../src/lib/theme';
+import { useSimpleMode } from '../../src/context/SimpleModeContext';
+import { family, shadow } from '../../src/lib/theme';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -36,7 +37,14 @@ const DOCK_RADIUS = DOCK_HEIGHT / 2;
 // GSAP power4.out equivalent: fast launch, long soft landing.
 const SLIDE_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 
+// Easy view swaps the floating glass capsule for a plain docked shelf: opaque,
+// full width, one hairline rule, no blur and no moving parts. Blur over live
+// content is the single hardest thing on this screen to read with cataracts.
+const SIMPLE_ITEM_HEIGHT = 64;
+const SIMPLE_ICON_SIZE = 30;
+
 function NavIcon({ name, color, focused }: { name: FeatherName; color: ColorValue; focused: boolean }) {
+  const { isSimple } = useSimpleMode();
   const lift = useSharedValue(focused ? 1 : 0);
 
   useEffect(() => {
@@ -51,10 +59,66 @@ function NavIcon({ name, color, focused }: { name: FeatherName; color: ColorValu
     transform: [{ translateY: lift.value * -2 }],
   }));
 
+  if (isSimple) {
+    return <Feather name={name} size={SIMPLE_ICON_SIZE} color={color} />;
+  }
+
   return (
     <Animated.View style={style}>
       <Feather name={name} size={21} color={color} />
     </Animated.View>
+  );
+}
+
+function SimpleTabBar({ state, descriptors, navigation }: TabBarProps) {
+  const { colors } = useTheme();
+  const { isComputerMode } = useDisplayMode();
+
+  // Same rule as the glass bar: desktop chrome supplies its own nav, and the
+  // bar never hides on keyboard open.
+  if (isComputerMode) return null;
+
+  return (
+    <View style={[styles.simpleBar, { backgroundColor: colors.bgAlt, borderTopColor: colors.border }]}>
+      {state.routes.map((route, index) => {
+        const { options } = descriptors[route.key];
+        const focused = state.index === index;
+        const label =
+          typeof options.tabBarLabel === 'string' ? options.tabBarLabel : (options.title ?? route.name);
+        const tint = focused ? colors.primaryFg : colors.text;
+
+        return (
+          <Pressable
+            key={route.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: focused }}
+            accessibilityLabel={label}
+            style={[styles.simpleItem, focused && { backgroundColor: colors.primary }]}
+            onPress={() => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            }}
+          >
+            {options.tabBarIcon
+              ? options.tabBarIcon({ focused, color: tint, size: SIMPLE_ICON_SIZE })
+              : null}
+            <Text
+              maxFontSizeMultiplier={1.3}
+              style={[styles.simpleLabel, { color: tint }]}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -168,10 +232,11 @@ export default function AppSectionLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const { lang } = useLocale();
+  const { isSimple } = useSimpleMode();
 
   return (
     <Tabs
-      tabBar={(props) => <GlassTabBar {...props} />}
+      tabBar={(props) => (isSimple ? <SimpleTabBar {...props} /> : <GlassTabBar {...props} />)}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.bg },
@@ -276,4 +341,26 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   label: { fontFamily: family.medium, fontSize: 10, lineHeight: 12 },
+
+  // Docked at the very bottom rather than floating: the existing
+  // TAB_BAR_CLEARANCE (92) already reserves more than this bar's height, so no
+  // screen's last row hides under it.
+  simpleBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  simpleItem: {
+    flex: 1,
+    minHeight: SIMPLE_ITEM_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 6,
+  },
+  simpleLabel: { fontFamily: family.semibold, fontSize: 16, lineHeight: 20, fontWeight: '600' },
 });

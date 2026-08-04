@@ -4,7 +4,8 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import { Body, Button, Card, Chip, Dialog, H1, H2, Muted, Sheet } from '../src/components/ui';
-import { AppColors, family, font, radius, space, TAP, tracking } from '../src/lib/theme';
+import { AppColors, family, radius, Tokens, tracking } from '../src/lib/theme';
+import { useTokens } from '../src/lib/useTokens';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
 import {
@@ -73,7 +74,8 @@ export default function CalendarScreen() {
   const { t } = useTranslation();
   const { session, user } = useAuth();
   const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const tk = useTokens();
+  const styles = useMemo(() => makeStyles(colors, tk), [colors, tk]);
 
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [title, setTitle] = useState('');
@@ -591,23 +593,23 @@ export default function CalendarScreen() {
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, tk: Tokens) {
   return StyleSheet.create({
     content: {
-      padding: space.md,
-      paddingTop: space.sm,
-      paddingBottom: space.xxl,
+      padding: tk.space.md,
+      paddingTop: tk.space.sm,
+      paddingBottom: tk.space.xxl,
     },
-    screenTitle: { marginBottom: space.md },
-    sectionTitle: { marginTop: space.lg, marginBottom: space.sm },
+    screenTitle: { marginBottom: tk.space.md },
+    sectionTitle: { marginTop: tk.space.lg, marginBottom: tk.space.sm },
 
-    monthCard: { paddingHorizontal: space.sm },
+    monthCard: { paddingHorizontal: tk.space.sm },
     monthHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
-      marginBottom: space.sm,
-      paddingHorizontal: space.xs,
+      gap: tk.space.sm,
+      marginBottom: tk.space.sm,
+      paddingHorizontal: tk.space.xs,
     },
     navBtn: {
       width: 44,
@@ -619,10 +621,10 @@ function makeStyles(colors: AppColors) {
     monthLabel: {
       flex: 1,
       textAlign: 'center',
-      fontSize: font.lg,
+      fontSize: tk.font.lg,
       fontFamily: family.bold,
       letterSpacing: tracking.lg,
-      lineHeight: Math.round(font.lg * 1.3),
+      lineHeight: Math.round(tk.font.lg * 1.3),
     },
     weekRow: { flexDirection: 'row' },
     weekdayCell: {
@@ -632,9 +634,9 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
     },
     weekdayLabel: {
-      fontSize: font.xs,
+      fontSize: tk.font.xs,
       fontFamily: family.medium,
-      lineHeight: Math.round(font.xs * 1.4),
+      lineHeight: Math.round(tk.font.xs * 1.4),
     },
     dayCell: {
       flex: 1,
@@ -649,7 +651,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    dayNum: { fontSize: font.sm, fontFamily: family.medium },
+    dayNum: { fontSize: tk.font.sm, fontFamily: family.medium },
     dayNumStrong: { fontFamily: family.bold },
     dayDot: {
       position: 'absolute',
@@ -672,7 +674,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       gap: 12,
       paddingVertical: 12,
-      paddingHorizontal: space.md,
+      paddingHorizontal: tk.space.md,
     },
     leadDisc: {
       width: 44,
@@ -683,14 +685,14 @@ function makeStyles(colors: AppColors) {
     },
     eventTextBlock: { flex: 1 },
     eventTitle: {
-      fontSize: font.md,
+      fontSize: tk.font.md,
       fontFamily: family.semibold,
-      lineHeight: Math.round(font.md * 1.5),
+      lineHeight: Math.round(tk.font.md * 1.5),
     },
     eventMeta: {
-      fontSize: font.sm,
+      fontSize: tk.font.sm,
       fontFamily: family.regular,
-      lineHeight: Math.round(font.sm * 1.45),
+      lineHeight: Math.round(tk.font.sm * 1.45),
       marginTop: 2,
     },
     divider: {
@@ -698,45 +700,45 @@ function makeStyles(colors: AppColors) {
       marginLeft: 72,
     },
 
-    formCard: { gap: space.md },
+    formCard: { gap: tk.space.md },
     field: { gap: 6 },
     fieldLabel: {
-      fontSize: font.sm,
+      fontSize: tk.font.sm,
       fontFamily: family.medium,
-      lineHeight: Math.round(font.sm * 1.45),
+      lineHeight: Math.round(tk.font.sm * 1.45),
     },
     input: {
       backgroundColor: colors.surfaceTint,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
-      fontSize: font.md,
+      paddingHorizontal: tk.space.md,
+      paddingVertical: tk.space.sm,
+      fontSize: tk.font.md,
       fontFamily: family.regular,
       color: colors.text,
-      minHeight: TAP,
+      minHeight: tk.TAP,
     },
     noteInput: { minHeight: 96, textAlignVertical: 'top' },
-    repeatRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.xs },
+    repeatRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: tk.space.xs },
     savedRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.xs,
+      gap: tk.space.xs,
     },
     savedText: {
-      fontSize: font.sm,
+      fontSize: tk.font.sm,
       fontFamily: family.medium,
-      lineHeight: Math.round(font.sm * 1.45),
+      lineHeight: Math.round(tk.font.sm * 1.45),
     },
 
     sheetMetaRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.sm,
+      gap: tk.space.sm,
     },
-    sheetNote: { marginTop: space.sm },
-    sheetActions: { marginTop: space.lg, gap: 12 },
-    dialogActions: { marginTop: space.lg, gap: 12 },
+    sheetNote: { marginTop: tk.space.sm },
+    sheetActions: { marginTop: tk.space.lg, gap: 12 },
+    dialogActions: { marginTop: tk.space.lg, gap: 12 },
   });
 }
