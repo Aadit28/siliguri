@@ -69,5 +69,45 @@ const withViewport = withTitle.replace(
   (match, head, tail) => (match.includes('viewport-fit') ? match : `${head}, viewport-fit=cover${tail}`),
 );
 
-await writeFile(INDEX, withViewport.replace('</head>', `${TAGS}</head>`), 'utf8');
-console.log('inject-web-head: head tags written to dist/index.html');
+// The bundle is ~3.7MB. On the mobile networks this app is actually used on
+// that is several seconds of blank white page before React paints anything,
+// which reads as a broken site to someone who is not sure the tap worked.
+// React clears the container when it mounts, so markup placed inside #root is
+// the splash and needs no teardown code.
+const SPLASH = `
+      <div id="saathi-splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#FFFFFF;color:#0A0A0A;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+        <div style="font-size:30px;font-weight:600;letter-spacing:-0.5px">Saathi</div>
+        <div style="font-size:15px;opacity:0.6">Loading…</div>
+        <div style="width:120px;height:3px;border-radius:2px;background:rgba(10,10,10,0.1);overflow:hidden">
+          <div style="width:40%;height:100%;border-radius:2px;background:#0A0A0A;animation:saathi-slide 1.1s ease-in-out infinite"></div>
+        </div>
+      </div>`;
+
+const SPLASH_STYLE = `
+    <style id="saathi-splash-style">
+      @keyframes saathi-slide { 0% { transform: translateX(-100%) } 100% { transform: translateX(350%) } }
+      @media (prefers-color-scheme: dark) {
+        #saathi-splash { background: #0A0A0A !important; color: #FFFFFF !important }
+        #saathi-splash div[style*="rgba(10,10,10,0.1)"] { background: rgba(255,255,255,0.14) !important }
+        #saathi-splash div[style*="background:#0A0A0A"] { background: #FFFFFF !important }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #saathi-splash div[style*="animation"] { animation: none !important; width: 100% !important }
+      }
+    </style>
+  `;
+
+const withHead = withViewport.replace('</head>', `${TAGS}${SPLASH_STYLE}</head>`);
+
+if (!withHead.includes('<div id="root"></div>')) {
+  console.error('inject-web-head: no empty <div id="root"></div> — Expo changed its template');
+  process.exit(1);
+}
+
+const withSplash = withHead.replace(
+  '<div id="root"></div>',
+  `<div id="root">${SPLASH}\n    </div>`,
+);
+
+await writeFile(INDEX, withSplash, 'utf8');
+console.log('inject-web-head: head tags and loading splash written to dist/index.html');
