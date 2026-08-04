@@ -18,7 +18,13 @@ export type AppStrings = {
   assistant: { title: string; online: string; newChat: string; saved: string };
   reminder: { title: string; what: string; when: string; repeats: string; daily: string; time: string; medicine: string };
   today: { title: string; done: string; due: string; walk: string; call: string; morning: string; evening: string };
-  guardian: { title: string; forWhom: string; note: string };
+  guardian: {
+    title: string;
+    forWhom: string;
+    note: string;
+    careTeam: string;
+    members: [string, string];
+  };
   ask: { title: string; inReview: string; reviewNote: string; postTitle: string; postBody: string; author: string };
   admin: {
     title: string;
@@ -27,6 +33,8 @@ export type AppStrings = {
     pending: string;
     done: string;
     rows: [string, string, string];
+    openLabel: string;
+    listingsLabel: string;
   };
 };
 
@@ -67,6 +75,8 @@ const en: AppStrings = {
     title: "Set a reminder",
     forWhom: "For Ma",
     note: "Ma confirms this on her own phone.",
+    careTeam: "Care team",
+    members: ["Priya · Daughter", "Ward helper · Pradhan Nagar"],
   },
   ask: {
     title: "Ask",
@@ -83,6 +93,8 @@ const en: AppStrings = {
     pending: "Waiting",
     done: "Called",
     rows: ["Pradhan Nagar · water", "Ward 12 · street light", "Bhaktinagar · elder care"],
+    openLabel: "Open requests",
+    listingsLabel: "Listings in this city",
   },
 };
 
@@ -123,6 +135,8 @@ const hi: AppStrings = {
     title: "रिमाइंडर लगाएँ",
     forWhom: "माँ के लिए",
     note: "माँ अपने फ़ोन पर इसकी पुष्टि करेंगी।",
+    careTeam: "केयर टीम",
+    members: ["प्रिया · बेटी", "वार्ड हेल्पर · प्रधान नगर"],
   },
   ask: {
     title: "पूछें",
@@ -139,6 +153,8 @@ const hi: AppStrings = {
     pending: "प्रतीक्षा में",
     done: "कॉल हो गया",
     rows: ["प्रधान नगर · पानी", "वार्ड 12 · स्ट्रीट लाइट", "भक्तिनगर · बुज़ुर्ग देखभाल"],
+    openLabel: "खुले अनुरोध",
+    listingsLabel: "इस शहर की लिस्टिंग",
   },
 };
 

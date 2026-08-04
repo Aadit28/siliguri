@@ -10,9 +10,12 @@ import {
   HandHeart,
   Hospital,
   MagnifyingGlass,
+  PhoneCall,
   Pill,
   SealCheck,
+  UserCircle,
 } from "@phosphor-icons/react/dist/ssr";
+import { CITIES } from "../../_lib/copy";
 import { appStrings, mockIsDeva, SAMPLE_LISTINGS } from "../../_lib/appStrings";
 import { useLang } from "../../_lib/lang";
 import { chipTone } from "./Device";
@@ -66,7 +69,9 @@ export function SceneServices() {
       </motion.div>
 
       <ul className="flex flex-col gap-2.5">
-        {SAMPLE_LISTINGS.slice(0, 4).map((item, i) => {
+        {/* Three, not four: the wide panel's height cuts a fourth row in half,
+            and half a row reads as a rendering bug rather than as more content. */}
+        {SAMPLE_LISTINGS.slice(0, 3).map((item, i) => {
           const Icon = listingIcon[item.icon];
           return (
             <motion.li key={item.name} {...stagger(i + 1, reduce)} className={row}>
@@ -241,8 +246,33 @@ export function SceneGuardian() {
         ))}
       </motion.dl>
 
+      {/* The care team is the other half of the guardian's job: a reminder they
+          set, and the short list of numbers that answer when it does not go well. */}
+      {/* Hidden on short/narrow laptops, where the panel is only tall enough for
+          the reminder itself; the note below is the part that must survive. */}
+      <motion.div {...stagger(2, reduce)} className="mt-1 hidden xl:block">
+        <p className="font-mono text-[10.5px] tracking-[0.16em] text-ink-subtle uppercase">
+          {s.guardian.careTeam}
+        </p>
+        {/* Side by side rather than stacked: two full-width rows pushed the
+            consent note off the panel's bottom edge. */}
+        <ul className="mt-2 grid grid-cols-2 gap-2">
+          {s.guardian.members.map((m) => (
+            <li key={m} className="flex min-w-0 items-center gap-2 rounded-[12px] border border-line p-2.5">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-chip-sage text-chip-sageink">
+                <UserCircle size={18} weight="fill" />
+              </span>
+              <span className={`min-w-0 truncate text-[13.5px] font-medium ${deva}`}>
+                {m}
+              </span>
+              <PhoneCall size={15} className="ml-auto shrink-0 text-ink-subtle" />
+            </li>
+          ))}
+        </ul>
+      </motion.div>
+
       <motion.p
-        {...stagger(2, reduce)}
+        {...stagger(3, reduce)}
         className={`mt-auto rounded-[12px] bg-chip-sky px-3.5 py-3 text-[13px] leading-snug text-chip-skyink ${deva}`}
       >
         {s.guardian.note}
@@ -318,7 +348,7 @@ export function SceneAdmin() {
 
       <motion.p
         {...stagger(1, reduce)}
-        className="font-mono text-[10.5px] tracking-[0.16em] text-ink-subtle uppercase"
+        className="hidden font-mono text-[10.5px] tracking-[0.16em] text-ink-subtle uppercase xl:block"
       >
         {s.admin.queue}
       </motion.p>
@@ -342,6 +372,25 @@ export function SceneAdmin() {
           </span>
         </motion.div>
       ))}
+
+      {/* Both figures are real: two of the three rows above are still waiting,
+          and 58 is the Siliguri directory the app actually ships. */}
+      <motion.dl
+        {...stagger(s.admin.rows.length + 2, reduce)}
+        className="mt-auto hidden grid-cols-2 gap-3 xl:grid"
+      >
+        {[
+          { k: s.admin.openLabel, v: s.admin.rows.length - 1 },
+          { k: s.admin.listingsLabel, v: CITIES[0].total },
+        ].map(({ k, v }) => (
+          <div key={k} className="rounded-[12px] bg-paper-alt px-3.5 py-3">
+            <dt className={`truncate text-[12px] text-ink-subtle ${deva}`}>{k}</dt>
+            <dd className="mt-0.5 text-[22px] leading-none font-bold tabular-nums">
+              {v}
+            </dd>
+          </div>
+        ))}
+      </motion.dl>
     </div>
   );
 }

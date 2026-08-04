@@ -130,10 +130,10 @@ function PhoneCell({ delay }: { delay: number }) {
       initial={reduce ? false : { opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, delay, ease }}
-      className="col-span-2 flex min-h-0 flex-col sm:col-span-4 sm:row-span-2"
+      className="col-span-2 flex min-h-0 flex-col sm:col-span-8"
     >
       <AppMockup
-        className="min-h-0 grow drop-shadow-[0_18px_40px_rgba(10,10,10,0.14)]"
+        className="min-h-0 grow drop-shadow-[0_18px_40px_rgba(10,10,10,0.14)] lg:min-h-[360px] xl:min-h-[420px]"
         rounded="rounded-[24px]"
       />
     </motion.div>
@@ -183,14 +183,14 @@ function DirectoryTile({ delay }: { delay: number }) {
 
       {/* Bars are the real ratios between the three shipped datasets, not a
           shape drawn to look balanced. Ahilyanagar is genuinely the smallest. */}
-      <ul className="mt-auto grid grid-cols-3 gap-x-4 pt-4">
+      <ul className="mt-auto grid grid-cols-3 gap-x-3 pt-4 xl:gap-x-4">
         {CITIES.map((c, i) => (
-          <li key={c.key}>
-            <div className="flex items-baseline justify-between gap-1">
-              <span className={`truncate text-[15px] font-medium ${deva}`}>
+          <li key={c.key} className="min-w-0">
+            <div className="flex min-w-0 items-baseline justify-between gap-1">
+              <span className={`min-w-0 truncate text-[14px] font-medium xl:text-[15px] ${deva}`}>
                 {t.cities[c.key]}
               </span>
-              <span className="shrink-0 text-[15px] font-semibold tabular-nums">
+              <span className="shrink-0 text-[14px] font-semibold tabular-nums xl:text-[15px]">
                 {c.total}
               </span>
             </div>
@@ -254,7 +254,9 @@ function SosTile({ delay }: { delay: number }) {
 
 export function HeroBento() {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-8 sm:gap-4">
+    // The mock-up takes the full width now that the role switcher lives in a
+    // left rail beside it; the two tiles split the row underneath.
+    <div className="grid min-h-0 grid-cols-2 gap-3 sm:grid-cols-8 sm:gap-4">
       <PhoneCell delay={0.1} />
       <DirectoryTile delay={0.18} />
       <SosTile delay={0.34} />
