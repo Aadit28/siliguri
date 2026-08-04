@@ -1,7 +1,7 @@
 // Single entry point for every /api/* call.
 //
 // The handlers live in server/ rather than api/ because Vercel turns each file
-// under api/ into its own serverless function, and 21 of them exceeds the Hobby
+// under api/ into its own serverless function, and this app has more than the Hobby
 // plan's limit of 12. Routing them through one function also means production
 // and scripts/dev-api.js dispatch from the same table, so a route cannot work
 // locally and 404 in production.
@@ -18,6 +18,10 @@ const ROUTES = {
   'auth/signout': () => require('../server/auth/signout'),
   'auth/otp-request': () => require('../server/auth/otp-request'),
   'auth/otp-verify': () => require('../server/auth/otp-verify'),
+  activities: () => require('../server/activities'),
+  'activities/enroll': () => require('../server/activities/enroll'),
+  'activities/leave': () => require('../server/activities/leave'),
+  'activities/my': () => require('../server/activities/my'),
   'assistant/plan': () => require('../server/assistant/plan'),
   'callback/request': () => require('../server/callback/request'),
   'community/post': () => require('../server/community/post'),

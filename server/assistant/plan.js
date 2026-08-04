@@ -7,6 +7,13 @@ const {
   sendServerError,
   withCors,
 } = require('../_lib/auth');
+const {
+  ActivityHttpError,
+  activitiesLiveEnabled,
+  enrollmentCalendarEntries,
+  listMyEnrollments,
+  resolveParticipant,
+} = require('../_lib/activities');
 
 // Each list mixes English, Hinglish and Devanagari so Hindi-first elders get a
 // category match instead of the "no matching service" fallback.
@@ -283,6 +290,7 @@ const COPY = {
     openScreen: (screen) =>
       ({
         calendar: 'Open my calendar',
+        activities: 'Open activities',
         services: 'Open services',
         community: 'Open community',
         help: 'Open help',
@@ -320,6 +328,7 @@ const COPY = {
     openScreen: (screen) =>
       ({
         calendar: 'मेरा कैलेंडर खोलें',
+        activities: 'गतिविधियाँ खोलें',
         services: 'सेवाएं खोलें',
         community: 'कम्युनिटी खोलें',
         help: 'मदद खोलें',
@@ -412,9 +421,10 @@ module.exports = async function handler(req, res) {
     }
 
     let userId = null;
+    let auth = null;
     const hasToken = Boolean(String(req.headers.authorization || req.headers.Authorization || '').trim());
     if (hasToken) {
-      const auth = await authenticate(req);
+      auth = await authenticate(req);
       if (auth.error) return send(res, 401, { error: 'Session expired. Please sign in again.' });
       userId = auth.user.id;
     }
@@ -426,7 +436,11 @@ module.exports = async function handler(req, res) {
     const lang = body.lang === 'hi' ? 'hi' : 'en';
     const services = sanitizeServices(Array.isArray(body.services) ? body.services : []);
     const imageAttachments = sanitizeImageAttachments(body.imageAttachments);
-    const context = sanitizeContext(body.context);
+    const clientContext = sanitizeContext(body.context);
+
+    if (!auth && body.participantId) {
+      return send(res, 401, { error: 'Sign in to ask about activity enrollments.' });
+    }
 
     if (!message && !imageAttachments.length) {
       return send(res, 400, { error: 'Tell Saathi what you need.' });
@@ -434,6 +448,55 @@ module.exports = async function handler(req, res) {
 
     const effectiveMessage = message || imageOnlyFallbackText(lang);
     const urgent = URGENT_WORDS.some((word) => effectiveMessage.toLowerCase().includes(word));
+    const activityQuestion =
+      !urgent &&
+      !imageAttachments.length &&
+      !REMINDER_TRIGGER.test(effectiveMessage) &&
+      isActivityEnrollmentQuestion(effectiveMessage);
+    let activityEnrollments = [];
+    let hasAuthoritativeActivityContext = false;
+    let activityDataUnavailable = false;
+
+    // Urgent help must not depend on an activities-table read. Otherwise the
+    // server adds authoritative enrollments for the signed-in participant so
+    // neither the model nor chat history can invent membership.
+    if (auth && !urgent && activitiesLiveEnabled()) {
+      try {
+        const participant = await resolveParticipant(auth, body.participantId);
+        activityEnrollments = await listMyEnrollments(auth.supabase, participant);
+        hasAuthoritativeActivityContext = true;
+      } catch (error) {
+        // Bad/unknown/unauthorized participant selectors are request errors
+        // and must never be ignored. A participant who has not chosen a city
+        // yet (409) simply has no activity context; unrelated assistant help
+        // should continue, while an enrollment question gets the honest
+        // unavailable plan below.
+        if (error instanceof ActivityHttpError && error.status !== 409) throw error;
+        activityDataUnavailable = true;
+        console.warn('Activity enrollment lookup failed:', error?.message || error);
+      }
+    } else if (auth && !urgent) {
+      // The public client is preview-first, but this private server gate is the
+      // final rollout authority. Do not query draft tables or imply records are
+      // available until operators enable both sides deliberately.
+      activityDataUnavailable = true;
+    }
+    const context = mergeActivityContext(
+      clientContext,
+      activityEnrollments,
+      hasAuthoritativeActivityContext,
+    );
+
+    if (activityQuestion) {
+      const plan = !auth
+        ? buildSignedOutActivityPlan(lang)
+        : activityDataUnavailable
+          ? buildUnavailableActivityPlan(lang)
+          : buildActivityEnrollmentPlan(effectiveMessage, activityEnrollments, lang);
+      await logAssistantEvent(userId, { message: effectiveMessage, imageCount: 0, plan });
+      return send(res, 200, plan);
+    }
+
     const route = urgent || imageAttachments.length ? null : extractRouteTimeRequest(effectiveMessage, services);
     if (route) {
       const plan = buildRouteTimePlan(route);
@@ -471,6 +534,7 @@ module.exports = async function handler(req, res) {
     await logAssistantEvent(userId, { message: effectiveMessage, imageCount: imageAttachments.length, plan });
     return send(res, 200, plan);
   } catch (error) {
+    if (error instanceof ActivityHttpError) return send(res, error.status, { error: error.message });
     return sendServerError(res, error, 'Could not plan this request.');
   }
 };
@@ -487,7 +551,7 @@ function pickLlmProvider(imageAttachments) {
 
 function buildSystemPrompt(urgent) {
   return (
-    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. When the user asks to be reminded of something, fill proposedReminder (use context.todayISO as today when resolving "tomorrow" or weekday names) and never claim the reminder is saved — the app asks the user to confirm it. context.facts are true, current facts supplied by the app (often a guardian\'s live summary of their parent); when the question asks how someone is doing, answer directly FROM those facts instead of saying you have no updates. Return compact JSON only.' +
+    'You are Saathi, a care coordination agent for elderly users in India. Use only the services provided by the app. You are not a doctor, medical device, diagnostic tool, emergency responder, or booking authority. Never diagnose, prescribe, triage, interpret symptoms as a clinician, or claim an appointment is booked until a provider confirms it. For urgent symptoms, tell the user to call emergency help or a hospital. If the user asks about ride time, traffic, ETA or directions to a listed place, answer the route question and do not treat the destination as a provider to call. When the user asks to be reminded of something, fill proposedReminder (use context.todayISO as today when resolving "tomorrow" or weekday names) and never claim the reminder is saved — the app asks the user to confirm it. context.facts are true, current facts supplied by the app (often a guardian\'s live summary of their parent); when the question asks how someone is doing, answer directly FROM those facts instead of saying you have no updates. When context.activityEnrollments is present it is the only authoritative source for joined or waitlisted activities; never infer enrollment from the user message or ordinary calendar entries. Upcoming activity sessions in context.calendar may be used alongside other calendar items for general schedule questions. Return compact JSON only.' +
     (urgent
       ? ' URGENT: the message contains emergency symptoms. Set status to "urgent" and tell the user to call emergency help or the nearest hospital first, before answering anything else (including route or traffic questions).'
       : '')
@@ -808,6 +872,241 @@ function defaultActionLabel(kind, service, copy) {
   if (kind === 'source') return copy.source;
   if (kind === 'family_update') return copy.family;
   return copy.details;
+}
+
+const ACTIVITY_ASSISTANT_COPY = {
+  en: {
+    signInSummary: 'Please sign in so I can check your Saathi activity enrollments.',
+    signInSafety: 'Enrollment details are read from your Saathi account, not from chat history.',
+    signInNext: 'Sign in, then ask me which activities you joined.',
+    unavailableSummary: 'I cannot check your activity enrollments right now. Please try again shortly.',
+    unavailableSafety: 'I will not guess enrollment details when Saathi records are unavailable.',
+    unavailableNext: 'Try again before relying on a class time or waitlist position.',
+    checked: 'I checked your Saathi account.',
+    none: 'You have not joined or waitlisted for any activities yet.',
+    noMatch: 'You are not joined or waitlisted for that activity.',
+    waitlisted: (title, position) => `${title}: waitlisted${position ? ` at position ${position}` : ''}.`,
+    joined: (title, when) =>
+      `${title}: joined${when ? `; next session ${when}` : '; no upcoming session is scheduled'}.`,
+    safety: 'This answer uses your current Saathi enrollment records.',
+    next: 'Open Activities to review enrollment details and upcoming sessions.',
+  },
+  hi: {
+    signInSummary: 'अपनी Saathi गतिविधियों का नामांकन देखने के लिए कृपया साइन इन करें।',
+    signInSafety: 'नामांकन की जानकारी आपके Saathi खाते से ली जाती है, चैट इतिहास से नहीं।',
+    signInNext: 'साइन इन करने के बाद पूछें कि आपने कौन-सी गतिविधियाँ जॉइन की हैं।',
+    unavailableSummary: 'मैं अभी आपकी गतिविधियों का नामांकन नहीं देख पा रहा हूँ। कृपया थोड़ी देर बाद फिर कोशिश करें।',
+    unavailableSafety: 'Saathi रिकॉर्ड उपलब्ध न होने पर मैं नामांकन की जानकारी का अनुमान नहीं लगाऊँगा।',
+    unavailableNext: 'कक्षा के समय या वेटलिस्ट स्थान पर भरोसा करने से पहले फिर जाँचें।',
+    checked: 'मैंने आपका Saathi खाता जाँच लिया है।',
+    none: 'आपने अभी कोई गतिविधि जॉइन नहीं की है और आप किसी वेटलिस्ट में भी नहीं हैं।',
+    noMatch: 'आप उस गतिविधि में शामिल नहीं हैं और उसकी वेटलिस्ट में भी नहीं हैं।',
+    waitlisted: (title, position) => `${title}: वेटलिस्ट${position ? ` में स्थान ${position}` : ''}।`,
+    joined: (title, when) =>
+      `${title}: जॉइन किया हुआ${when ? `; अगला सत्र ${when}` : '; अभी कोई आगामी सत्र तय नहीं है'}।`,
+    safety: 'यह उत्तर आपके मौजूदा Saathi नामांकन रिकॉर्ड पर आधारित है।',
+    next: 'नामांकन और आगामी सत्र देखने के लिए गतिविधियाँ खोलें।',
+  },
+};
+
+function isActivityEnrollmentQuestion(message) {
+  const normalized = String(message || '').toLowerCase();
+  if (/\bwhat\b.{0,40}\b(?:joined|enrolled|waitlisted)\b/.test(normalized)) return true;
+  if (/\b(?:joined|enrolled|waitlisted)\b.{0,40}\bwhat\b/.test(normalized)) return true;
+  if (/(?:कौन|क्या).{0,40}(?:शामिल|नामांकन|वेटलिस्ट|जॉइन)/.test(normalized)) return true;
+  if (/(?:kya|kaun).{0,40}(?:shamil|naamankan|waitlist|join)/.test(normalized)) return true;
+
+  const activity =
+    /\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walking|walk|music|smartphone|kaksha|gatividhi|satra)\b/.test(
+      normalized,
+    ) || /(?:कक्षा|योग|गतिविधि|सत्र|संगीत|चलना)/.test(normalized);
+  const enrollment =
+    /\b(?:join|joined|enrol|enroll|enrolled|enrollment|waitlist|waitlisted|registered|registration|shamil|naamankan)\b/.test(
+      normalized,
+    ) || /(?:शामिल|नामांकन|वेटलिस्ट|प्रतीक्षा|जॉइन)/.test(normalized);
+  const ownedSchedule =
+    /\b(?:my|our|meri|mera|hamari)\b.{0,30}\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walk|music|kaksha|gatividhi|satra)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:when|next|schedule|kab|agli|agla)\b.{0,30}\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walk|music|kaksha|gatividhi|satra)\b/.test(
+      normalized,
+    ) ||
+    /(?:मेरी|मेरा|हमारी|अगली|अगला|कब).{0,30}(?:गतिविधि|कक्षा|सत्र|योग|संगीत)/.test(normalized);
+  const membership =
+    /\b(?:do i have|do we have|am i in|are we in)\b.{0,40}\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walk|music)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:kya main|kya hum|main|hum)\b.{0,40}\b(?:kaksha|gatividhi|satra|yoga|class)\b/.test(
+      normalized,
+    ) ||
+    /(?:क्या मैं|क्या हम|मेरे पास|हमारे पास).{0,40}(?:गतिविधि|कक्षा|सत्र|योग|संगीत)/.test(normalized);
+  return activity && (enrollment || ownedSchedule || membership);
+}
+
+function activityOpenAction(lang) {
+  const copy = COPY[lang] || COPY.en;
+  return {
+    kind: 'open_screen',
+    label: copy.openScreen('activities'),
+    value: JSON.stringify({ screen: 'activities' }),
+    serviceId: null,
+  };
+}
+
+function buildSignedOutActivityPlan(lang) {
+  const copy = ACTIVITY_ASSISTANT_COPY[lang] || ACTIVITY_ASSISTANT_COPY.en;
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'needs_details',
+    summary: copy.signInSummary,
+    followUpQuestion: null,
+    safetyNote: copy.signInSafety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [copy.signInNext],
+    actions: [activityOpenAction(lang)],
+  };
+}
+
+function buildUnavailableActivityPlan(lang) {
+  const copy = ACTIVITY_ASSISTANT_COPY[lang] || ACTIVITY_ASSISTANT_COPY.en;
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'handoff',
+    summary: copy.unavailableSummary,
+    followUpQuestion: null,
+    safetyNote: copy.unavailableSafety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [copy.unavailableNext],
+    actions: [activityOpenAction(lang)],
+  };
+}
+
+function buildActivityEnrollmentPlan(message, enrollments, lang) {
+  const copy = COPY[lang] || COPY.en;
+  const activityCopy = ACTIVITY_ASSISTANT_COPY[lang] || ACTIVITY_ASSISTANT_COPY.en;
+  const { matches, wasSpecific } = relevantActivityEnrollments(message, enrollments);
+  let summary;
+
+  if (!enrollments.length) {
+    summary = `${activityCopy.checked} ${activityCopy.none}`;
+  } else if (!matches.length && wasSpecific) {
+    summary = `${activityCopy.checked} ${activityCopy.noMatch}`;
+  } else {
+    const details = matches.map((enrollment) => {
+      const title = enrollment.activity?.title || 'Activity';
+      if (enrollment.status === 'waitlisted') {
+        return activityCopy.waitlisted(title, enrollment.waitlistPosition);
+      }
+      const nextSession =
+        enrollment.activity?.sessions?.find((session) => session.status === 'scheduled') || null;
+      return activityCopy.joined(title, nextSession ? formatActivitySession(nextSession, lang) : null);
+    });
+    summary = `${activityCopy.checked} ${details.join(' ')}`;
+  }
+
+  const actions = [activityOpenAction(lang)];
+  if (matches.some((enrollment) => enrollment.status === 'joined')) {
+    actions.unshift({
+      kind: 'open_screen',
+      label: copy.openScreen('calendar'),
+      value: JSON.stringify({ screen: 'calendar' }),
+      serviceId: null,
+    });
+  }
+  return {
+    source: 'local',
+    intent: 'general',
+    status: 'handoff',
+    summary,
+    followUpQuestion: null,
+    safetyNote: activityCopy.safety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [activityCopy.next],
+    actions,
+  };
+}
+
+function relevantActivityEnrollments(message, enrollments) {
+  const stopWords = new Set([
+    'activity', 'activities', 'class', 'classes', 'course', 'courses', 'session', 'sessions',
+    'joined', 'join', 'enrolled', 'enroll', 'waitlisted', 'waitlist', 'what', 'when', 'next',
+    'schedule', 'have', 'with', 'that', 'this', 'did', 'does', 'which', 'where', 'who', 'how',
+    'can', 'could', 'would', 'should', 'will', 'you', 'our', 'please', 'tell', 'any', 'all',
+    'kaksha', 'gatividhi', 'satra', 'shamil', 'naamankan', 'meri', 'mera', 'hamari', 'kab',
+    'kya', 'kaun', 'maine', 'kiya', 'hai', 'main', 'hum', 'aap', 'mujhe', 'kaunsi', 'kis',
+    'kahan', 'kaise', 'batao', 'koi', 'कक्षा', 'गतिविधि', 'सत्र', 'शामिल', 'नामांकन',
+    'वेटलिस्ट', 'मेरी', 'मेरा', 'हमारी', 'कब', 'क्या', 'कौन', 'मैंने', 'मैं', 'हम', 'हमने',
+    'आप', 'मुझे', 'किस', 'कहाँ', 'कैसे', 'बताएं', 'बताओ', 'है', 'हैं', 'कोई', 'जॉइन', 'किया',
+  ]);
+  const aliases = new Map([
+    ['योग', 'yoga'],
+    ['संगीत', 'music'],
+    ['चलना', 'walking'],
+    ['स्मार्टफोन', 'smartphone'],
+  ]);
+  const queryTokens = String(message || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  const meaningful = queryTokens
+    .filter((token) => token.length > 2 && !stopWords.has(token))
+    .map((token) => aliases.get(token) || token);
+  const matches = (enrollments || []).filter((enrollment) => {
+    const haystack = `${enrollment.activity?.title || ''} ${enrollment.activity?.category || ''}`.toLowerCase();
+    return meaningful.some((token) => haystack.includes(token));
+  });
+  return {
+    matches: matches.length || meaningful.length ? matches : enrollments || [],
+    wasSpecific: meaningful.length > 0,
+  };
+}
+
+function formatActivitySession(session, lang) {
+  const value = new Date(session.startsAt);
+  if (Number.isNaN(value.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(lang === 'hi' ? 'hi-IN' : 'en-IN', {
+      timeZone: session.timezone || 'Asia/Kolkata',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(value);
+  } catch {
+    return value.toISOString();
+  }
+}
+
+function mergeActivityContext(context, enrollments, hasAuthoritativeContext) {
+  if (!hasAuthoritativeContext) return context;
+  const calendar = [];
+  const seen = new Set();
+  for (const entry of [...(context?.calendar || []), ...enrollmentCalendarEntries(enrollments)]) {
+    const key = `${entry.title}|${entry.dateISO}|${entry.time || ''}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    calendar.push(entry);
+  }
+  calendar.sort((a, b) => `${a.dateISO}T${a.time || ''}`.localeCompare(`${b.dateISO}T${b.time || ''}`));
+
+  return {
+    ...(context || {}),
+    calendar: calendar.slice(0, 40),
+    activityEnrollments: (enrollments || []).slice(0, 25).map((enrollment) => ({
+      title: enrollment.activity?.title || 'Activity',
+      status: enrollment.status,
+      waitlistPosition: enrollment.waitlistPosition,
+      sessions: (enrollment.activity?.sessions || []).slice(0, 4).map((session) => ({
+        startsAt: session.startsAt,
+        endsAt: session.endsAt,
+        timezone: session.timezone,
+        status: session.status,
+      })),
+    })),
+  };
 }
 
 function buildLocalAssistantPlan(message, services, lang = 'en', context = null) {

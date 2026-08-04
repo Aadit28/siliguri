@@ -50,7 +50,11 @@ async function ensurePermission(): Promise<boolean> {
   return permissionPromise;
 }
 
-function eventDate(event: { dateISO: string; time?: string | null }) {
+function eventDate(event: { dateISO: string; time?: string | null; startsAt?: string | null }) {
+  if (event.startsAt) {
+    const canonical = new Date(event.startsAt);
+    if (Number.isFinite(canonical.getTime())) return canonical;
+  }
   const [year, month, day] = event.dateISO.split('-').map(Number);
   const [hour, minute] = event.time
     ? event.time.split(':').map(Number)
@@ -59,7 +63,12 @@ function eventDate(event: { dateISO: string; time?: string | null }) {
 }
 
 function triggerFor(
-  event: { dateISO: string; time?: string | null; repeat?: ReminderRepeat },
+  event: {
+    dateISO: string;
+    time?: string | null;
+    repeat?: ReminderRepeat;
+    startsAt?: string | null;
+  },
 ) {
   const date = eventDate(event);
   const channelId = Platform.OS === 'android' ? ANDROID_CHANNEL_ID : undefined;
@@ -138,6 +147,9 @@ export type ScheduleInput = {
   note?: string | null;
   serviceName?: string | null;
   repeat?: ReminderRepeat;
+  // Activity sessions carry the server's canonical instant. Prefer it over
+  // rebuilding a Date from the device's timezone (a guardian may be abroad).
+  startsAt?: string | null;
 };
 
 // Why a schedule attempt did not produce an alert. The caller needs this to be

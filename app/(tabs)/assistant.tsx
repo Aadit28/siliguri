@@ -66,6 +66,7 @@ type PayPrompt = { upiId: string; payeeName?: string | null; amount?: string | n
 // Targets for the planner's open_screen action payloads (see src/lib/assistant.ts).
 const SCREEN_ROUTES: Record<string, string> = {
   calendar: '/calendar',
+  activities: '/activities',
   services: '/services',
   community: '/community',
   help: '/help',
@@ -121,16 +122,22 @@ function saveVoiceRepliesPref(value: boolean) {
 // What the assistant knows about this user for a personalised plan: their
 // name, their own upcoming calendar, device-local memory facts, and today's
 // LOCAL date (the server needs it to resolve "tomorrow" in reminders).
-async function buildPlanContext(name?: string | null): Promise<AssistantPlanContext> {
+async function buildPlanContext(
+  name?: string | null,
+  userId?: string | null,
+): Promise<AssistantPlanContext> {
   const todayISO = toLocalISODate(new Date());
   const [memoryContext, events] = await Promise.all([
     buildAssistantContext().catch(() => ({ facts: [], recentTurns: [] })),
-    listEvents().catch(() => []),
+    listEvents(userId).catch(() => []),
   ]);
   return {
     profile: name ? { name } : undefined,
     todayISO,
     calendar: events
+      // Enrollment claims never come from a device-authored calendar row. The
+      // server appends sessions fetched from the authoritative enrollment API.
+      .filter((event) => event.source !== 'activity')
       .filter((event) => event.dateISO >= todayISO)
       .slice(0, 20)
       .map((event) => ({ title: event.title, dateISO: event.dateISO, time: event.time ?? null })),
@@ -142,7 +149,7 @@ async function buildPlanContext(name?: string | null): Promise<AssistantPlanCont
 export default function AssistantScreen() {
   const { t } = useTranslation();
   const { lang } = useLocale();
-  const { session, displayName } = useAuth();
+  const { session, user, displayName } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -354,7 +361,7 @@ export default function AssistantScreen() {
       // Best-effort personalisation; a failed context read must not block the
       // plan. The context is built BEFORE this turn is recorded, then the turn
       // is appended, so "recentTurns" means previous turns, not this one twice.
-      const context = await buildPlanContext(displayName).catch(() => null);
+      const context = await buildPlanContext(displayName, user?.id).catch(() => null);
       if (body) void appendTurn({ role: 'user', text: body }).catch(() => undefined);
       const plan = await Promise.race([
         requestAssistantPlan({
@@ -494,7 +501,7 @@ export default function AssistantScreen() {
   async function saveProposedReminder(messageId: string, reminder: ProposedReminder) {
     if (savedReminderIds.has(messageId)) return;
     try {
-      const event = await addEvent({
+      const event = await addEvent(user?.id, {
         title: reminder.title,
         dateISO: reminder.dateISO,
         time: reminder.time,
@@ -574,7 +581,7 @@ export default function AssistantScreen() {
       if (title) {
         const { dateISO, time } = parseWhenToDate(typeof payload?.when === 'string' ? payload.when : '');
         const service = plan?.suggestedServices.find((item) => item.id === action.serviceId) ?? null;
-        addEvent({
+        addEvent(user?.id, {
           title,
           dateISO,
           time,

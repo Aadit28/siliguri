@@ -11,8 +11,8 @@ request का सफ़र कैसे कटता है, और वे त�
 Expo का एक ही ऐप है। गार्जियन के लिए अलग बिल्ड नहीं, एडमिन के लिए अलग बिल्ड
 नहीं। आप कौन हैं, इसी से तय होता है कि आपको क्या दिखेगा:
 
-- **पैरेंट** साइन इन करके टैब बार पर पहुँचता है: Home, Services, Assistant,
-  Community, Help।
+- **पैरेंट** साइन इन करके टैब बार पर पहुँचता है: Home, Services, Activities,
+  Assistant, Community, Help।
 - **गार्जियन** वह है जिसके नाम `family_links` में कोई active row है। साइन-इन के
   बाद लॉगिन स्क्रीन यही links देखती है और `/guardian` पर भेज देती है।
 - **एडमिन** वह है जिसका `user_accounts.role` `admin` या `super_admin` है। वे
@@ -31,6 +31,7 @@ app/                    Expo Router. File path is the URL.
   guardian/             Guardian dashboard and per-parent detail
   admin.tsx             City operations console
   service/[id].tsx      Service detail
+  activity/[id].tsx     Activity detail and enrollment
   post/[id].tsx         Community thread
   calendar.tsx          Reminder calendar
   login.tsx             Password and OTP sign-in
@@ -40,6 +41,7 @@ src/
   lib/                  API clients, family sync, notifications, i18n, theme
   locales/              en.json, hi.json
   data/services.json    Offline fallback copy of the directory
+  data/mockActivities.ts  जाँचा हुआ, browse-only preview catalog
 api/index.js            The one serverless function; dispatches by route name
 server/                 The actual handlers, one file per route, plus _lib/
 scripts/
@@ -126,6 +128,24 @@ Jersey में हो। "कल 8:30" पर लगाए reminder का म
 दोहराव `once`, `daily`, `weekly`, `monthly` हैं। महीने वाला `nextMonthlyISO` से
 आगे बढ़ता है, जो सीमा में बाँध देता है: 31 तारीख़ का reminder छोटे महीने में उसी
 महीने के आख़िरी दिन पड़ता है, छूटता नहीं।
+
+### Activities और कैलेंडर
+
+Activities के दो साफ़ catalog mode हैं। default `preview` mode
+`src/data/mockActivities.ts` की जाँची हुई Siliguri fixture दिखाता है। ये listings
+preview के रूप में साफ़ चिन्हित, केवल browse करने योग्य हैं और इन्हें provider से
+verified नहीं बताया जाता। migration 15 लागू होने और असली provider records की
+जाँच पूरी होने के बाद `EXPO_PUBLIC_ACTIVITY_CATALOG_MODE=live` server का
+city-scoped catalog चालू करता है।
+
+Join और leave का अंतिम निर्णय server करता है। पक्की mutation के बाद
+`src/lib/activityCalendarSync.ts` participant के authoritative enrollments फिर
+से लाता है और आने वाली joined sessions को उसी participant के local calendar में
+mirror करता है। Activity calendar rows read-only हैं, server session id और
+timezone साथ रखती हैं, और तभी हटती हैं जब सफल authenticated refresh बताए कि
+enrollment अब joined नहीं है। Assistant भी server से यही enrollments स्वतंत्र
+रूप से पढ़ता है; वह device state या preview catalog देखकर enrollment का अनुमान
+नहीं लगाता।
 
 ## सहायक
 

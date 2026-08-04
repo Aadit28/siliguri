@@ -35,7 +35,7 @@ export default function NotificationBell() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const { height, width } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -46,7 +46,7 @@ export default function NotificationBell() {
   const token = session?.access_token;
   const load = useCallback(() => {
     const id = ++requestId.current;
-    listEvents().then((events) => {
+    listEvents(user?.id).then((events) => {
       if (id === requestId.current) setItems(buildNotifications(events));
     });
     // Server alerts: family activity and help-desk updates. Web and Expo Go
@@ -61,7 +61,7 @@ export default function NotificationBell() {
       // Invalidate any in-flight request on blur/unmount.
       requestId.current += 1;
     };
-  }, [token]);
+  }, [token, user?.id]);
 
   useFocusEffect(load);
 

@@ -186,6 +186,7 @@ const COPY = {
       (
         {
           calendar: 'Open my calendar',
+          activities: 'Open activities',
           services: 'Open services',
           community: 'Open community',
           help: 'Open help',
@@ -229,6 +230,7 @@ const COPY = {
       (
         {
           calendar: 'मेरा कैलेंडर खोलें',
+          activities: 'गतिविधियाँ खोलें',
           services: 'सेवाएं खोलें',
           community: 'कम्युनिटी खोलें',
           help: 'मदद खोलें',
@@ -258,6 +260,7 @@ export async function requestAssistantPlan(input: {
   lang: AssistantLang;
   imageAttachments?: AssistantAttachment[];
   token?: string | null;
+  participantId?: string | null;
   context?: AssistantPlanContext | null;
 }): Promise<AssistantPlan> {
   const message = input.message.trim();
@@ -282,12 +285,100 @@ export async function requestAssistantPlan(input: {
         lang: input.lang,
         services: compactServices,
         imageAttachments,
+        participantId: input.participantId ?? undefined,
         context: input.context ?? null,
       },
     });
   } catch {
+    const urgent = URGENT_WORDS.some((word) => message.toLowerCase().includes(word));
+    const reminder = urgent ? null : parseReminderRequest(message, input.lang, input.context?.todayISO);
+    if (!urgent && !reminder && isActivityEnrollmentQuestion(message)) {
+      return buildActivityRecordsUnavailablePlan(input.lang, Boolean(input.token));
+    }
     return buildLocalAssistantPlan(message, input.services, input.lang, input.context ?? null);
   }
+}
+
+function isActivityEnrollmentQuestion(message: string): boolean {
+  const normalized = String(message || '').toLowerCase();
+  if (/\bwhat\b.{0,40}\b(?:joined|enrolled|waitlisted)\b/.test(normalized)) return true;
+  if (/\b(?:joined|enrolled|waitlisted)\b.{0,40}\bwhat\b/.test(normalized)) return true;
+  if (/(?:कौन|क्या).{0,40}(?:शामिल|नामांकन|वेटलिस्ट|जॉइन)/.test(normalized)) return true;
+  if (/(?:kya|kaun).{0,40}(?:shamil|naamankan|waitlist|join)/.test(normalized)) return true;
+
+  const hasActivityTerm =
+    /\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walking|walk|music|smartphone|kaksha|gatividhi|satra)\b/.test(
+      normalized,
+    ) || /(?:कक्षा|योग|गतिविधि|सत्र|संगीत|चलना)/.test(normalized);
+  const hasEnrollmentTerm =
+    /\b(?:join|joined|enrol|enroll|enrolled|enrollment|waitlist|waitlisted|registered|registration|shamil|naamankan)\b/.test(
+      normalized,
+    ) || /(?:शामिल|नामांकन|वेटलिस्ट|प्रतीक्षा|जॉइन)/.test(normalized);
+  const hasOwnedScheduleTerm =
+    /\b(?:my|our|meri|mera|hamari)\b.{0,30}\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walk|music|kaksha|gatividhi|satra)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:when|next|schedule|kab|agli|agla)\b.{0,30}\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walk|music|kaksha|gatividhi|satra)\b/.test(
+      normalized,
+    ) ||
+    /(?:मेरी|मेरा|हमारी|अगली|अगला|कब).{0,30}(?:गतिविधि|कक्षा|सत्र|योग|संगीत)/.test(normalized);
+  const hasMembershipTerm =
+    /\b(?:do i have|do we have|am i in|are we in)\b.{0,40}\b(?:activity|activities|class|classes|course|courses|session|sessions|yoga|walk|music)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:kya main|kya hum|main|hum)\b.{0,40}\b(?:kaksha|gatividhi|satra|yoga|class)\b/.test(
+      normalized,
+    ) ||
+    /(?:क्या मैं|क्या हम|मेरे पास|हमारे पास).{0,40}(?:गतिविधि|कक्षा|सत्र|योग|संगीत)/.test(normalized);
+  return hasActivityTerm && (hasEnrollmentTerm || hasOwnedScheduleTerm || hasMembershipTerm);
+}
+
+function buildActivityRecordsUnavailablePlan(lang: AssistantLang, signedIn: boolean): AssistantPlan {
+  const copy = COPY[lang] ?? COPY.en;
+  const text =
+    lang === 'hi'
+      ? signedIn
+        ? {
+            summary: 'मैं अभी आपके Saathi गतिविधि नामांकन रिकॉर्ड नहीं देख पा रहा हूँ। कृपया थोड़ी देर बाद फिर कोशिश करें।',
+            safety: 'Saathi रिकॉर्ड उपलब्ध न होने पर मैं नामांकन की जानकारी का अनुमान नहीं लगाऊँगा।',
+            next: 'कक्षा के समय या वेटलिस्ट स्थान पर भरोसा करने से पहले फिर जाँचें।',
+          }
+        : {
+            summary: 'अपनी Saathi गतिविधियों का नामांकन देखने के लिए कृपया साइन इन करें।',
+            safety: 'नामांकन की जानकारी आपके Saathi खाते से ली जाती है, चैट इतिहास से नहीं।',
+            next: 'साइन इन करने के बाद पूछें कि आपने कौन-सी गतिविधियाँ जॉइन की हैं।',
+          }
+      : signedIn
+        ? {
+            summary: 'I cannot check your Saathi activity enrollments right now. Please try again shortly.',
+            safety: 'I will not guess enrollment details when Saathi records are unavailable.',
+            next: 'Try again before relying on a class time or waitlist position.',
+          }
+        : {
+            summary: 'Please sign in so I can check your Saathi activity enrollments.',
+            safety: 'Enrollment details are read from your Saathi account, not from chat history.',
+            next: 'Sign in, then ask me which activities you joined.',
+          };
+
+  return {
+    source: 'local',
+    intent: 'general',
+    status: signedIn ? 'handoff' : 'needs_details',
+    summary: text.summary,
+    followUpQuestion: null,
+    safetyNote: text.safety,
+    suggestedServices: [],
+    checklist: [],
+    nextSteps: [text.next],
+    actions: [
+      {
+        kind: 'open_screen',
+        label: copy.openScreen('activities'),
+        value: JSON.stringify({ screen: 'activities' }),
+        serviceId: null,
+      },
+    ],
+  };
 }
 
 export function buildLocalAssistantPlan(

@@ -29,7 +29,8 @@ type TabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tab
 // the bar hugs its items instead of stretching edge to edge.
 const DOCK_PAD = 4;
 const ITEM_HEIGHT = 44;
-const ITEM_WIDTH = 58;
+// Six destinations must remain visible even on a 320pt-wide phone.
+const ITEM_WIDTH = 52;
 const DOCK_HEIGHT = ITEM_HEIGHT + DOCK_PAD * 2;
 const DOCK_RADIUS = DOCK_HEIGHT / 2;
 // GSAP power4.out equivalent: fast launch, long soft landing.
@@ -188,6 +189,13 @@ export default function AppSectionLayout() {
         options={{
           title: t('tabs.services'),
           tabBarIcon: ({ color, focused }) => <NavIcon name="search" color={color} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="activities"
+        options={{
+          title: t('tabs.activities'),
+          tabBarIcon: ({ color, focused }) => <NavIcon name="calendar" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen

@@ -9,8 +9,8 @@ nobody explains them first.
 There is a single Expo app. There is no separate guardian build and no separate
 admin build. Who you are decides what you see:
 
-- A **parent** signs in and lands on the tab bar: Home, Services, Assistant,
-  Community, Help.
+- A **parent** signs in and lands on the tab bar: Home, Services, Activities,
+  Assistant, Community, Help.
 - A **guardian** is anyone holding an active row in `family_links`. After sign-in
   the login screen looks up those links and routes to `/guardian`.
 - An **admin** is anyone whose `user_accounts.role` is `admin` or `super_admin`.
@@ -29,6 +29,7 @@ app/                    Expo Router. File path is the URL.
   guardian/             Guardian dashboard and per-parent detail
   admin.tsx             City operations console
   service/[id].tsx      Service detail
+  activity/[id].tsx     Activity detail and enrollment
   post/[id].tsx         Community thread
   calendar.tsx          Reminder calendar
   login.tsx             Password and OTP sign-in
@@ -38,6 +39,7 @@ src/
   lib/                  API clients, family sync, notifications, i18n, theme
   locales/              en.json, hi.json
   data/services.json    Offline fallback copy of the directory
+  data/mockActivities.ts  Reviewed, browse-only preview catalog
 api/index.js            The one serverless function; dispatches by route name
 server/                 The actual handlers, one file per route, plus _lib/
 scripts/
@@ -123,6 +125,24 @@ need today's date, or a guardian abroad will see the wrong day.
 Repeats are `once`, `daily`, `weekly`, `monthly`. Monthly rolls forward with
 `nextMonthlyISO`, which clamps: a reminder on the 31st falls on the last day of a
 short month rather than skipping it.
+
+### Activities and the calendar
+
+Activities ship in two explicit catalog modes. The default `preview` mode uses
+the reviewed Siliguri fixture in `src/data/mockActivities.ts`; those listings
+are labelled as previews, remain browse-only, and are never represented as
+provider-verified. Setting `EXPO_PUBLIC_ACTIVITY_CATALOG_MODE=live` switches to
+the city-scoped server catalog after migration 15 has been applied and genuine
+provider records have been verified.
+
+Joining and leaving are server-authoritative. After a confirmed mutation,
+`src/lib/activityCalendarSync.ts` fetches the participant's authoritative
+enrollments and mirrors upcoming joined sessions into that participant's local
+calendar. Activity rows are read-only calendar commitments, carry their server
+session id and timezone, and are removed only after a successful authenticated
+refresh says that they are no longer joined. The assistant independently reads
+the same server enrollments; it does not infer enrollment from device state or
+from the preview catalog.
 
 ## The assistant
 

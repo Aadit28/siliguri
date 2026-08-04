@@ -165,6 +165,7 @@ function RootStack() {
             <Stack.Screen name="privacy" options={{ title: '' }} />
             <Stack.Screen name="new-post" options={{ presentation: 'modal', title: '' }} />
             <Stack.Screen name="service/[id]" options={{ title: '' }} />
+            <Stack.Screen name="activity/[id]" options={{ title: '' }} />
             <Stack.Screen name="post/[id]" options={{ title: '' }} />
             <Stack.Screen name="calendar" options={{ title: '' }} />
             {/* Guardian screens mount <AppHeader /> themselves (same as the tab

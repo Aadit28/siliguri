@@ -38,6 +38,7 @@ export default function SiteFooter({ services }: { services: Service[] }) {
       links: [
         { label: t('tabs.home'), href: '/' },
         { label: t('tabs.services'), href: '/services' },
+        { label: t('tabs.activities'), href: '/activities' },
         { label: t('tabs.assistant'), href: '/assistant' },
         { label: t('tabs.community'), href: '/community' },
         { label: t('tabs.help'), href: '/help' },

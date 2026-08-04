@@ -126,7 +126,12 @@ export default function AddReminderSheet({
         // it now rather than after the next foreground sync.
         await refreshFamilyForSelf(session.access_token, user?.id);
       } else {
-        const saved = await addEvent({ title: title.trim(), dateISO, time: normalizedTime, repeat });
+        const saved = await addEvent(user?.id, {
+          title: title.trim(),
+          dateISO,
+          time: normalizedTime,
+          repeat,
+        });
         // Saved rows that could not be scheduled must say so: the sheet has
         // just promised this phone will ring at that time.
         if (saved.alertProblem && saved.alertProblem !== 'past') {

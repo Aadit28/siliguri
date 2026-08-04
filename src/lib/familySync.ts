@@ -52,9 +52,15 @@ function localShape(
 // list from a failed request is indistinguishable from "the guardian removed
 // everything", and acting on it would cancel a real medicine alert on the
 // parent's phone because their bus went through a tunnel.
-async function mergeReminders(reminders: FamilyReminder[], complete: boolean) {
-  const existing = await listEvents();
-  const mirrored = existing.filter((event) => event.serverId);
+async function mergeReminders(
+  userId: string,
+  reminders: FamilyReminder[],
+  complete: boolean,
+) {
+  const existing = await listEvents(userId);
+  const mirrored = existing.filter(
+    (event) => event.source === 'family_reminder' || Boolean(event.serverId),
+  );
   const byServerId = new Map(mirrored.map((event) => [event.serverId, event]));
   const activeIds = new Set<string>();
   const today = todayISO();
@@ -74,14 +80,16 @@ async function mergeReminders(reminders: FamilyReminder[], complete: boolean) {
         (current.note ?? null) !== (reminder.note ?? null) ||
         (current.repeat ?? 'once') !== repeat);
     if (current && !stale) continue;
-    if (current) await removeEvent(current.id);
-    await addEvent({
+    if (current) await removeEvent(userId, current.id);
+    await addEvent(userId, {
       title: reminder.title,
       dateISO,
       time: reminder.time,
       note: reminder.note,
       repeat,
       serverId: reminder.id,
+      source: 'family_reminder',
+      sourceId: reminder.id,
     });
   }
 
@@ -90,7 +98,7 @@ async function mergeReminders(reminders: FamilyReminder[], complete: boolean) {
   if (!complete) return;
   for (const event of mirrored) {
     if (event.serverId && !activeIds.has(event.serverId)) {
-      await removeEvent(event.id);
+      await removeEvent(userId, event.id);
     }
   }
 }
@@ -115,13 +123,13 @@ async function cancelLegacyMonthlyAlerts() {
   await AsyncStorage.removeItem(LEGACY_MONTHLY_KEY).catch(() => undefined);
 }
 
-let cached: FamilySyncResult | null = null;
-let inFlight: Promise<FamilySyncResult> | null = null;
+const cachedByUserId = new Map<string, FamilySyncResult>();
+const inFlightByUserId = new Map<string, Promise<FamilySyncResult>>();
 
 // Sync at most once per foreground session: drop the cache on resume so the
 // next call re-fetches, but repeated calls within a session reuse the result.
 AppState.addEventListener('change', (state) => {
-  if (state === 'active') cached = null;
+  if (state === 'active') cachedByUserId.clear();
 });
 
 // A guardian's reminder rows sit on the parent's account, so the mirrored copy
@@ -169,7 +177,7 @@ async function runSync(token: string, selfId: string): Promise<FamilySyncResult>
   }
 
   await cancelLegacyMonthlyAlerts().catch(() => undefined);
-  await mergeReminders([...byId.values()], complete).catch(() => undefined);
+  await mergeReminders(selfId, [...byId.values()], complete).catch(() => undefined);
   return { careTeam, favorites, guardians: links.asParent };
 }
 
@@ -178,18 +186,21 @@ export async function syncFamilyForSelf(
   userId: string | null | undefined,
 ): Promise<FamilySyncResult> {
   if (!token || !userId) return EMPTY;
+  const cached = cachedByUserId.get(userId);
   if (cached) return cached;
+  const inFlight = inFlightByUserId.get(userId);
   if (inFlight) return inFlight;
-  inFlight = runSync(token, userId)
+  const request = runSync(token, userId)
     .then((result) => {
-      cached = result;
+      cachedByUserId.set(userId, result);
       return result;
     })
     .catch(() => EMPTY)
     .finally(() => {
-      inFlight = null;
+      inFlightByUserId.delete(userId);
     });
-  return inFlight;
+  inFlightByUserId.set(userId, request);
+  return request;
 }
 
 // Forces the next sync to hit the network. Used right after a screen writes a
@@ -199,11 +210,13 @@ export async function refreshFamilyForSelf(
   token: string | null | undefined,
   userId: string | null | undefined,
 ): Promise<FamilySyncResult> {
-  cached = null;
+  if (!userId) return EMPTY;
+  cachedByUserId.delete(userId);
   // Let a sync that started before the write finish, then drop its result too —
   // it was read from the server before the new row existed.
+  const inFlight = inFlightByUserId.get(userId);
   if (inFlight) await inFlight.catch(() => undefined);
-  cached = null;
+  cachedByUserId.delete(userId);
   return syncFamilyForSelf(token, userId);
 }
 
@@ -211,15 +224,17 @@ export async function refreshFamilyForSelf(
 // behind: the ward rows are someone else's medical reminders, and their OS
 // alerts outlive the session that scheduled them. Called from AuthContext for
 // the same reason assistant memory is cleared there.
-export async function clearFamilyForSelf(): Promise<void> {
-  cached = null;
+export async function clearFamilyForSelf(userId: string | null | undefined): Promise<void> {
+  if (!userId) return;
+  cachedByUserId.delete(userId);
   // A sync already reading the server would re-mirror the rows behind us, so
   // let it finish writing before the mirrors are dropped.
+  const inFlight = inFlightByUserId.get(userId);
   if (inFlight) await inFlight.catch(() => undefined);
-  cached = null;
-  const events = await listEvents();
+  cachedByUserId.delete(userId);
+  const events = await listEvents(userId);
   for (const event of events) {
     // removeEvent cancels the event's scheduled notification as well.
-    if (event.serverId) await removeEvent(event.id);
+    if (event.serverId) await removeEvent(userId, event.id);
   }
 }

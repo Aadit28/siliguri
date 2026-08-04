@@ -85,8 +85,8 @@ export default function Home() {
   const { dial, failedNumber, clearFailedNumber } = useDialer();
 
   const loadEvents = useCallback(() => {
-    listEvents().then(setEvents);
-  }, []);
+    listEvents(user?.id).then(setEvents);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchServices(city).then(setAllServices);

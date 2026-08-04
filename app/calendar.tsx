@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Stack, useFocusEffect } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import { Body, Button, Card, Chip, Dialog, H1, H2, Muted, Sheet } from '../src/components/ui';
@@ -69,8 +69,9 @@ function monthMatrix(year: number, month: number): (number | null)[][] {
 }
 
 export default function CalendarScreen() {
+  const router = useRouter();
   const { t } = useTranslation();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const { colors } = useTheme();
   const styles = makeStyles(colors);
 
@@ -125,13 +126,13 @@ export default function CalendarScreen() {
 
   const load = useCallback(() => {
     let mounted = true;
-    listEvents().then((items) => {
+    listEvents(user?.id).then((items) => {
       if (mounted) setEvents(items);
     });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -141,7 +142,7 @@ export default function CalendarScreen() {
   );
 
   async function handleDelete(id: string) {
-    await removeEvent(id);
+    await removeEvent(user?.id, id);
     load();
   }
 
@@ -161,7 +162,7 @@ export default function CalendarScreen() {
     setSaveError(false);
     setSaving(true);
     try {
-      await addEvent({
+      await addEvent(user?.id, {
         title: title.trim(),
         dateISO,
         time: normalizedTime,
@@ -391,7 +392,11 @@ export default function CalendarScreen() {
                 ]}
               >
                 <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
-                  <Feather name="calendar" size={20} color={colors.text} />
+                  <Feather
+                    name={event.source === 'activity' ? 'activity' : 'calendar'}
+                    size={20}
+                    color={colors.text}
+                  />
                 </View>
                 <View style={styles.eventTextBlock}>
                   <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={2}>
@@ -400,7 +405,9 @@ export default function CalendarScreen() {
                   <Text style={[styles.eventMeta, { color: colors.textMuted }]} numberOfLines={1}>
                     {formatReadableDate(event.dateISO)}
                     {event.time ? ` · ${formatISTTime(event.time)}` : ''}
-                    {event.repeat && event.repeat !== 'once'
+                    {event.source === 'activity'
+                      ? ` · ${t('activities.calendarSource')}`
+                      : event.repeat && event.repeat !== 'once'
                       ? ` · ${t(`reminders.repeat.${event.repeat}`)}`
                       : ''}
                   </Text>
@@ -533,6 +540,17 @@ export default function CalendarScreen() {
                 icon={<Feather name="calendar" size={20} color={colors.accentFg} />}
                 onPress={() => Linking.openURL(googleCalendarUrl(sheetEvent))}
               />
+              {sheetEvent.sourceUrl ? (
+                <Button
+                  label={t('activities.manageEnrollment')}
+                  variant="secondary"
+                  icon={<Feather name="activity" size={20} color={colors.primaryDark} />}
+                  onPress={() => {
+                    setSheetOpen(false);
+                    router.push(sheetEvent.sourceUrl as never);
+                  }}
+                />
+              ) : null}
               {sheetEvent.servicePhone ? (
                 <Button
                   label={t('calendar.call')}
@@ -541,12 +559,14 @@ export default function CalendarScreen() {
                   onPress={() => Linking.openURL(`tel:${sheetEvent.servicePhone}`)}
                 />
               ) : null}
-              <Button
-                label={t('calendar.delete')}
-                variant="danger"
-                icon={<Feather name="trash-2" size={20} color={colors.dangerFg} />}
-                onPress={() => askDelete(sheetEvent)}
-              />
+              {!sheetEvent.readOnly ? (
+                <Button
+                  label={t('calendar.delete')}
+                  variant="danger"
+                  icon={<Feather name="trash-2" size={20} color={colors.dangerFg} />}
+                  onPress={() => askDelete(sheetEvent)}
+                />
+              ) : null}
             </View>
           </View>
         ) : null}

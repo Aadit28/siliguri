@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { backendRequest } from '../lib/backend';
+import {
+  cancelScopedEventNotifications,
+  restoreScopedEventNotifications,
+} from '../lib/calendar';
+import {
+  resumeActivitySyncForParticipant,
+  suspendActivitySyncForParticipant,
+} from '../lib/activityCalendarSync';
 import { clearMemory } from '../lib/memory';
 import { clearFamilyForSelf } from '../lib/familySync';
 import { matchDemoUser } from '../lib/demoAuth';
@@ -49,7 +58,7 @@ interface AuthState {
   requestOtp: (phone: string) => Promise<{ error?: string; devCode?: string }>;
   verifyOtp: (phone: string, code: string, fullName?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
-  /** Drops the local session without a backend round trip or memory wipe. */
+  /** Drops the local session and all account-scoped device state, without a backend round trip. */
   clearSession: () => Promise<void>;
 }
 
@@ -95,12 +104,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SaathiSession | null>(null);
   const [loading, setLoading] = useState(true);
 
+  async function clearLocalAccountData(userId: string | null | undefined) {
+    if (userId) {
+      // Block/drain activity reconciliation before cancelling alerts, otherwise
+      // an authenticated request that started just before teardown could put a
+      // private class alert back onto a shared device.
+      await suspendActivitySyncForParticipant(userId).catch(() => undefined);
+    }
+
+    let notificationCleanupFailed = false;
+    try {
+      await cancelScopedEventNotifications(userId);
+    } catch {
+      notificationCleanupFailed = true;
+    }
+
+    // Memory is device-wide; account calendars are scoped, and family mirrors
+    // are removed so a ward's details cannot cross into the next session.
+    await clearMemory().catch(() => undefined);
+    await clearFamilyForSelf(userId).catch(() => undefined);
+
+    if (notificationCleanupFailed && Platform.OS !== 'web') {
+      Alert.alert(
+        'Reminder alert warning',
+        'Saathi could not finish updating this device’s reminder alerts. Sign in to the same account again before relying on them.',
+      );
+    }
+  }
+
   useEffect(() => {
     AsyncStorage.getItem(SESSION_KEY)
       .then(async (stored) => {
         if (!stored) return;
         const saved = JSON.parse(stored) as SaathiSession;
         if (saved.expires_at && new Date(saved.expires_at).getTime() <= Date.now()) {
+          await clearLocalAccountData(saved.user?.id);
           await AsyncStorage.removeItem(SESSION_KEY);
           return;
         }
@@ -123,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Only clear on a definitive auth rejection; keep the session when
           // the backend is unreachable (offline/timeout) so users stay signed in.
           if (status === 401 || status === 403) {
+            await clearLocalAccountData(saved.user?.id);
             setSession((current) =>
               current?.access_token === saved.access_token ? null : current,
             );
@@ -141,6 +180,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token || token.startsWith('demo.')) return;
     void registerPushToken(token);
   }, [session?.access_token]);
+
+  // Account-scoped local reminders stay stored across sign-out, but their OS
+  // alerts are cancelled for privacy on a shared device. Restore those alerts
+  // only when that same account becomes active again.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    resumeActivitySyncForParticipant(userId);
+    void restoreScopedEventNotifications(userId)
+      .then(({ problems }) => {
+        if (Platform.OS !== 'web' && problems.length) {
+          Alert.alert(
+            'Reminder alerts need attention',
+            'Your reminders are still in the Saathi calendar, but this device could not restore every alert. Check notification permission in device settings.',
+          );
+        }
+      })
+      .catch(() => {
+        if (Platform.OS !== 'web') {
+          Alert.alert(
+            'Reminder alerts need attention',
+            'Saathi could not restore reminder alerts on this device. Your calendar entries are safe; please reopen the app and check notification settings.',
+          );
+        }
+      });
+  }, [session?.user?.id]);
 
   const user = session?.user ?? null;
   const displayName =
@@ -291,22 +356,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function clearSession() {
+    const outgoingUserId = session?.user?.id;
+    await clearLocalAccountData(outgoingUserId);
     setSession(null);
     await AsyncStorage.removeItem(SESSION_KEY);
   }
 
   async function signOut() {
     const token = session?.access_token;
+    const outgoingUserId = session?.user?.id;
     // Before the token is revoked: unregistering needs an authenticated call.
     if (token) await unregisterPushToken(token).catch(() => undefined);
+    await clearLocalAccountData(outgoingUserId);
     setSession(null);
     await AsyncStorage.removeItem(SESSION_KEY);
-    // Assistant memory is stored device-wide; clear it so the next account
-    // on a shared family device does not inherit this user's chats/facts.
-    await clearMemory().catch(() => undefined);
-    // Same reason: the mirrored family reminders (and their scheduled alerts)
-    // belong to this user's wards, not to whoever signs in next.
-    await clearFamilyForSelf().catch(() => undefined);
     if (token) {
       await backendRequest('/api/auth/signout', { method: 'POST', token }).catch(() => undefined);
     }

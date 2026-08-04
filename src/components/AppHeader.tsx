@@ -24,12 +24,18 @@ export default function AppHeader({ title }: { title?: string }) {
   const navItems = [
     { label: t('tabs.home'), href: '/' },
     { label: t('tabs.services'), href: '/services' },
+    { label: t('tabs.activities'), href: '/activities' },
     { label: t('tabs.assistant'), href: '/assistant' },
     { label: t('tabs.community'), href: '/community' },
     { label: t('tabs.help'), href: '/help' },
   ];
-  const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) => {
+    if (href === '/') return pathname === '/';
+    if (href === '/activities') {
+      return pathname === href || pathname.startsWith('/activity/');
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   // Two-tap confirm on web: native confirm() is blocked in embedded webviews
   // and cannot be styled for elder-sized touch targets.

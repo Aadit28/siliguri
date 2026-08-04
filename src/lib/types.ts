@@ -94,11 +94,106 @@ export interface CalendarEvent {
   notificationId?: string | null;
   // Set once the reminder is mirrored to a parent's family_reminders row.
   serverId?: string | null;
+  // Server-authoritative activity sessions are mirrored into the local
+  // calendar. Provenance makes those rows replaceable/read-only without
+  // affecting reminders the elder created themselves.
+  source?: 'manual' | 'family_reminder' | 'activity' | null;
+  sourceId?: string | null;
+  seriesId?: string | null;
+  readOnly?: boolean;
+  activityId?: string | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+  participantId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  timezone?: string | null;
   // Why this device could not schedule an alert for the reminder, if it could
   // not. Returned by addEvent for the screen to report; never persisted, since
   // it describes one attempt on one device rather than the reminder itself.
   alertProblem?: 'unsupported' | 'past' | 'permission' | 'failed';
 }
+
+// ACTIVITIES -----------------------------------------------------------------
+
+export type ActivityCategory =
+  | 'yoga'
+  | 'fitness'
+  | 'learning'
+  | 'creative'
+  | 'social'
+  | 'wellness';
+
+export type ActivityMobilityLevel = 'seated' | 'gentle' | 'moderate' | 'active';
+
+export type ActivityVerificationStatus =
+  | 'unverified'
+  | 'source_linked'
+  | 'phone_confirmed'
+  | 'saathi_verified';
+
+export type ActivityEnrollmentStatus = 'joined' | 'waitlisted' | 'cancelled';
+export type ActivitySessionStatus = 'scheduled' | 'cancelled' | 'completed';
+
+export interface ActivitySession {
+  id: string;
+  activityId: string;
+  startsAt: string;
+  endsAt: string | null;
+  timezone: string;
+  status: ActivitySessionStatus;
+  capacity: number | null;
+  spotsRemaining: number | null;
+}
+
+export interface Activity {
+  catalogSource?: 'live' | 'preview';
+  id: string;
+  cityId: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  category: ActivityCategory;
+  instructorName: string | null;
+  venueName: string | null;
+  address: string | null;
+  town: string | null;
+  languages: string[];
+  mobilityLevel: ActivityMobilityLevel;
+  wheelchairAccessible: boolean;
+  chairAvailable: boolean;
+  caregiverWelcome: boolean;
+  accessibilityNotes: string | null;
+  imageUrl: string | null;
+  costPaise: number;
+  currency: 'INR';
+  contactPhone: string | null;
+  verificationStatus: ActivityVerificationStatus;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  registrationOpen: boolean;
+  featured: boolean;
+  capacity: number | null;
+  waitlistCapacity: number;
+  waitlistSpotsRemaining: number;
+  sessions: ActivitySession[];
+  enrollment?: ActivityEnrollment | null;
+}
+
+export interface ActivityEnrollment {
+  id: string;
+  cityId: string;
+  activityId: string;
+  participantId: string;
+  status: ActivityEnrollmentStatus;
+  waitlistPosition: number | null;
+  enrolledAt: string;
+  updatedAt: string;
+  activity: Activity;
+}
+
+export type Session = ActivitySession;
+export type Enrollment = ActivityEnrollment;
 
 // FAMILY / GUARDIAN ----------------------------------------------------------
 

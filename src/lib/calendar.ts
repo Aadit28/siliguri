@@ -2,7 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CalendarEvent, ReminderRepeat } from './types';
 import { cancelReminder, scheduleReminderWithOutcome } from './reminderNotifications';
 
-const STORAGE_KEY = 'saathi.calendar.v1';
+const LEGACY_STORAGE_KEY = 'saathi.calendar.v1';
+const STORAGE_PREFIX = 'saathi.calendar.v2:';
+const GUEST_SCOPE = 'guest';
+const LEGACY_MIGRATION_KEY = 'saathi.calendar.v2:migrated-legacy-v1';
+const RESTORE_MARKER_PREFIX = 'saathi.calendar.v2:restore-alerts:';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -55,23 +59,113 @@ function withStoreLock<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function readStore(): Promise<CalendarEvent[]> {
+function scopeFor(userId: string | null | undefined) {
+  return userId?.trim() || GUEST_SCOPE;
+}
+
+function storageKeyFor(userId: string | null | undefined) {
+  return `${STORAGE_PREFIX}${scopeFor(userId)}`;
+}
+
+function restoreMarkerKeyFor(userId: string) {
+  return `${RESTORE_MARKER_PREFIX}${userId}`;
+}
+
+function parseStore(raw: string | null): CalendarEvent[] {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is CalendarEvent =>
-        item && typeof item === 'object' && typeof item.id === 'string' && typeof item.dateISO === 'string',
-    );
+    return parsed
+      .filter(
+        (item): item is CalendarEvent =>
+          item &&
+          typeof item === 'object' &&
+          typeof item.id === 'string' &&
+          typeof item.title === 'string' &&
+          typeof item.dateISO === 'string',
+      )
+      .map((event) => ({
+        ...event,
+        source: event.source ?? (event.serverId ? 'family_reminder' : 'manual'),
+        sourceId: event.sourceId ?? event.serverId ?? null,
+        seriesId: event.seriesId ?? null,
+        readOnly: event.readOnly ?? false,
+        activityId: event.activityId ?? null,
+        sourceLabel: event.sourceLabel ?? null,
+        sourceUrl: event.sourceUrl ?? null,
+        participantId: event.participantId ?? null,
+        startsAt: event.startsAt ?? null,
+        endsAt: event.endsAt ?? null,
+        timezone: event.timezone ?? null,
+      }));
   } catch {
     return [];
   }
 }
 
-async function writeStore(events: CalendarEvent[]) {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+// The old key was shared by every account. A signed-in account claims it on
+// the first post-upgrade read, which preserves existing reminders without
+// leaking them to later accounts. Guest reads can see the old rows but do not
+// consume them before AuthContext restores a saved session.
+let legacyMigrationPromise: Promise<void> | null = null;
+
+async function runLegacyMigration(userId: string) {
+  const migrated = await AsyncStorage.getItem(LEGACY_MIGRATION_KEY);
+  if (migrated) return;
+
+  const targetKey = storageKeyFor(userId);
+  const [targetRaw, legacyRaw] = await Promise.all([
+    AsyncStorage.getItem(targetKey),
+    AsyncStorage.getItem(LEGACY_STORAGE_KEY),
+  ]);
+  const targetEvents = parseStore(targetRaw);
+  const legacyEvents = parseStore(legacyRaw);
+  const merged = [...targetEvents];
+  const knownIds = new Set(targetEvents.map((event) => event.id));
+  for (const event of legacyEvents) {
+    if (!knownIds.has(event.id)) merged.push(event);
+  }
+
+  if (merged.length || targetRaw) {
+    await AsyncStorage.setItem(targetKey, JSON.stringify(merged));
+  }
+  await AsyncStorage.setItem(LEGACY_MIGRATION_KEY, userId);
+  await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+}
+
+async function migrateLegacyStoreOnce(userId: string) {
+  if (!legacyMigrationPromise) {
+    legacyMigrationPromise = runLegacyMigration(userId).catch((error) => {
+      legacyMigrationPromise = null;
+      throw error;
+    });
+  }
+  return legacyMigrationPromise;
+}
+
+async function readStore(userId: string | null | undefined): Promise<CalendarEvent[]> {
+  try {
+    if (userId?.trim()) {
+      await migrateLegacyStoreOnce(userId.trim());
+      return parseStore(await AsyncStorage.getItem(storageKeyFor(userId)));
+    }
+    const [guestRaw, legacyRaw] = await Promise.all([
+      AsyncStorage.getItem(storageKeyFor(null)),
+      AsyncStorage.getItem(LEGACY_STORAGE_KEY),
+    ]);
+    const guestEvents = parseStore(guestRaw);
+    const known = new Set(guestEvents.map((event) => event.id));
+    return [...guestEvents, ...parseStore(legacyRaw).filter((event) => !known.has(event.id))];
+  } catch {
+    // Calendar reads are allowed to degrade to an empty view; writes still
+    // surface failures to their caller and never erase the stored value.
+    return [];
+  }
+}
+
+async function writeStore(userId: string | null | undefined, events: CalendarEvent[]) {
+  await AsyncStorage.setItem(storageKeyFor(userId), JSON.stringify(events));
 }
 
 function sortEvents(events: CalendarEvent[]) {
@@ -84,12 +178,12 @@ function sortEvents(events: CalendarEvent[]) {
   });
 }
 
-export async function listEvents(): Promise<CalendarEvent[]> {
-  const events = await readStore();
+export async function listEvents(userId: string | null | undefined): Promise<CalendarEvent[]> {
+  const events = await readStore(userId);
   return sortEvents(events);
 }
 
-export async function addEvent(input: {
+export async function addEvent(userId: string | null | undefined, input: {
   title: string;
   dateISO: string;
   time?: string | null;
@@ -100,9 +194,20 @@ export async function addEvent(input: {
   repeat?: ReminderRepeat;
   // Set when mirroring a parent's family_reminders row so sync can de-dupe.
   serverId?: string | null;
+  source?: CalendarEvent['source'];
+  sourceId?: string | null;
+  seriesId?: string | null;
+  readOnly?: boolean;
+  activityId?: string | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+  participantId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  timezone?: string | null;
 }): Promise<CalendarEvent> {
   return withStoreLock(async () => {
-    const events = await readStore();
+    const events = await readStore(userId);
     const event: CalendarEvent = {
       id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title: input.title,
@@ -116,18 +221,29 @@ export async function addEvent(input: {
       repeat: input.repeat ?? 'once',
       notificationId: null,
       serverId: input.serverId ?? null,
+      source: input.source ?? 'manual',
+      sourceId: input.sourceId ?? input.serverId ?? null,
+      seriesId: input.seriesId ?? null,
+      readOnly: input.readOnly ?? false,
+      activityId: input.activityId ?? null,
+      sourceLabel: input.sourceLabel ?? null,
+      sourceUrl: input.sourceUrl ?? null,
+      participantId: input.participantId ?? null,
+      startsAt: input.startsAt ?? null,
+      endsAt: input.endsAt ?? null,
+      timezone: input.timezone ?? null,
     };
     events.push(event);
     // Persist before scheduling: a failed write after scheduling would orphan
     // an uncancellable repeating OS notification.
-    await writeStore(events);
+    await writeStore(userId, events);
     // Scheduling lives here so every entry point (calendar screen, quick-add
     // sheet, assistant) gets the OS alert without repeating the wiring.
     const outcome = await scheduleReminderWithOutcome(event);
     if (outcome.ok) {
       event.notificationId = outcome.notificationId;
       try {
-        await writeStore(events);
+        await writeStore(userId, events);
       } catch {
         // Could not record the id: cancel so the notification isn't orphaned.
         await cancelReminder(outcome.notificationId);
@@ -143,12 +259,93 @@ export async function addEvent(input: {
   });
 }
 
-export async function removeEvent(id: string): Promise<void> {
+export async function removeEvent(userId: string | null | undefined, id: string): Promise<void> {
   return withStoreLock(async () => {
-    const events = await readStore();
+    const events = await readStore(userId);
     const doomed = events.find((event) => event.id === id);
     await cancelReminder(doomed?.notificationId);
-    await writeStore(events.filter((event) => event.id !== id));
+    await writeStore(userId, events.filter((event) => event.id !== id));
+  });
+}
+
+export async function cancelScopedEventNotifications(
+  userId: string | null | undefined,
+): Promise<void> {
+  if (!userId) return;
+  return withStoreLock(async () => {
+    const events = await readStore(userId);
+    const withNotifications = events.filter((event) => Boolean(event.notificationId));
+    if (!withNotifications.length) return;
+
+    // Write a durable recovery marker BEFORE cancelling anything. If this
+    // write fails, abort with every alert still intact. If a later calendar
+    // write fails, sign-in sees the marker and reschedules instead of trusting
+    // stale notification ids whose OS alerts were already cancelled.
+    await AsyncStorage.setItem(
+      restoreMarkerKeyFor(userId),
+      JSON.stringify({ requestedAt: Date.now() }),
+    );
+    await Promise.all(withNotifications.map((event) => cancelReminder(event.notificationId)));
+    await writeStore(
+      userId,
+      events.map((event) =>
+        event.notificationId ? { ...event, notificationId: null } : event,
+      ),
+    );
+  });
+}
+
+// Sign-out cancels every alert owned by that account so a shared phone cannot
+// keep announcing somebody else's private reminders. When the same account
+// signs in again, restore alerts for its still-current stored rows. Persist all
+// newly issued ids as one write; if that write fails, cancel the new alerts so
+// none become orphaned and impossible to revoke later.
+export async function restoreScopedEventNotifications(
+  userId: string | null | undefined,
+): Promise<{
+  problems: Array<{
+    eventId: string;
+    reason: 'permission' | 'failed';
+  }>;
+}> {
+  if (!userId) return { problems: [] };
+  return withStoreLock(async () => {
+    const events = await readStore(userId);
+    const forceRestore = Boolean(await AsyncStorage.getItem(restoreMarkerKeyFor(userId)));
+    const newlyScheduled: string[] = [];
+    const problems: Array<{ eventId: string; reason: 'permission' | 'failed' }> = [];
+
+    if (forceRestore) {
+      // The stored ids may describe alerts cancelled just before an interrupted
+      // write. Cancel is idempotent; clear every id in memory before rebuilding.
+      await Promise.all(events.map((event) => cancelReminder(event.notificationId)));
+      for (const event of events) event.notificationId = null;
+    }
+
+    for (const event of events) {
+      if (event.notificationId) continue;
+      const outcome = await scheduleReminderWithOutcome(event);
+      if (!outcome.ok) {
+        // Past one-offs need no alert and web has no native notification
+        // surface. Permission/driver failures on a supported device must be
+        // returned so AuthContext can tell the user instead of failing silently.
+        if (outcome.reason === 'permission' || outcome.reason === 'failed') {
+          problems.push({ eventId: event.id, reason: outcome.reason });
+        }
+        continue;
+      }
+      event.notificationId = outcome.notificationId;
+      newlyScheduled.push(outcome.notificationId);
+    }
+
+    try {
+      if (forceRestore || newlyScheduled.length) await writeStore(userId, events);
+      if (forceRestore) await AsyncStorage.removeItem(restoreMarkerKeyFor(userId));
+    } catch (error) {
+      await Promise.all(newlyScheduled.map((id) => cancelReminder(id)));
+      throw error;
+    }
+    return { problems };
   });
 }
 
@@ -197,7 +394,17 @@ function addDaysToISO(dateISO: string, days: number) {
 export function googleCalendarUrl(event: CalendarEvent): string {
   const [year, month, day] = event.dateISO.split('-');
   let dates: string;
-  if (event.time) {
+  const canonicalStart = event.startsAt ? new Date(event.startsAt) : null;
+  const canonicalEnd = event.endsAt ? new Date(event.endsAt) : null;
+  if (canonicalStart && Number.isFinite(canonicalStart.getTime())) {
+    const end =
+      canonicalEnd && Number.isFinite(canonicalEnd.getTime()) && canonicalEnd > canonicalStart
+        ? canonicalEnd
+        : new Date(canonicalStart.getTime() + 60 * 60 * 1000);
+    const compactUtc = (value: Date) =>
+      value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    dates = `${compactUtc(canonicalStart)}/${compactUtc(end)}`;
+  } else if (event.time) {
     const [hour, minute] = event.time.split(':');
     const start = `${year}${month}${day}T${hour}${minute}00`;
     const endDate = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
@@ -215,6 +422,7 @@ export function googleCalendarUrl(event: CalendarEvent): string {
     dates,
     details: event.note ?? '',
   });
+  if (event.timezone) params.set('ctz', event.timezone);
 
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
