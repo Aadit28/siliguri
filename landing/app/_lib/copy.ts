@@ -99,7 +99,23 @@ const en = {
     ctaSecondary: "See how it works",
     photoAlt:
       "A daughter showing her father something on a phone at home in India",
-    homeAlt: "The Saathi home screen, asking what you need today",
+    screens: [
+      { label: "Home", alt: "The Saathi home screen, asking what you need today" },
+      {
+        label: "Assistant",
+        alt: "The Saathi assistant, offering to book an appointment or find medicines",
+      },
+      { label: "Calendar", alt: "A month calendar in Saathi with upcoming events" },
+      {
+        label: "Ask",
+        alt: "The moderated community board, where neighbours answer each other",
+      },
+    ],
+    cards: {
+      listingsLabel: "verified listings",
+      listingsNote: "Across three cities, each one checked by hand.",
+      sosNote: "One tap from every screen, day or night.",
+    },
   },
   distance: {
     heading: "Most families are split across time zones.",
@@ -287,7 +303,23 @@ const hi: Dict = {
     ctaPrimary: "जल्दी पहुँच पाएँ",
     ctaSecondary: "देखिए यह कैसे काम करता है",
     photoAlt: "घर पर बेटी अपने पिता को फ़ोन पर कुछ दिखाती हुई",
-    homeAlt: "साथी की होम स्क्रीन, जो पूछती है कि आज आपको क्या चाहिए",
+    screens: [
+      { label: "होम", alt: "साथी की होम स्क्रीन, जो पूछती है कि आज आपको क्या चाहिए" },
+      {
+        label: "असिस्टेंट",
+        alt: "साथी असिस्टेंट, जो अपॉइंटमेंट लेने या दवा ढूँढने का विकल्प देता है",
+      },
+      { label: "कैलेंडर", alt: "साथी में महीने का कैलेंडर और आगामी काम" },
+      {
+        label: "पूछिए",
+        alt: "मॉडरेट किया गया कम्युनिटी बोर्ड, जहाँ पड़ोसी एक-दूसरे को जवाब देते हैं",
+      },
+    ],
+    cards: {
+      listingsLabel: "जाँची हुई लिस्टिंग",
+      listingsNote: "तीन शहरों में, हर एक हाथ से जाँची गई।",
+      sosNote: "हर स्क्रीन से एक टैप, दिन हो या रात।",
+    },
   },
   distance: {
     heading: "ज़्यादातर परिवार अलग-अलग टाइम ज़ोन में बँटे हैं।",
@@ -473,7 +505,23 @@ const mr: Dict = {
     ctaPrimary: "लवकर प्रवेश मिळवा",
     ctaSecondary: "हे कसे चालते ते पाहा",
     photoAlt: "घरी मुलगी वडिलांना फोनवर काहीतरी दाखवत आहे",
-    homeAlt: "साथीची होम स्क्रीन, आज तुम्हाला काय हवे आहे असे विचारणारी",
+    screens: [
+      { label: "होम", alt: "साथीची होम स्क्रीन, आज तुम्हाला काय हवे आहे असे विचारणारी" },
+      {
+        label: "असिस्टंट",
+        alt: "साथी असिस्टंट, अपॉइंटमेंट घेण्याचा किंवा औषध शोधण्याचा पर्याय देणारा",
+      },
+      { label: "कॅलेंडर", alt: "साथीमध्ये महिन्याचे कॅलेंडर आणि येणारी कामे" },
+      {
+        label: "विचारा",
+        alt: "मॉडरेट केलेला कम्युनिटी बोर्ड, जिथे शेजारी एकमेकांना उत्तरे देतात",
+      },
+    ],
+    cards: {
+      listingsLabel: "तपासलेल्या नोंदी",
+      listingsNote: "तीन शहरांत, प्रत्येक स्वतः तपासलेली.",
+      sosNote: "प्रत्येक स्क्रीनवरून एका टॅपवर, दिवस असो वा रात्र.",
+    },
   },
   distance: {
     heading: "बहुतेक कुटुंबे वेगवेगळ्या टाइम झोनमध्ये विभागली आहेत.",
