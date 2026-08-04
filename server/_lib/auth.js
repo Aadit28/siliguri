@@ -37,6 +37,16 @@ const MAX_BODY_BYTES = 64 * 1024;
 function tooLarge() {
   const err = new Error('Request too large.');
   err.status = 413;
+  err.publicError = 'Request too large.';
+  return err;
+}
+
+// A client mistake, not a server fault. Carries the status and the message the
+// caller is allowed to see; sendServerError passes both straight through.
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  err.publicError = message;
   return err;
 }
 
@@ -47,7 +57,7 @@ async function readBody(req, { maxBytes = MAX_BODY_BYTES } = {}) {
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') {
     if (Buffer.byteLength(req.body, 'utf8') > maxBytes) throw tooLarge();
-    return JSON.parse(req.body || '{}');
+    return parseJson(req.body);
   }
   const chunks = [];
   let size = 0;
@@ -57,15 +67,60 @@ async function readBody(req, { maxBytes = MAX_BODY_BYTES } = {}) {
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString('utf8');
-  return raw ? JSON.parse(raw) : {};
+  return parseJson(raw);
 }
 
-// Generic 500 that never leaks driver/env internals to the client.
+// Unparseable JSON is the caller's error. Left to JSON.parse it throws a bare
+// SyntaxError, which every handler's catch turns into a 500 — so a typo in a
+// curl command looked like the server falling over.
+function parseJson(raw) {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    // A bare string, number or null body is not a request object; treating it
+    // as one makes every field read undefined and fail somewhere further in.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw badRequest('Send a JSON object.');
+    }
+    return parsed;
+  } catch (error) {
+    if (error && error.status === 400) throw error;
+    throw badRequest('Send valid JSON.');
+  }
+}
+
+// Routes dispatch on an {action} discriminator. An unrecognised action used to
+// fall through to 'list', so a client typo ("create" instead of "add") returned
+// 200 and a body that looked like success while silently doing nothing — the
+// worst possible outcome for a guardian who thinks they just set a medicine
+// reminder. Absent action still defaults, since older callers omit it.
+function pickAction(value, allowed, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const action = String(value);
+  if (!allowed.includes(action)) {
+    throw badRequest(`Unknown action "${action}". Expected one of: ${allowed.join(', ')}.`);
+  }
+  return action;
+}
+
+// Generic 500 that never leaks driver/env internals to the client. Errors that
+// carry their own 4xx status and a publicError string are client mistakes and
+// pass straight through: only genuine server faults become a 500, so a 500 in
+// the logs stays a signal worth chasing.
+// Postgres codes for "the value you sent is not a valid input for this type":
+// invalid uuid, invalid date/time, invalid number. These are the caller's typo,
+// not a server fault, so they must not burn a 500 or an on-call page.
+const CLIENT_INPUT_PG_CODES = new Set(['22P02', '22007', '22008', '22003']);
+
 function sendServerError(res, error, publicMessage) {
-  console.error(publicMessage, error);
-  return send(res, error && error.status === 413 ? 413 : 500, {
-    error: error && error.status === 413 ? 'Request too large.' : publicMessage,
-  });
+  if (error && CLIENT_INPUT_PG_CODES.has(error.code)) {
+    return send(res, 400, { error: 'One of the values sent is not in a valid format.' });
+  }
+  const status = error && Number.isInteger(error.status) && error.status >= 400 && error.status < 500
+    ? error.status
+    : 500;
+  if (status === 500) console.error(publicMessage, error);
+  return send(res, status, { error: (status !== 500 && error.publicError) || publicMessage });
 }
 
 // Constant-time comparison for password/OTP hash strings.
@@ -311,6 +366,8 @@ module.exports = {
   normalizeUsername,
   passwordHash,
   publicUser,
+  badRequest,
+  pickAction,
   readBody,
   recordDurable,
   requestIp,

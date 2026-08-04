@@ -1,6 +1,6 @@
 {
   "appName": "Saathi",
-  "tagline": "Starting in Siliguri, built for India",
+  "tagline": "Verified local help, built for India",
   "onboarding": {
     "skip": "Skip",
     "next": "Next",
@@ -174,7 +174,7 @@
     "viewSource": "View source",
     "directoryKicker": "Local services",
     "directoryTitle": "Find verified help",
-    "directoryBody": "Search trusted Siliguri listings, then call or save the ones your family may need again.",
+    "directoryBody": "Search trusted {{city}} listings, then call or save the ones your family may need again.",
     "trustPhone": "Phone-first",
     "trustSource": "Source-linked",
     "trustFamily": "Family-shareable",

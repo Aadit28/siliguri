@@ -1,5 +1,12 @@
-const { authenticate, readBody, requireFamilyLink, send, withCors,
-  sendServerError } = require('../_lib/auth');
+const {
+  authenticate,
+  pickAction,
+  readBody,
+  requireFamilyLink,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
 
 const CATEGORIES = ['doctor', 'grocery', 'pharmacy', 'hospital', 'helper', 'other'];
 const COLS = 'id,parent_id,category,service_id,name,phone,note,set_by,created_at';
@@ -33,7 +40,7 @@ module.exports = async function handler(req, res) {
     const linkError = await requireFamilyLink(auth, parentId);
     if (linkError) return send(res, 403, linkError);
 
-    const action = ['list', 'set', 'remove'].includes(body.action) ? body.action : 'list';
+    const action = pickAction(body.action, ['list', 'set', 'remove'], 'list');
 
     if (action === 'set') {
       const category = CATEGORIES.includes(body.category) ? body.category : null;

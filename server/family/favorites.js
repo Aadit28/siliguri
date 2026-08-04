@@ -1,5 +1,12 @@
-const { authenticate, readBody, requireFamilyLink, send, withCors,
-  sendServerError } = require('../_lib/auth');
+const {
+  authenticate,
+  pickAction,
+  readBody,
+  requireFamilyLink,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
 
 const COLS = 'id,parent_id,service_id,note,added_by,created_at,services(name,phone,category)';
 
@@ -33,7 +40,7 @@ module.exports = async function handler(req, res) {
     const linkError = await requireFamilyLink(auth, parentId);
     if (linkError) return send(res, 403, linkError);
 
-    const action = ['list', 'add', 'remove'].includes(body.action) ? body.action : 'list';
+    const action = pickAction(body.action, ['list', 'add', 'remove'], 'list');
 
     if (action === 'add') {
       const serviceId = String(body.serviceId || '');

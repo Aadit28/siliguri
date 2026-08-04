@@ -1,5 +1,13 @@
-const { authenticate, normalizeUsername, readBody, requireAdmin, send, withCors,
-  sendServerError } = require('../_lib/auth');
+const {
+  authenticate,
+  normalizeUsername,
+  pickAction,
+  readBody,
+  requireAdmin,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
 
 module.exports = async function handler(req, res) {
   withCors(res);
@@ -13,7 +21,7 @@ module.exports = async function handler(req, res) {
     if (adminError) return send(res, 403, adminError);
 
     const body = await readBody(req);
-    const action = ['list', 'add', 'remove'].includes(body.action) ? body.action : 'list';
+    const action = pickAction(body.action, ['list', 'add', 'remove'], 'list');
     const isSuperAdmin = auth.user.role === 'super_admin';
 
     if (action === 'add') {

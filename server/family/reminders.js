@@ -1,5 +1,12 @@
-const { authenticate, readBody, requireFamilyLink, send, withCors,
-  sendServerError } = require('../_lib/auth');
+const {
+  authenticate,
+  pickAction,
+  readBody,
+  requireFamilyLink,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
 const { sendPushToUsers, guardianIdsForParent } = require('../_lib/push');
 
 const REPEATS = ['once', 'daily', 'weekly', 'monthly'];
@@ -60,7 +67,7 @@ module.exports = async function handler(req, res) {
     const linkError = await requireFamilyLink(auth, parentId);
     if (linkError) return send(res, 403, linkError);
 
-    const action = ['list', 'add', 'update', 'remove', 'done'].includes(body.action) ? body.action : 'list';
+    const action = pickAction(body.action, ['list', 'add', 'update', 'remove', 'done'], 'list');
 
     if (action === 'add') {
       const title = String(body.title || '').trim();

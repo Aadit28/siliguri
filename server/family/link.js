@@ -5,6 +5,7 @@ const {
   localPhoneUserId,
   makeRateLimiter,
   normalizePhone,
+  pickAction,
   readBody,
   send,
   sendServerError,
@@ -82,7 +83,7 @@ module.exports = async function handler(req, res) {
     if (auth.error) return send(res, 401, { error: auth.error });
 
     const body = await readBody(req);
-    const action = ['request', 'verify', 'list', 'revoke'].includes(body.action) ? body.action : 'list';
+    const action = pickAction(body.action, ['request', 'verify', 'list', 'revoke'], 'list');
 
     if (action === 'request') {
       const phone = normalizePhone(body.parentPhone);

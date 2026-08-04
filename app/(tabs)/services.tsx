@@ -198,7 +198,7 @@ export default function Services() {
         <View style={styles.pageScroll}>
         <View style={styles.hero}>
           <H1 style={styles.heroTitle}>{t('services.directoryTitle')}</H1>
-          <Muted style={styles.heroBody}>{t('services.directoryBody')}</Muted>
+          <Muted style={styles.heroBody}>{t('services.directoryBody', { city: city.name })}</Muted>
           <CityPicker />
         </View>
 

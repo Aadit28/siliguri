@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useCity } from '../context/CityContext';
 import { useLocale } from '../context/LocaleContext';
 import { useTheme } from '../context/ThemeContext';
 import { family, font, space } from '../lib/theme';
@@ -16,6 +17,7 @@ export default function SiteFooter({ services }: { services: Service[] }) {
   const router = useRouter();
   const { t } = useTranslation();
   const { lang } = useLocale();
+  const { city } = useCity();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width >= 820;
@@ -76,8 +78,8 @@ export default function SiteFooter({ services }: { services: Service[] }) {
         </Text>
         <Text selectable style={[styles.brandBody, { color: colors.textMuted }]}>
           {lang === 'hi'
-            ? 'साथी सिलीगुड़ी परिवारों के लिए एक स्वतंत्र स्थानीय डायरेक्टरी है। जाने से पहले सेवा को कॉल करें और स्रोत की जाँच करें।'
-            : 'Saathi is an independent local directory for Siliguri families. Call before visiting and check the source before relying on a listing.'}
+            ? `साथी ${city.name} परिवारों के लिए एक स्वतंत्र स्थानीय डायरेक्टरी है। जाने से पहले सेवा को कॉल करें और स्रोत की जाँच करें।`
+            : `Saathi is an independent local directory for ${city.name} families. Call before visiting and check the source before relying on a listing.`}
         </Text>
         <Text selectable style={[styles.summary, { color: colors.textSubtle }]}>
           {summary}
