@@ -100,16 +100,9 @@ const en = {
     photoAlt:
       "A daughter showing her father something on a phone at home in India",
     screens: [
-      { label: "Home", alt: "The Saathi home screen, asking what you need today" },
-      {
-        label: "Assistant",
-        alt: "The Saathi assistant, offering to book an appointment or find medicines",
-      },
-      { label: "Calendar", alt: "A month calendar in Saathi with upcoming events" },
-      {
-        label: "Ask",
-        alt: "The moderated community board, where neighbours answer each other",
-      },
+      { label: "Services" },
+      { label: "Assistant" },
+      { label: "Today" },
     ],
     cards: {
       listingsLabel: "verified listings",
@@ -136,14 +129,11 @@ const en = {
         "Community board, moderated",
         "Help desk that dials for you",
       ],
-      shotAlt:
-        "The Saathi assistant screen, offering to book an appointment or find medicines",
     },
     guardian: {
       title: "Guardian",
       role: "The adult child, anywhere",
       body: "Link to a parent's account with their consent, then set reminders on their behalf, keep a care team of trusted numbers, and ask how the week has gone.",
-      shotAlt: "A month calendar in Saathi with an upcoming events list",
     },
     admin: {
       title: "Admin",
@@ -214,8 +204,6 @@ const en = {
   },
   safety: {
     heading: "The careful parts are the ones you cannot see.",
-    shotAlt:
-      "The Saathi community board, showing that questions are reviewed before they appear publicly",
     points: [
       {
         title: "Posts are read before they appear",
@@ -304,16 +292,9 @@ const hi: Dict = {
     ctaSecondary: "देखिए यह कैसे काम करता है",
     photoAlt: "घर पर बेटी अपने पिता को फ़ोन पर कुछ दिखाती हुई",
     screens: [
-      { label: "होम", alt: "साथी की होम स्क्रीन, जो पूछती है कि आज आपको क्या चाहिए" },
-      {
-        label: "असिस्टेंट",
-        alt: "साथी असिस्टेंट, जो अपॉइंटमेंट लेने या दवा ढूँढने का विकल्प देता है",
-      },
-      { label: "कैलेंडर", alt: "साथी में महीने का कैलेंडर और आगामी काम" },
-      {
-        label: "पूछिए",
-        alt: "मॉडरेट किया गया कम्युनिटी बोर्ड, जहाँ पड़ोसी एक-दूसरे को जवाब देते हैं",
-      },
+      { label: "सेवाएँ" },
+      { label: "सहायक" },
+      { label: "आज" },
     ],
     cards: {
       listingsLabel: "जाँची हुई लिस्टिंग",
@@ -340,14 +321,11 @@ const hi: Dict = {
         "मॉडरेट किया गया कम्युनिटी बोर्ड",
         "हेल्प डेस्क, जो आपके लिए कॉल मिलाती है",
       ],
-      shotAlt:
-        "साथी की असिस्टेंट स्क्रीन, जो अपॉइंटमेंट लेने या दवा ढूँढने का विकल्प देती है",
     },
     guardian: {
       title: "गार्जियन",
       role: "बड़ी संतान, कहीं भी",
       body: "माता-पिता की सहमति से उनके खाते से जुड़िए, फिर उनकी ओर से रिमाइंडर लगाइए, भरोसेमंद नंबरों की केयर टीम रखिए, और पूछिए कि हफ़्ता कैसा बीता।",
-      shotAlt: "साथी में महीने का कैलेंडर और आगामी कामों की सूची",
     },
     admin: {
       title: "एडमिन",
@@ -418,8 +396,6 @@ const hi: Dict = {
   },
   safety: {
     heading: "जो हिस्से दिखते नहीं, वही सबसे ध्यान से बनाए गए हैं।",
-    shotAlt:
-      "साथी का कम्युनिटी बोर्ड, जो बताता है कि सवाल सार्वजनिक होने से पहले जाँचे जाते हैं",
     points: [
       {
         title: "पोस्ट दिखने से पहले पढ़ी जाती है",
@@ -506,16 +482,9 @@ const mr: Dict = {
     ctaSecondary: "हे कसे चालते ते पाहा",
     photoAlt: "घरी मुलगी वडिलांना फोनवर काहीतरी दाखवत आहे",
     screens: [
-      { label: "होम", alt: "साथीची होम स्क्रीन, आज तुम्हाला काय हवे आहे असे विचारणारी" },
-      {
-        label: "असिस्टंट",
-        alt: "साथी असिस्टंट, अपॉइंटमेंट घेण्याचा किंवा औषध शोधण्याचा पर्याय देणारा",
-      },
-      { label: "कॅलेंडर", alt: "साथीमध्ये महिन्याचे कॅलेंडर आणि येणारी कामे" },
-      {
-        label: "विचारा",
-        alt: "मॉडरेट केलेला कम्युनिटी बोर्ड, जिथे शेजारी एकमेकांना उत्तरे देतात",
-      },
+      { label: "सेवा" },
+      { label: "असिस्टंट" },
+      { label: "आज" },
     ],
     cards: {
       listingsLabel: "तपासलेल्या नोंदी",
@@ -542,14 +511,11 @@ const mr: Dict = {
         "मॉडरेट केलेला कम्युनिटी बोर्ड",
         "तुमच्यासाठी फोन लावणारा हेल्प डेस्क",
       ],
-      shotAlt:
-        "साथीची असिस्टंट स्क्रीन, अपॉइंटमेंट घेण्याचा किंवा औषध शोधण्याचा पर्याय देणारी",
     },
     guardian: {
       title: "पालक",
       role: "मोठे मूल, कुठेही",
       body: "आई-वडिलांच्या संमतीने त्यांच्या खात्याशी जोडा, मग त्यांच्या वतीने रिमाइंडर लावा, विश्वासातल्या नंबरांची केअर टीम ठेवा, आणि आठवडा कसा गेला ते विचारा.",
-      shotAlt: "साथीमध्ये महिन्याचे कॅलेंडर आणि येणाऱ्या कामांची यादी",
     },
     admin: {
       title: "अ‍ॅडमिन",
@@ -620,8 +586,6 @@ const mr: Dict = {
   },
   safety: {
     heading: "जे भाग दिसत नाहीत, तेच सर्वात काळजीपूर्वक बांधले आहेत.",
-    shotAlt:
-      "साथीचा कम्युनिटी बोर्ड, प्रश्न जाहीर होण्यापूर्वी तपासले जातात हे दाखवणारा",
     points: [
       {
         title: "पोस्ट दिसण्यापूर्वी वाचली जाते",

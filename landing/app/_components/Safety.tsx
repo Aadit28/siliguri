@@ -1,9 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { Phone } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
+import { Device } from "./mockups/Device";
+import { SceneAsk } from "./mockups/scenes";
 
 export function Safety() {
   const { t, deva } = useLang();
@@ -13,15 +14,12 @@ export function Safety() {
     <section className="border-y border-line bg-paper-alt py-24 lg:py-32">
       <div className="mx-auto grid max-w-[1240px] grid-cols-1 items-center gap-14 px-5 sm:px-8 lg:grid-cols-12 lg:gap-16">
         <Reveal className="lg:col-span-5">
-          <div className="mx-auto w-[300px] overflow-hidden rounded-[26px] border-[7px] border-ink bg-paper shadow-[0_24px_60px_rgba(10,10,10,0.16)] lg:mx-0">
-            <Image
-              src="/shots/community.png"
-              alt={s.shotAlt}
-              width={390}
-              height={844}
-              sizes="300px"
-              className="h-auto w-full"
-            />
+          {/* The moderation queue itself, coded, so the claim beside it is
+              illustrated by the state it describes: a post sitting in review. */}
+          <div className="mx-auto w-[290px] rounded-[28px] border-[7px] border-ink bg-ink shadow-[0_24px_60px_rgba(10,10,10,0.16)] lg:mx-0">
+            <Device tab="ask" className="h-[420px] rounded-[21px] border-0">
+              <SceneAsk />
+            </Device>
           </div>
         </Reveal>
 

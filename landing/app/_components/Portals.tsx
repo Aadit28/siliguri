@@ -1,9 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { Buildings, HouseLine, UsersThree } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
+import { Device, type TabKey } from "./mockups/Device";
+import { SceneGuardian, SceneServices } from "./mockups/scenes";
 
 function Chip({
   tone,
@@ -25,37 +26,27 @@ function Chip({
 }
 
 /**
- * A real app screen cropped to a fixed window and anchored to the card's bottom
- * edge, so the two cards read as the same object at two widths instead of two
- * differently-scaled pictures.
+ * A live mock-up rising out of the card's bottom edge. Coded rather than a
+ * screenshot, so each card can show a different task instead of the same four
+ * PNGs reappearing down the page.
  */
 function ScreenPeek({
-  src,
-  alt,
+  children,
   width,
-  /** Pixels of the screenshot to hide at the top, in rendered units. */
-  crop = 0,
+  tab,
 }: {
-  src: string;
-  alt: string;
+  children: React.ReactNode;
   width: number;
-  crop?: number;
+  tab: TabKey;
 }) {
-  const height = Math.round(width * 1.55);
   return (
     <div
-      style={{ maxWidth: width, height }}
-      className="-mb-7 w-full overflow-hidden rounded-t-[14px] border-x border-t border-line bg-paper-alt sm:-mb-8"
+      style={{ maxWidth: width, height: Math.round(width * 1.5) }}
+      className="-mb-7 w-full overflow-hidden sm:-mb-8"
     >
-      <Image
-        src={src}
-        alt={alt}
-        width={390}
-        height={844}
-        sizes={`${width}px`}
-        style={crop ? { marginTop: -crop } : undefined}
-        className="h-auto w-full"
-      />
+      <Device tab={tab} className="h-full">
+        {children}
+      </Device>
     </div>
   );
 }
@@ -107,7 +98,9 @@ export function Portals() {
                   </li>
                 ))}
               </ul>
-              <ScreenPeek src="/shots/assistant.png" alt={p.parent.shotAlt} width={220} />
+              <ScreenPeek width={220} tab="services">
+                <SceneServices />
+              </ScreenPeek>
             </div>
           </article>
         </Reveal>
@@ -127,14 +120,9 @@ export function Portals() {
               {p.guardian.body}
             </p>
             <div className="mt-auto flex justify-center pt-10">
-              <ScreenPeek
-                src="/shots/calendar.png"
-                alt={p.guardian.shotAlt}
-                width={220}
-                // Skips the screenshot's own page-title row, which would
-                // otherwise repeat "My Calendar" twice inside the card.
-                crop={34}
-              />
+              <ScreenPeek width={220} tab="home">
+                <SceneGuardian />
+              </ScreenPeek>
             </div>
           </article>
         </Reveal>

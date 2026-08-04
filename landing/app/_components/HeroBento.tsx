@@ -15,15 +15,8 @@ import {
 import { Phone } from "@phosphor-icons/react/dist/ssr";
 import { TOTAL_LISTINGS } from "../_lib/copy";
 import { useLang } from "../_lib/lang";
+import { AppMockup } from "./mockups/AppMockup";
 
-const SHOTS = [
-  "/shots/home.png",
-  "/shots/assistant.png",
-  "/shots/calendar.png",
-  "/shots/community.png",
-];
-
-const HOLD_MS = 2800;
 const ease = [0.16, 1, 0.3, 1] as const;
 
 const cell =
@@ -72,17 +65,7 @@ function PhotoCell({
  * controls, and taking one stops the auto-play.
  */
 function PhoneCell({ delay }: { delay: number }) {
-  const { t } = useLang();
   const reduce = useReducedMotion();
-  const screens = t.hero.screens;
-  const [index, setIndex] = useState(0);
-  const [auto, setAuto] = useState(true);
-
-  useEffect(() => {
-    if (reduce || !auto) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % SHOTS.length), HOLD_MS);
-    return () => clearInterval(id);
-  }, [reduce, auto]);
 
   return (
     <motion.div
@@ -92,50 +75,7 @@ function PhoneCell({ delay }: { delay: number }) {
       // guessed pixel height that drifts when the copy rewraps.
       className={`${cell} row-span-2 flex h-full flex-col bg-paper-alt p-3`}
     >
-      <div className="relative w-full grow overflow-hidden rounded-[12px] border border-line bg-paper">
-        {/* All four stay mounted and cross-fade, so no frame arrives unloaded. */}
-        {SHOTS.map((src, i) => (
-          <motion.div
-            key={src}
-            className="absolute inset-0"
-            initial={false}
-            animate={{ opacity: i === index ? 1 : 0, scale: i === index ? 1 : 1.02 }}
-            transition={{ duration: reduce ? 0 : 0.7, ease }}
-            aria-hidden={i !== index}
-          >
-            <Image
-              src={src}
-              alt={screens[i].alt}
-              fill
-              priority={i === 0}
-              sizes="240px"
-              className="object-cover object-top"
-            />
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="mt-3 flex shrink-0 justify-center gap-1.5">
-        {screens.map((s, i) => (
-          <button
-            key={s.label}
-            type="button"
-            aria-label={s.label}
-            aria-current={i === index}
-            onClick={() => {
-              setIndex(i);
-              setAuto(false);
-            }}
-            className="group grid h-6 w-7 place-items-center"
-          >
-            <span
-              className={`h-1.5 rounded-full transition-all duration-500 ${
-                i === index ? "w-5 bg-ink" : "w-1.5 bg-ink/25 group-hover:bg-ink/50"
-              }`}
-            />
-          </button>
-        ))}
-      </div>
+      <AppMockup className="grow" />
     </motion.div>
   );
 }
