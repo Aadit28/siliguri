@@ -205,7 +205,9 @@ export interface FamilyLink {
   // Present on links where the signed-in user is the guardian.
   parentId?: string | null;
   parentName?: string | null;
-  parentPhone?: string;
+  // Null when the link was made with an account code and the senior's phone
+  // number was not readable — the row still needs a value, the screen does not.
+  parentPhone?: string | null;
   relationship?: string | null;
   // Present on links where the signed-in user is the parent.
   guardianId?: string | null;

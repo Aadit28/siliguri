@@ -31,7 +31,10 @@ function guardianLink(row) {
     status: row.status,
     parentId: row.parent_id || null,
     parentName: parent ? parent.full_name || parent.username : null,
-    parentPhone: row.parent_phone,
+    // A code join (server/family/code.js) stores an "id:<uuid>" marker when the
+    // senior's phone is unreadable, because parent_phone is NOT NULL. That is a
+    // uniqueness key, not a number, and must never be shown as one.
+    parentPhone: String(row.parent_phone || '').startsWith('+') ? row.parent_phone : null,
     relationship: row.relationship || null,
     createdAt: row.created_at,
     verifiedAt: row.verified_at || null,

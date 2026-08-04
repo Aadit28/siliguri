@@ -36,6 +36,7 @@ const ROUTES = {
   'notify/alerts': () => require('../server/notify/alerts'),
   'cron/daily-digest': () => require('../server/cron/daily-digest'),
   'family/link': () => require('../server/family/link'),
+  'family/code': () => require('../server/family/code'),
   'family/sos': () => require('../server/family/sos'),
   'family/reminders': () => require('../server/family/reminders'),
   'family/care-team': () => require('../server/family/care-team'),

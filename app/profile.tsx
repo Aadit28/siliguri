@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
@@ -14,6 +14,7 @@ import { useDisplayMode } from '../src/context/DisplayModeContext';
 import { useLocale } from '../src/context/LocaleContext';
 import { useSimpleMode } from '../src/context/SimpleModeContext';
 import { useTheme } from '../src/context/ThemeContext';
+import { friendlyFamilyError, getShareCode, rotateShareCode } from '../src/lib/family';
 
 /**
  * One screen for everything about "me": who is signed in, the settings that
@@ -30,7 +31,7 @@ export default function ProfileScreen() {
   const tk = useTokens();
   const styles = useMemo(() => makeStyles(colors, tk), [colors, tk]);
 
-  const { user, displayName } = useAuth();
+  const { session, user, displayName } = useAuth();
   const { lang, toggle: toggleLanguage } = useLocale();
   const { isSimple, toggleSimple } = useSimpleMode();
   const { isComputerMode, toggleDisplayMode } = useDisplayMode();
@@ -40,6 +41,79 @@ export default function ProfileScreen() {
   const phone = user?.user_metadata?.phone_number || '';
   const username = user?.user_metadata?.username || '';
   const initial = (displayName || username).trim().charAt(0).toUpperCase();
+
+  // Account code. Fetched lazily on mount (and minted server-side on that first
+  // request) so an account that never opens this screen never carries a code.
+  const [shareCode, setShareCode] = useState<string | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const token = session?.access_token ?? null;
+
+  useEffect(() => {
+    if (!token) {
+      setShareCode(null);
+      return;
+    }
+    let cancelled = false;
+    setCodeBusy(true);
+    getShareCode(token)
+      .then((res) => {
+        if (!cancelled) setShareCode(res.code);
+      })
+      .catch((e) => {
+        // Not silent: without the code the card is useless, and the 503 the
+        // server sends before the migration lands is its own sentence.
+        if (!cancelled) setCodeError(friendlyFamilyError(e, t));
+      })
+      .finally(() => {
+        if (!cancelled) setCodeBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, t]);
+
+  const groupedCode = shareCode && shareCode.length === 6
+    ? `${shareCode.slice(0, 3)}-${shareCode.slice(3)}`
+    : shareCode;
+
+  const shareTheCode = useCallback(async () => {
+    if (!groupedCode) return;
+    const message = t('profile.codeShareMessage', { code: groupedCode });
+    // Share.share rejects on web (and on any build without a share sheet), so
+    // the web path copies instead and says so — a dead button on the one screen
+    // that exists to hand this code over would be the worst outcome.
+    if (Platform.OS === 'web') {
+      try {
+        await navigator.clipboard.writeText(message);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        setCodeError(t('profile.codeCopyFailed'));
+      }
+      return;
+    }
+    try {
+      await Share.share({ message });
+    } catch {
+      setCodeError(t('profile.codeShareFailed'));
+    }
+  }, [groupedCode, t]);
+
+  const rotate = useCallback(async () => {
+    if (!token) return;
+    setCodeError(null);
+    setCodeBusy(true);
+    try {
+      const res = await rotateShareCode(token);
+      setShareCode(res.code);
+    } catch (e) {
+      setCodeError(friendlyFamilyError(e, t));
+    } finally {
+      setCodeBusy(false);
+    }
+  }, [token, t]);
 
   // Switch-role control. The label always states the action the tap performs,
   // and accessibilityState carries the current setting for a screen reader.
@@ -115,6 +189,43 @@ export default function ProfileScreen() {
           </View>
         )}
       </Card>
+
+      {user ? (
+        <Card style={styles.card}>
+          <View style={styles.rowHead}>
+            <Text style={styles.rowLabel}>{t('profile.codeTitle')}</Text>
+          </View>
+          {codeError ? (
+            <Body>{codeError}</Body>
+          ) : (
+            <Text
+              selectable
+              accessibilityLabel={
+                groupedCode
+                  ? t('profile.codeAccessibility', { code: (groupedCode || '').split('').join(' ') })
+                  : t('family.loading')
+              }
+              style={[styles.codeValue, { color: colors.text }]}
+            >
+              {groupedCode || (codeBusy ? t('family.loading') : '—')}
+            </Text>
+          )}
+          <Muted>{t('profile.codeHint')}</Muted>
+          <Button
+            label={copied ? t('profile.codeCopied') : t('profile.codeShare')}
+            onPress={shareTheCode}
+            disabled={!groupedCode}
+          />
+          <Muted>{t('profile.codeRotateWarning')}</Muted>
+          <Button
+            label={t('profile.codeRotate')}
+            variant="secondary"
+            onPress={rotate}
+            loading={codeBusy && Boolean(shareCode)}
+            disabled={!token}
+          />
+        </Card>
+      ) : null}
 
       <H2 style={styles.sectionHeader}>{t('profile.settingsTitle')}</H2>
 
@@ -196,6 +307,13 @@ export default function ProfileScreen() {
         <Button label={t('profile.familyCta')} variant="secondary" onPress={() => router.push('/help')} />
       </Card>
 
+      {/* Anyone can hold somebody else's code — a senior helping their own
+          older sibling is the same flow — so this row is not gated on role. */}
+      <Card style={styles.card}>
+        <Body>{t('profile.haveCodeBody')}</Body>
+        <Button label={t('profile.haveCodeCta')} variant="secondary" onPress={() => router.push('/join')} />
+      </Card>
+
       {user ? (
         <>
           <H2 style={styles.sectionHeader}>{t('profile.signOutTitle')}</H2>
@@ -242,6 +360,14 @@ function makeStyles(colors: AppColors, tk: Tokens) {
     },
     identityText: { flex: 1, minWidth: 0, gap: tk.space.xs },
     sectionHeader: { marginTop: tk.space.md, paddingHorizontal: tk.space.xs },
+    // Read aloud down a phone line, so it is set as large and as loose as the
+    // card allows, and stays selectable for the people who would rather copy.
+    codeValue: {
+      fontFamily: family.heavy,
+      fontSize: tk.font.xl,
+      lineHeight: tk.font.xl * 1.25,
+      letterSpacing: 4,
+    },
     card: { gap: tk.space.sm },
     rowHead: {
       flexDirection: 'row',

@@ -12,6 +12,9 @@ import type {
 import {
   demoAddFavorite,
   demoAddReminder,
+  demoGetShareCode,
+  demoJoinByCode,
+  demoRotateShareCode,
   demoListCareTeam,
   demoListFavorites,
   demoListLinks,
@@ -90,6 +93,49 @@ export async function revokeFamilyLink(
     method: 'POST',
     token,
     body: { action: 'revoke', id },
+  });
+}
+
+// ----- Account share codes -----
+
+export type ShareCode = { code: string; grouped: string };
+
+export type JoinRelationship =
+  | 'son'
+  | 'daughter'
+  | 'spouse'
+  | 'sibling'
+  | 'friend'
+  | 'caregiver'
+  | 'other';
+
+export async function getShareCode(token: string): Promise<ShareCode> {
+  if (isDemoToken(token)) return demoGetShareCode(token);
+  return backendRequest('/api/family/code', {
+    method: 'POST',
+    token,
+    body: { action: 'get' },
+  });
+}
+
+export async function rotateShareCode(token: string): Promise<ShareCode> {
+  if (isDemoToken(token)) return demoRotateShareCode(token);
+  return backendRequest('/api/family/code', {
+    method: 'POST',
+    token,
+    body: { action: 'rotate' },
+  });
+}
+
+export async function joinByCode(
+  token: string,
+  input: { code: string; relationship: JoinRelationship },
+): Promise<{ ok: boolean; link: FamilyLink }> {
+  if (isDemoToken(token)) return demoJoinByCode(token, input);
+  return backendRequest('/api/family/code', {
+    method: 'POST',
+    token,
+    body: { action: 'join', ...input },
   });
 }
 
@@ -294,6 +340,10 @@ export function friendlyFamilyError(
   if (status === 401) return t('family.errorSignIn');
   if (status === 403 || status === 404) return t('family.errorNotLinked');
   if (status === 429) return t('family.errorTooManyTries');
+  // 503 is the one server state worth its own sentence: the account-code
+  // migration has not been applied yet, so "try again later" is true advice and
+  // "something went wrong" would send people hunting for a mistake they made.
+  if (status === 503) return t('family.errorCodeNotReady');
   if (status >= 500) return t('family.errorGeneric');
   // 4xx from our own handlers carry a short, already-friendly sentence.
   return message && message.length <= 120 ? message : t('family.errorGeneric');

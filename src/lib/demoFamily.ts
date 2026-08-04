@@ -272,6 +272,59 @@ export function demoRevokeLink(token: string, id: string): { ok: boolean } {
   return { ok: true };
 }
 
+// ----- Account share codes --------------------------------------------------
+
+// Fixed rather than random so the demo parent's profile screen always shows the
+// same code in a screenshot, a pitch deck and the promo video.
+export const DEMO_SHARE_CODE = 'DEMO42';
+
+// Rotating in demo mode must actually change something, or the button looks
+// broken; it stays deterministic per session so the screen and the join step
+// cannot disagree.
+let demoCode = DEMO_SHARE_CODE;
+
+function groupedCode(code: string) {
+  return code.length === 6 ? `${code.slice(0, 3)}-${code.slice(3)}` : code;
+}
+
+export function demoGetShareCode(token: string): { code: string; grouped: string } {
+  const user = demoUserByToken(token);
+  if (!user) throw fail('Sign in again.', 401);
+  return { code: demoCode, grouped: groupedCode(demoCode) };
+}
+
+export function demoRotateShareCode(token: string): { code: string; grouped: string } {
+  const user = demoUserByToken(token);
+  if (!user) throw fail('Sign in again.', 401);
+  const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  demoCode = Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+  return { code: demoCode, grouped: groupedCode(demoCode) };
+}
+
+export function demoJoinByCode(
+  token: string,
+  input: { code: string; relationship: string },
+): { ok: boolean; link: FamilyLink } {
+  const user = demoUserByToken(token);
+  if (!user) throw fail('Sign in again.', 401);
+  const code = input.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Only the demo parent has a code, so any other value is a wrong code — the
+  // same single sentence the server gives, with no extra detail.
+  if (code !== demoCode) throw fail('That code did not match. Check it and try again.', 404);
+  if (user.id === PARENT.id) {
+    throw fail('That is your own code. Share it with a family member instead.');
+  }
+  if (link.status === 'active' && link.guardianId === user.id) {
+    throw fail('You already help with this account.');
+  }
+  link.status = 'active';
+  link.guardianId = user.id;
+  link.guardianName = user.fullName;
+  link.relationship = input.relationship;
+  link.verifiedAt = new Date().toISOString();
+  return { ok: true, link: { ...link } };
+}
+
 export function demoListReminders(token: string, parentId: string): { reminders: FamilyReminder[] } {
   if (!canAccess(token, parentId)) return { reminders: [] };
   return { reminders: [...reminders] };

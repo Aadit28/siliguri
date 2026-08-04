@@ -419,7 +419,12 @@ export default function GuardianDashboard() {
 
         <View style={styles.headerRow}>
           <H2 style={styles.sectionHeader}>{t('family.parentsHeading')}</H2>
-          <Button label={t('family.addParent')} icon={<Feather name="plus" size={18} color={colors.primaryFg} />} onPress={openAddParent} />
+          <View style={styles.headerActions}>
+            <Button label={t('family.addParent')} icon={<Feather name="plus" size={18} color={colors.primaryFg} />} onPress={openAddParent} />
+            {/* The parallel door: the parent read a code out over the phone
+                instead of waiting for a WhatsApp OTP. Same destination. */}
+            <Button label={t('family.haveCodeCta')} variant="secondary" onPress={() => router.push('/join')} />
+          </View>
         </View>
 
         {revokeError ? <Notice kind="error" message={revokeError} /> : null}
@@ -663,6 +668,7 @@ function makeStyles(colors: AppColors, isWide: boolean) {
       gap: space.md,
     },
     sectionHeader: {},
+    headerActions: { gap: space.sm, flexShrink: 0 },
     stateCard: {
       alignItems: 'center',
       gap: space.sm,
