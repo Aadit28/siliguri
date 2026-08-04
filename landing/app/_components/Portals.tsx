@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import { Buildings, HouseLine, UsersThree } from "@phosphor-icons/react/dist/ssr";
+import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
 
 function Chip({
@@ -15,9 +18,7 @@ function Chip({
     butter: "bg-chip-butter text-chip-butterink",
   } as const;
   return (
-    <span
-      className={`grid size-11 place-items-center rounded-[10px] ${tones[tone]}`}
-    >
+    <span className={`grid size-11 place-items-center rounded-[10px] ${tones[tone]}`}>
       {children}
     </span>
   );
@@ -63,16 +64,22 @@ const cardBase =
   "rounded-[16px] border border-line bg-paper p-7 sm:p-8 transition-shadow hover:shadow-[0_16px_40px_rgba(10,10,10,0.07)]";
 
 export function Portals() {
+  const { t, deva } = useLang();
+  const p = t.portals;
+
   return (
-    <section id="how" className="scroll-mt-[80px] mx-auto max-w-[1240px] px-5 py-24 sm:px-8 lg:py-32">
+    <section
+      id="how"
+      className="scroll-mt-[80px] mx-auto max-w-[1240px] px-5 py-24 sm:px-8 lg:py-32"
+    >
       <Reveal>
-        <h2 className="max-w-[20ch] text-[32px] leading-[1.1] font-bold tracking-[-0.03em] sm:text-[42px]">
-          One app, three people signed into it.
+        <h2
+          className={`max-w-[22ch] text-[32px] leading-[1.12] font-bold tracking-[-0.03em] sm:text-[42px] ${deva}`}
+        >
+          {p.heading}
         </h2>
-        <p className="mt-4 max-w-[58ch] text-[17px] leading-relaxed text-ink-muted">
-          Who you are decides what you see. The elder never has to learn the
-          guardian&apos;s screens, and city staff never see another
-          city&apos;s families.
+        <p className={`mt-4 max-w-[60ch] text-[17px] leading-relaxed text-ink-muted ${deva}`}>
+          {p.sub}
         </p>
       </Reveal>
 
@@ -82,35 +89,25 @@ export function Portals() {
             <Chip tone="sky">
               <HouseLine size={22} weight="regular" />
             </Chip>
-            <h3 className="mt-6 text-[26px] font-bold tracking-[-0.02em]">
-              Parent
+            <h3 className={`mt-6 text-[26px] font-bold tracking-[-0.02em] ${deva}`}>
+              {p.parent.title}
             </h3>
-            <p className="mt-1 text-[15px] font-medium text-ink-subtle">
-              The elder, at home in Siliguri
+            <p className={`mt-1 text-[15px] font-medium text-ink-subtle ${deva}`}>
+              {p.parent.role}
             </p>
-            <p className="mt-4 max-w-[42ch] text-[16px] leading-relaxed text-ink-muted">
-              Doctors, hospitals, medicine shops and transport that someone has
-              actually checked. Ask for what you need in Hindi or English, by
-              typing or out loud, and get a name and a number back.
+            <p className={`mt-4 max-w-[44ch] text-[16px] leading-relaxed text-ink-muted ${deva}`}>
+              {p.parent.body}
             </p>
             <div className="mt-8 grid grow grid-cols-1 items-end gap-8 sm:grid-cols-[1fr_220px]">
-              <ul className="space-y-3 self-start text-[15px] text-ink">
-                {[
-                  "Reminders that ring on one tap",
-                  "Community board, moderated",
-                  "Help desk that dials for you",
-                ].map((item) => (
+              <ul className={`space-y-3 self-start text-[15px] text-ink ${deva}`}>
+                {p.parent.bullets.map((item) => (
                   <li key={item} className="flex gap-3">
                     <span className="mt-2 size-1.5 shrink-0 rounded-full bg-ink" />
                     {item}
                   </li>
                 ))}
               </ul>
-              <ScreenPeek
-                src="/shots/assistant.png"
-                alt="The Saathi assistant screen, offering to book an appointment or find medicines"
-                width={220}
-              />
+              <ScreenPeek src="/shots/assistant.png" alt={p.parent.shotAlt} width={220} />
             </div>
           </article>
         </Reveal>
@@ -120,21 +117,19 @@ export function Portals() {
             <Chip tone="sage">
               <UsersThree size={22} weight="regular" />
             </Chip>
-            <h3 className="mt-6 text-[26px] font-bold tracking-[-0.02em]">
-              Guardian
+            <h3 className={`mt-6 text-[26px] font-bold tracking-[-0.02em] ${deva}`}>
+              {p.guardian.title}
             </h3>
-            <p className="mt-1 text-[15px] font-medium text-ink-subtle">
-              The adult child, anywhere
+            <p className={`mt-1 text-[15px] font-medium text-ink-subtle ${deva}`}>
+              {p.guardian.role}
             </p>
-            <p className="mt-4 text-[16px] leading-relaxed text-ink-muted">
-              Link to a parent&apos;s account with their consent, then set
-              reminders on their behalf, keep a care team of trusted numbers,
-              and ask how the week has gone.
+            <p className={`mt-4 text-[16px] leading-relaxed text-ink-muted ${deva}`}>
+              {p.guardian.body}
             </p>
             <div className="mt-auto flex justify-center pt-10">
               <ScreenPeek
                 src="/shots/calendar.png"
-                alt="A month calendar in Saathi with an upcoming events list"
+                alt={p.guardian.shotAlt}
                 width={220}
                 // Skips the screenshot's own page-title row, which would
                 // otherwise repeat "My Calendar" twice inside the card.
@@ -152,16 +147,14 @@ export function Portals() {
               <Buildings size={22} weight="regular" />
             </Chip>
             <div>
-              <h3 className="text-[22px] font-bold tracking-[-0.02em]">
-                Admin
-                <span className="ml-3 align-middle text-[15px] font-medium text-ink-subtle">
-                  City operations staff
+              <h3 className={`text-[22px] font-bold tracking-[-0.02em] ${deva}`}>
+                {p.admin.title}
+                <span className={`ml-3 align-middle text-[15px] font-medium text-ink-subtle ${deva}`}>
+                  {p.admin.role}
                 </span>
               </h3>
-              <p className="mt-2 max-w-[74ch] text-[16px] leading-relaxed text-ink-muted">
-                Curates the directory, publishes announcements, works the
-                callback queue and manages city helpers. Every query is scoped
-                to one city, so staff in Siliguri only ever see Siliguri.
+              <p className={`mt-2 max-w-[76ch] text-[16px] leading-relaxed text-ink-muted ${deva}`}>
+                {p.admin.body}
               </p>
             </div>
           </article>

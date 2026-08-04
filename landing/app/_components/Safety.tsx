@@ -1,23 +1,14 @@
+"use client";
+
 import Image from "next/image";
 import { Phone } from "@phosphor-icons/react/dist/ssr";
+import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
 
-const points = [
-  {
-    title: "Posts are read before they appear",
-    body: "The community board is moderated. Nothing a stranger writes goes public in Siliguri until a human has looked at it.",
-  },
-  {
-    title: "A guardian is linked, not assumed",
-    body: "An adult child only sees a parent's activity after that parent has agreed to the link on their own phone.",
-  },
-  {
-    title: "Staff see one city",
-    body: "Admin queries are scoped by city, so operations staff never read another city's families.",
-  },
-];
-
 export function Safety() {
+  const { t, deva } = useLang();
+  const s = t.safety;
+
   return (
     <section className="border-y border-line bg-paper-alt py-24 lg:py-32">
       <div className="mx-auto grid max-w-[1240px] grid-cols-1 items-center gap-14 px-5 sm:px-8 lg:grid-cols-12 lg:gap-16">
@@ -25,7 +16,7 @@ export function Safety() {
           <div className="mx-auto w-[300px] overflow-hidden rounded-[26px] border-[7px] border-ink bg-paper shadow-[0_24px_60px_rgba(10,10,10,0.16)] lg:mx-0">
             <Image
               src="/shots/community.png"
-              alt="The Saathi community board, showing that questions are reviewed before they appear publicly"
+              alt={s.shotAlt}
               width={390}
               height={844}
               sizes="300px"
@@ -36,17 +27,19 @@ export function Safety() {
 
         <div className="lg:col-span-7">
           <Reveal>
-            <h2 className="max-w-[20ch] text-[32px] leading-[1.1] font-bold tracking-[-0.03em] sm:text-[42px]">
-              The careful parts are the ones you cannot see.
+            <h2
+              className={`max-w-[22ch] text-[32px] leading-[1.12] font-bold tracking-[-0.03em] sm:text-[42px] ${deva}`}
+            >
+              {s.heading}
             </h2>
           </Reveal>
 
           <dl className="mt-10 divide-y divide-line border-y border-line">
-            {points.map((p, i) => (
+            {s.points.map((p, i) => (
               <Reveal key={p.title} delay={i * 0.06}>
                 <div className="py-6">
-                  <dt className="text-[18px] font-semibold">{p.title}</dt>
-                  <dd className="mt-2 max-w-[62ch] text-[16px] leading-relaxed text-ink-muted">
+                  <dt className={`text-[18px] font-semibold ${deva}`}>{p.title}</dt>
+                  <dd className={`mt-2 max-w-[64ch] text-[16px] leading-relaxed text-ink-muted ${deva}`}>
                     {p.body}
                   </dd>
                 </div>
@@ -61,9 +54,8 @@ export function Safety() {
                 <Phone size={22} weight="fill" />
                 SOS 112
               </span>
-              <p className="text-[15px] leading-relaxed text-ink-muted">
-                One tap from every screen. Saathi coordinates calls and next
-                steps; it is not a medical device or an emergency responder.
+              <p className={`text-[15px] leading-relaxed text-ink-muted ${deva}`}>
+                {s.sosBody}
               </p>
             </div>
           </Reveal>

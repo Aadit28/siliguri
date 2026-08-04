@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckCircle, SpinnerGap } from "@phosphor-icons/react/dist/ssr";
+import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
 
-const roles = [
-  { value: "family", label: "My parents live in Siliguri" },
-  { value: "elder", label: "I live in Siliguri myself" },
-  { value: "partner", label: "I work for a city or an NGO" },
-];
+const ROLES = ["family", "elder", "partner", "city"] as const;
+type Role = (typeof ROLES)[number];
 
 type Status = "idle" | "sending" | "sent";
 
@@ -16,8 +14,26 @@ const field =
   "h-14 w-full rounded-[10px] border border-line bg-paper px-4 text-[16px] text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none";
 
 export function Waitlist() {
+  const { t, deva, lang } = useLang();
+  const w = t.waitlist;
+
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>("family");
+  const cityInput = useRef<HTMLInputElement>(null);
+
+  // "Request a city" in the directory rail is a link to this section; it also
+  // flips the form to the matching option so the visitor lands on the field
+  // they were promised instead of hunting for it.
+  useEffect(() => {
+    const onRequest = () => {
+      setRole("city");
+      setStatus("idle");
+      window.setTimeout(() => cityInput.current?.focus(), 450);
+    };
+    window.addEventListener("saathi:request-city", onRequest);
+    return () => window.removeEventListener("saathi:request-city", onRequest);
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,43 +48,45 @@ export function Waitlist() {
         body: JSON.stringify({
           name: data.get("name"),
           email: data.get("email"),
-          role: data.get("role"),
+          role,
+          city: data.get("city") ?? "",
+          // Worth storing: it says which language to write back in.
+          lang,
         }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(result.error ?? "Something went wrong. Please try again.");
+        setError(result.error ?? w.genericError);
         setStatus("idle");
         return;
       }
       setStatus("sent");
     } catch {
-      setError("We could not reach the server. Please try again.");
+      setError(w.networkError);
       setStatus("idle");
     }
   }
 
   return (
-    <section id="waitlist" className="scroll-mt-[80px] mx-auto max-w-[1240px] px-5 py-24 sm:px-8 lg:py-32">
+    <section
+      id="waitlist"
+      className="scroll-mt-[80px] mx-auto max-w-[1240px] px-5 py-24 sm:px-8 lg:py-32"
+    >
       <div className="grid grid-cols-1 gap-14 lg:grid-cols-12 lg:gap-20">
         <Reveal className="lg:col-span-5">
-          <h2 className="text-[32px] leading-[1.1] font-bold tracking-[-0.03em] sm:text-[42px]">
-            Siliguri first. Then the next city.
+          <h2
+            className={`text-[32px] leading-[1.12] font-bold tracking-[-0.03em] sm:text-[42px] ${deva}`}
+          >
+            {w.heading}
           </h2>
-          <p className="mt-5 max-w-[44ch] text-[17px] leading-relaxed text-ink-muted">
-            The pilot is small on purpose: a real directory, real families, and
-            enough attention to fix what breaks. Tell us where you fit and we
-            will get in touch when there is a place for you.
+          <p className={`mt-5 max-w-[44ch] text-[17px] leading-relaxed text-ink-muted ${deva}`}>
+            {w.body}
           </p>
           <dl className="mt-10 divide-y divide-line border-y border-line text-[15px]">
-            {[
-              ["Runs on", "iPhone, Android and any browser"],
-              ["Languages", "Hindi by default, English one tap away"],
-              ["Costs", "Nothing during the pilot"],
-            ].map(([term, value]) => (
+            {w.specs.map(([term, value]) => (
               <div key={term} className="flex gap-6 py-4">
-                <dt className="w-28 shrink-0 font-semibold">{term}</dt>
-                <dd className="text-ink-muted">{value}</dd>
+                <dt className={`w-28 shrink-0 font-semibold ${deva}`}>{term}</dt>
+                <dd className={`text-ink-muted ${deva}`}>{value}</dd>
               </div>
             ))}
           </dl>
@@ -77,38 +95,33 @@ export function Waitlist() {
         <Reveal delay={0.08} className="lg:col-span-6 lg:col-start-7">
           {status === "sent" ? (
             <div className="flex h-full min-h-[280px] flex-col justify-center rounded-[16px] border border-line bg-paper-alt p-8">
-              <CheckCircle
-                size={40}
-                weight="fill"
-                className="text-chip-sageink"
-              />
-              <p className="mt-5 text-[22px] font-bold tracking-[-0.02em]">
-                You are on the list.
+              <CheckCircle size={40} weight="fill" className="text-chip-sageink" />
+              <p className={`mt-5 text-[22px] font-bold tracking-[-0.02em] ${deva}`}>
+                {w.successTitle}
               </p>
-              <p className="mt-2 max-w-[42ch] text-[16px] leading-relaxed text-ink-muted">
-                We will write from a Saathi address before the pilot opens. No
-                newsletter, no forwarding your details on.
+              <p className={`mt-2 max-w-[42ch] text-[16px] leading-relaxed text-ink-muted ${deva}`}>
+                {w.successBody}
               </p>
             </div>
           ) : (
             <form onSubmit={onSubmit} noValidate className="grid gap-6">
               <div className="grid gap-2">
-                <label htmlFor="name" className="text-[15px] font-semibold">
-                  Your name
+                <label htmlFor="name" className={`text-[15px] font-semibold ${deva}`}>
+                  {w.nameLabel}
                 </label>
                 <input
                   id="name"
                   name="name"
                   autoComplete="name"
                   required
-                  className={field}
-                  placeholder="Priya Sharma"
+                  className={`${field} ${deva}`}
+                  placeholder={w.namePlaceholder}
                 />
               </div>
 
               <div className="grid gap-2">
-                <label htmlFor="email" className="text-[15px] font-semibold">
-                  Email
+                <label htmlFor="email" className={`text-[15px] font-semibold ${deva}`}>
+                  {w.emailLabel}
                 </label>
                 <input
                   id="email"
@@ -117,36 +130,55 @@ export function Waitlist() {
                   autoComplete="email"
                   required
                   className={field}
-                  placeholder="you@example.com"
+                  placeholder={w.emailPlaceholder}
                 />
-                <p className="text-[14px] text-ink-subtle">
-                  Used once, to tell you the pilot has opened.
-                </p>
+                <p className={`text-[14px] text-ink-subtle ${deva}`}>{w.emailHelp}</p>
               </div>
 
               <fieldset className="grid gap-3">
-                <legend className="mb-1 text-[15px] font-semibold">
-                  Who is this for?
+                <legend className={`mb-1 text-[15px] font-semibold ${deva}`}>
+                  {w.roleLegend}
                 </legend>
-                {roles.map((r, i) => (
+                {ROLES.map((value) => (
                   <label
-                    key={r.value}
-                    className="flex min-h-14 cursor-pointer items-center gap-3 rounded-[10px] border border-line px-4 text-[16px] transition-colors has-checked:border-brand has-checked:bg-brand-soft"
+                    key={value}
+                    className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-[10px] border px-4 text-[16px] transition-colors ${deva} ${
+                      role === value
+                        ? "border-brand bg-brand-soft"
+                        : "border-line"
+                    }`}
                   >
                     <input
                       type="radio"
                       name="role"
-                      value={r.value}
-                      defaultChecked={i === 0}
+                      value={value}
+                      checked={role === value}
+                      onChange={() => setRole(value)}
                       className="size-5 accent-[#276EF1]"
                     />
-                    {r.label}
+                    {w.roles[value]}
                   </label>
                 ))}
               </fieldset>
 
+              {role === "city" && (
+                <div className="grid gap-2">
+                  <label htmlFor="city" className={`text-[15px] font-semibold ${deva}`}>
+                    {w.cityLabel}
+                  </label>
+                  <input
+                    id="city"
+                    name="city"
+                    ref={cityInput}
+                    required
+                    className={`${field} ${deva}`}
+                    placeholder={w.cityPlaceholder}
+                  />
+                </div>
+              )}
+
               {error && (
-                <p role="alert" className="text-[15px] font-medium text-emergency">
+                <p role="alert" className={`text-[15px] font-medium text-emergency ${deva}`}>
                   {error}
                 </p>
               )}
@@ -154,12 +186,12 @@ export function Waitlist() {
               <button
                 type="submit"
                 disabled={status === "sending"}
-                className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-ink px-8 text-[16px] font-semibold text-paper transition-transform hover:bg-black active:translate-y-px disabled:opacity-60"
+                className={`inline-flex h-14 items-center justify-center gap-2 rounded-full bg-ink px-8 text-[16px] font-semibold text-paper transition-transform hover:bg-black active:translate-y-px disabled:opacity-60 ${deva}`}
               >
                 {status === "sending" && (
                   <SpinnerGap size={20} weight="bold" className="animate-spin" />
                 )}
-                {status === "sending" ? "Sending" : "Get early access"}
+                {status === "sending" ? w.sending : w.submit}
               </button>
             </form>
           )}

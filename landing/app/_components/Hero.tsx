@@ -2,11 +2,15 @@
 
 import Image from "next/image";
 import { motion, useReducedMotion } from "motion/react";
+import { useLang } from "../_lib/lang";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
 export function Hero() {
+  const { t, deva } = useLang();
+  const h = t.hero;
   const reduce = useReducedMotion();
+
   const rise = (delay: number) => ({
     initial: reduce ? false : { opacity: 0, y: 18 },
     animate: { opacity: 1, y: 0 },
@@ -19,38 +23,37 @@ export function Hero() {
         <div className="lg:col-span-6 xl:col-span-5">
           <motion.p
             {...rise(0)}
-            className="text-[13px] font-medium tracking-[0.14em] text-ink-subtle uppercase"
+            className={`text-[13px] font-medium tracking-[0.14em] text-ink-subtle uppercase ${deva}`}
           >
-            Pilot city · Siliguri, West Bengal
+            {h.eyebrow}
           </motion.p>
 
           <motion.h1
             {...rise(0.08)}
-            className="mt-5 text-[38px] leading-[1.06] font-bold tracking-[-0.035em] text-balance sm:text-[46px] lg:text-[52px]"
+            className={`mt-5 text-[36px] leading-[1.08] font-bold tracking-[-0.035em] text-balance sm:text-[44px] lg:text-[50px] ${deva}`}
           >
-            Care for your parents in Siliguri, from anywhere.
+            {h.headline}
           </motion.h1>
 
           <motion.p
             {...rise(0.16)}
-            className="mt-5 max-w-[46ch] text-[17px] leading-relaxed text-ink-muted sm:text-lg"
+            className={`mt-5 max-w-[46ch] text-[17px] leading-relaxed text-ink-muted sm:text-lg ${deva}`}
           >
-            Verified local services, reminders that ring, and an assistant that
-            answers in Hindi.
+            {h.sub}
           </motion.p>
 
           <motion.div {...rise(0.24)} className="mt-8 flex flex-wrap gap-3">
             <a
               href="#waitlist"
-              className="inline-flex h-14 items-center rounded-full bg-ink px-7 text-[16px] font-semibold text-paper transition-transform hover:bg-black active:translate-y-px"
+              className={`inline-flex h-14 items-center rounded-full bg-ink px-7 text-[16px] font-semibold text-paper transition-transform hover:bg-black active:translate-y-px ${deva}`}
             >
-              Get early access
+              {h.ctaPrimary}
             </a>
             <a
               href="#how"
-              className="inline-flex h-14 items-center rounded-full border border-line bg-paper px-7 text-[16px] font-semibold text-ink transition-colors hover:bg-paper-alt active:translate-y-px"
+              className={`inline-flex h-14 items-center rounded-full border border-line bg-paper px-7 text-[16px] font-semibold text-ink transition-colors hover:bg-paper-alt active:translate-y-px ${deva}`}
             >
-              See how it works
+              {h.ctaSecondary}
             </a>
           </motion.div>
         </div>
@@ -64,7 +67,7 @@ export function Hero() {
           <div className="relative aspect-4/3 w-full overflow-hidden rounded-[20px] bg-paper-alt">
             <Image
               src="/care-siliguri.png"
-              alt="A daughter showing her father something on a phone at home in Siliguri"
+              alt={h.photoAlt}
               fill
               priority
               sizes="(max-width: 1024px) 100vw, 640px"
@@ -81,7 +84,7 @@ export function Hero() {
           >
             <Image
               src="/shots/home.png"
-              alt="The Saathi home screen, asking what you need today"
+              alt={h.homeAlt}
               width={390}
               height={844}
               sizes="212px"

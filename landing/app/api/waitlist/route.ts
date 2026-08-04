@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 
-const ROLES = ["family", "elder", "partner"] as const;
+const ROLES = ["family", "elder", "partner", "city"] as const;
 type Role = (typeof ROLES)[number];
 
-type Payload = { name?: unknown; email?: unknown; role?: unknown };
+const LANGS = ["en", "hi", "mr"] as const;
+type Lang = (typeof LANGS)[number];
+
+type Payload = {
+  name?: unknown;
+  email?: unknown;
+  role?: unknown;
+  city?: unknown;
+  lang?: unknown;
+};
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -18,6 +27,8 @@ export async function POST(request: Request) {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const role = ROLES.includes(body.role as Role) ? (body.role as Role) : null;
+  const city = typeof body.city === "string" ? body.city.trim().slice(0, 120) : "";
+  const lang = LANGS.includes(body.lang as Lang) ? (body.lang as Lang) : "en";
 
   if (name.length < 2) {
     return NextResponse.json(
@@ -37,6 +48,14 @@ export async function POST(request: Request) {
       { status: 422 },
     );
   }
+  // A city request with no city named is the one combination that carries no
+  // information at all, so it is rejected rather than stored empty.
+  if (role === "city" && city.length < 2) {
+    return NextResponse.json(
+      { error: "Please tell us which city." },
+      { status: 422 },
+    );
+  }
 
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -52,7 +71,12 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    console.warn("waitlist: no storage configured, discarding", { email, role });
+    console.warn("waitlist: no storage configured, discarding", {
+      email,
+      role,
+      city,
+      lang,
+    });
     return NextResponse.json({ ok: true, stored: false });
   }
 
@@ -64,11 +88,22 @@ export async function POST(request: Request) {
       "Content-Type": "application/json",
       Prefer: "resolution=merge-duplicates,return=minimal",
     },
-    body: JSON.stringify({ name, email, role, source: "landing" }),
+    body: JSON.stringify({
+      name,
+      email,
+      role,
+      city: city || null,
+      lang,
+      source: "landing",
+    }),
   });
 
   if (!response.ok) {
-    console.error("waitlist: insert failed", response.status, await response.text());
+    console.error(
+      "waitlist: insert failed",
+      response.status,
+      await response.text(),
+    );
     return NextResponse.json(
       { error: "We could not save that. Please try again." },
       { status: 502 },
