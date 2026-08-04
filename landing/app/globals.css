@@ -78,6 +78,51 @@ body {
   font-feature-settings: "kern" 1;
 }
 
+/* Hero backdrop. Four stacked gradients, no image and no external asset:
+   a dot field, a white spotlight, one restrained wash of the brand blue, and a
+   paper-to-alt base. The blue is the page's single accent at 9% — enough to
+   stop the section reading as flat white, far short of an AI gradient. */
+.hero-canvas {
+  background-image:
+    radial-gradient(rgba(10, 10, 10, 0.06) 1px, transparent 1px),
+    radial-gradient(
+      52% 50% at 70% 6%,
+      rgba(255, 255, 255, 0.92),
+      rgba(255, 255, 255, 0) 72%
+    ),
+    radial-gradient(
+      52% 62% at 4% 46%,
+      rgba(39, 110, 241, 0.14),
+      rgba(39, 110, 241, 0) 70%
+    ),
+    radial-gradient(
+      44% 46% at 96% 88%,
+      rgba(39, 110, 241, 0.07),
+      rgba(39, 110, 241, 0) 72%
+    ),
+    linear-gradient(176deg, #fafbfd 0%, #eef0f5 100%);
+  background-size:
+    22px 22px,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+}
+
+/* Only the last sliver fades, so the section can meet the next one without a
+   hard edge while the wash still reads across the rest of the hero. */
+.hero-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 82%,
+    rgba(246, 246, 246, 0.9) 100%
+  );
+}
+
 /* Hairline grid behind the distance band. Two 1px gradients, no image. */
 .grid-lines {
   background-image:

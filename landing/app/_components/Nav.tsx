@@ -28,8 +28,10 @@ export function Nav() {
     <header
       // Solid rather than translucent: the page has one dark section, and a
       // semi-transparent bar over it reads as a grey smear.
-      className={`sticky top-0 z-50 bg-paper transition-colors duration-300 ${
-        scrolled ? "border-b border-line" : "border-b border-transparent"
+      className={`sticky top-0 z-50 transition-colors duration-300 ${
+        scrolled
+          ? "border-b border-line bg-paper"
+          : "border-b border-transparent bg-transparent"
       }`}
     >
       <nav className="mx-auto flex h-[68px] max-w-[1240px] items-center gap-5 px-5 sm:px-8">

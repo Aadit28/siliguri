@@ -97,8 +97,6 @@ const en = {
     sub: "Verified services near their home, reminders that ring, and an assistant that answers in your language.",
     ctaPrimary: "Get early access",
     ctaSecondary: "See how it works",
-    photoAlt:
-      "A daughter showing her father something on a phone at home in India",
     screens: [
       { label: "Services" },
       { label: "Assistant" },
@@ -106,7 +104,9 @@ const en = {
     ],
     cards: {
       listingsLabel: "verified listings",
-      listingsNote: "Across three cities, each one checked by hand.",
+      assistantLabel: "Ask in Hindi or English",
+      remindersLabel: "Reminders that ring",
+      remindersNote: "Saved on one confirming tap.",
       sosNote: "One tap from every screen, day or night.",
     },
   },
@@ -290,7 +290,6 @@ const hi: Dict = {
     sub: "जाँची-परखी स्थानीय सेवाएँ, समय पर बजने वाले रिमाइंडर, और आपकी भाषा में जवाब देने वाला असिस्टेंट।",
     ctaPrimary: "जल्दी पहुँच पाएँ",
     ctaSecondary: "देखिए यह कैसे काम करता है",
-    photoAlt: "घर पर बेटी अपने पिता को फ़ोन पर कुछ दिखाती हुई",
     screens: [
       { label: "सेवाएँ" },
       { label: "सहायक" },
@@ -298,7 +297,9 @@ const hi: Dict = {
     ],
     cards: {
       listingsLabel: "जाँची हुई लिस्टिंग",
-      listingsNote: "तीन शहरों में, हर एक हाथ से जाँची गई।",
+      assistantLabel: "हिंदी या अंग्रेज़ी में पूछिए",
+      remindersLabel: "बजने वाले रिमाइंडर",
+      remindersNote: "एक पुष्टि वाले टैप पर सेव।",
       sosNote: "हर स्क्रीन से एक टैप, दिन हो या रात।",
     },
   },
@@ -480,7 +481,6 @@ const mr: Dict = {
     sub: "तपासलेल्या स्थानिक सेवा, वेळेवर वाजणारे रिमाइंडर, आणि तुमच्या भाषेत उत्तर देणारा असिस्टंट.",
     ctaPrimary: "लवकर प्रवेश मिळवा",
     ctaSecondary: "हे कसे चालते ते पाहा",
-    photoAlt: "घरी मुलगी वडिलांना फोनवर काहीतरी दाखवत आहे",
     screens: [
       { label: "सेवा" },
       { label: "असिस्टंट" },
@@ -488,7 +488,9 @@ const mr: Dict = {
     ],
     cards: {
       listingsLabel: "तपासलेल्या नोंदी",
-      listingsNote: "तीन शहरांत, प्रत्येक स्वतः तपासलेली.",
+      assistantLabel: "हिंदी किंवा इंग्रजीत विचारा",
+      remindersLabel: "वाजणारे रिमाइंडर",
+      remindersNote: "एका होकाराच्या टॅपवर सेव्ह.",
       sosNote: "प्रत्येक स्क्रीनवरून एका टॅपवर, दिवस असो वा रात्र.",
     },
   },

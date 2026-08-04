@@ -24,9 +24,9 @@ export function Hero() {
     // hero that is already taller than the screen.
     <section
       id="top"
-      className="relative overflow-hidden lg:flex lg:min-h-[calc(100dvh-68px)] lg:items-center"
+      className="hero-canvas relative overflow-hidden border-b border-line lg:flex lg:min-h-[calc(100dvh-68px)] lg:items-center"
     >
-      <div className="mx-auto grid w-full max-w-[1320px] grid-cols-1 items-center gap-12 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-12 lg:gap-12 lg:py-10 xl:gap-14 xl:py-12">
+      <div className="relative z-10 mx-auto grid w-full max-w-[1320px] grid-cols-1 items-center gap-12 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-12 lg:gap-12 lg:py-10 xl:gap-14 xl:py-12">
         <div className="lg:col-span-6">
           <motion.p
             {...rise(0)}

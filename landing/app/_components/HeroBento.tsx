@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import {
   animate,
   motion,
   useInView,
-  useMotionValue,
   useReducedMotion,
-  useSpring,
-  useTransform,
-  type MotionValue,
 } from "motion/react";
-import { Phone } from "@phosphor-icons/react/dist/ssr";
+import {
+  BellRinging,
+  Microphone,
+  Phone,
+  SealCheck,
+} from "@phosphor-icons/react/dist/ssr";
 import { CITIES, TOTAL_LISTINGS } from "../_lib/copy";
 import { useLang } from "../_lib/lang";
 import { AppMockup } from "./mockups/AppMockup";
@@ -20,7 +20,7 @@ import { AppMockup } from "./mockups/AppMockup";
 const ease = [0.16, 1, 0.3, 1] as const;
 
 const cell =
-  "relative overflow-hidden rounded-[18px] border border-line bg-paper";
+  "relative flex flex-col overflow-hidden rounded-[18px] border border-line bg-paper/90 p-5 shadow-[0_10px_28px_rgba(10,10,10,0.05)] backdrop-blur-sm";
 
 function enter(delay: number, reduce: boolean | null) {
   return {
@@ -30,39 +30,29 @@ function enter(delay: number, reduce: boolean | null) {
   };
 }
 
-/** The photo, drifting slightly against the pointer. */
-function PhotoCell({
-  x,
-  y,
-  delay,
+function Chip({
+  tone,
+  children,
 }: {
-  x: MotionValue<number>;
-  y: MotionValue<number>;
-  delay: number;
+  tone: "sky" | "sage" | "emergency";
+  children: React.ReactNode;
 }) {
-  const { t } = useLang();
-  const reduce = useReducedMotion();
+  const tones = {
+    sky: "bg-chip-sky text-chip-skyink",
+    sage: "bg-chip-sage text-chip-sageink",
+    emergency: "bg-emergency text-paper",
+  } as const;
   return (
-    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2 h-[220px] lg:h-[286px]`}>
-      <motion.div style={reduce ? undefined : { x, y }} className="absolute -inset-4">
-        <Image
-          src="/care-siliguri.png"
-          alt={t.hero.photoAlt}
-          fill
-          priority
-          sizes="(max-width: 1024px) 100vw, 660px"
-          className="object-cover object-[60%_38%]"
-        />
-      </motion.div>
-    </motion.div>
+    <span className={`grid size-9 shrink-0 place-items-center rounded-full ${tones[tone]}`}>
+      {children}
+    </span>
   );
 }
 
 /**
- * Four real app screens on a loop. One screenshot makes Saathi look like a
- * directory; the cycle shows it is a directory, an assistant, a calendar and a
- * neighbours' board without spending hero copy saying so. The dots are real
- * controls, and taking one stops the auto-play.
+ * A phone-shaped phone: bezel, notch, 9:19.5. The mock-up inside is the
+ * product's real UI, so giving it the device's real proportions costs nothing
+ * and stops it reading as a floating rectangle of app.
  */
 function PhoneCell({ delay }: { delay: number }) {
   const reduce = useReducedMotion();
@@ -70,22 +60,24 @@ function PhoneCell({ delay }: { delay: number }) {
   return (
     <motion.div
       {...enter(delay, reduce)}
-      // Spans both rows and takes its height from them, so the phone always
-      // ends flush with the two cards beside it instead of being pinned to a
-      // guessed pixel height that drifts when the copy rewraps.
-      className={`${cell} row-span-2 flex h-full flex-col bg-paper-alt p-3`}
+      className="col-span-2 row-span-3 flex min-h-0 flex-col"
     >
-      <AppMockup className="grow" />
+      <div className="relative flex min-h-0 grow flex-col">
+        <AppMockup
+          className="min-h-0 grow drop-shadow-[0_18px_40px_rgba(10,10,10,0.14)]"
+          rounded="rounded-[24px]"
+        />
+      </div>
     </motion.div>
   );
 }
 
-/** Counts up to the real total across the three shipped datasets. */
-function ListingsCell({ delay }: { delay: number }) {
+/** The directory, broken down by the three shipped datasets. */
+function DirectoryCell({ delay }: { delay: number }) {
   const { t, deva } = useLang();
   const reduce = useReducedMotion();
   const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, amount: 0.6 });
+  const inView = useInView(ref, { once: true, amount: 0.5 });
   const [shown, setShown] = useState(reduce ? TOTAL_LISTINGS : 0);
 
   useEffect(() => {
@@ -102,28 +94,27 @@ function ListingsCell({ delay }: { delay: number }) {
   const widest = Math.max(...CITIES.map((c) => c.total));
 
   return (
-    <motion.div
-      {...enter(delay, reduce)}
-      ref={ref}
-      className={`${cell} flex h-[196px] flex-col p-5 lg:h-[236px] lg:p-6`}
-    >
-      <div className="flex items-baseline gap-2">
-        <p className="text-[38px] leading-none font-bold tracking-[-0.04em] tabular-nums lg:text-[46px]">
-          {shown}
-        </p>
-        <p className={`text-[14px] font-semibold ${deva}`}>
-          {t.hero.cards.listingsLabel}
-        </p>
+    <motion.div {...enter(delay, reduce)} ref={ref} className={`${cell} col-span-2 sm:col-span-4`}>
+      <div className="flex items-center gap-3">
+        <Chip tone="sage">
+          <SealCheck size={18} weight="fill" />
+        </Chip>
+        <span className="flex items-baseline gap-2">
+          <span className="text-[30px] leading-none font-bold tracking-[-0.04em] tabular-nums">
+            {shown}
+          </span>
+          <span className={`text-[14px] font-semibold ${deva}`}>
+            {t.hero.cards.listingsLabel}
+          </span>
+        </span>
       </div>
 
-      {/* Bars are the real proportions between the three datasets, not a shape
-          drawn to look balanced. Ahilyanagar is genuinely the smallest. */}
-      {/* Label and bar stack rather than sit side by side: in a third-width
-          card an inline label leaves the bar too short to compare against. */}
-      <ul className="mt-auto space-y-2.5">
+      {/* Bars are the real ratios between the three datasets, not a shape drawn
+          to look balanced. Ahilyanagar is genuinely the smallest. */}
+      <ul className="mt-4 grid grid-cols-3 gap-x-4 gap-y-1">
         {CITIES.map((c, i) => (
           <li key={c.key}>
-            <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline justify-between gap-1">
               <span className={`truncate text-[11.5px] font-medium ${deva}`}>
                 {t.cities[c.key]}
               </span>
@@ -146,6 +137,50 @@ function ListingsCell({ delay }: { delay: number }) {
   );
 }
 
+/** The assistant, with the sentence it is built to understand. */
+function AssistantCell({ delay }: { delay: number }) {
+  const { t, deva } = useLang();
+  const reduce = useReducedMotion();
+
+  return (
+    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2`}>
+      <Chip tone="sky">
+        <Microphone size={18} weight="fill" />
+      </Chip>
+      <p className={`mt-3 text-[15px] font-semibold ${deva}`}>
+        {t.hero.cards.assistantLabel}
+      </p>
+      <p
+        lang="hi"
+        className="deva mt-auto truncate text-[12.5px] text-ink-subtle"
+        title="मुझे रोज़ शाम 8 बजे बीपी की दवा याद दिलाना"
+      >
+        “मुझे रोज़ शाम 8 बजे…”
+      </p>
+    </motion.div>
+  );
+}
+
+/** Reminders, shown as the card the assistant produces. */
+function RemindersCell({ delay }: { delay: number }) {
+  const { t, deva } = useLang();
+  const reduce = useReducedMotion();
+
+  return (
+    <motion.div {...enter(delay, reduce)} className={`${cell} col-span-2`}>
+      <Chip tone="sage">
+        <BellRinging size={18} weight="fill" />
+      </Chip>
+      <p className={`mt-3 text-[15px] font-semibold ${deva}`}>
+        {t.hero.cards.remindersLabel}
+      </p>
+      <p className={`mt-auto text-[12.5px] text-ink-subtle ${deva}`}>
+        {t.hero.cards.remindersNote}
+      </p>
+    </motion.div>
+  );
+}
+
 /** The page's only red, and its only infinite loop. */
 function SosCell({ delay }: { delay: number }) {
   const { t, deva } = useLang();
@@ -154,10 +189,12 @@ function SosCell({ delay }: { delay: number }) {
   return (
     <motion.div
       {...enter(delay, reduce)}
-      className={`${cell} flex h-[196px] flex-col border-emergency/20 bg-emergency-soft p-5 lg:h-[236px] lg:p-6`}
+      className={`${cell} col-span-2 border-emergency/20 bg-emergency-soft sm:col-span-4`}
     >
-      <span className="relative grid size-10 place-items-center rounded-full bg-emergency text-paper">
-        <Phone size={18} weight="fill" />
+      <span className="relative w-fit">
+        <Chip tone="emergency">
+          <Phone size={17} weight="fill" />
+        </Chip>
         {!reduce && (
           <motion.span
             className="absolute inset-0 rounded-full"
@@ -171,8 +208,8 @@ function SosCell({ delay }: { delay: number }) {
           />
         )}
       </span>
-      <p className="mt-auto text-[24px] font-bold text-emergency lg:text-[28px]">SOS 112</p>
-      <p className={`mt-1 text-[13px] leading-snug text-ink-muted ${deva}`}>
+      <p className="mt-3 text-[18px] font-bold text-emergency">SOS 112</p>
+      <p className={`mt-auto text-[12.5px] leading-snug text-ink-muted ${deva}`}>
         {t.hero.cards.sosNote}
       </p>
     </motion.div>
@@ -180,37 +217,12 @@ function SosCell({ delay }: { delay: number }) {
 }
 
 export function HeroBento() {
-  const reduce = useReducedMotion();
-
-  // Pointer drives the drift through motion values, never state: state here
-  // would re-render the whole grid on every mousemove and stutter the
-  // cross-fade running inside the phone.
-  const px = useMotionValue(0.5);
-  const py = useMotionValue(0.5);
-  const sx = useSpring(px, { stiffness: 110, damping: 20, mass: 0.6 });
-  const sy = useSpring(py, { stiffness: 110, damping: 20, mass: 0.6 });
-  const photoX = useTransform(sx, [0, 1], [14, -14]);
-  const photoY = useTransform(sy, [0, 1], [10, -10]);
-
   return (
-    <div
-      onPointerMove={(event) => {
-        // Coarse pointers get no drift: on a phone the "pointer" is a tap, and
-        // shifting on tap reads as a glitch.
-        if (reduce || event.pointerType !== "mouse") return;
-        const box = event.currentTarget.getBoundingClientRect();
-        px.set((event.clientX - box.left) / box.width);
-        py.set((event.clientY - box.top) / box.height);
-      }}
-      onPointerLeave={() => {
-        px.set(0.5);
-        py.set(0.5);
-      }}
-      className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4"
-    >
-      <PhotoCell x={photoX} y={photoY} delay={0.1} />
-      <PhoneCell delay={0.18} />
-      <ListingsCell delay={0.26} />
+    <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-6 sm:gap-4">
+      <PhoneCell delay={0.1} />
+      <DirectoryCell delay={0.18} />
+      <AssistantCell delay={0.26} />
+      <RemindersCell delay={0.3} />
       <SosCell delay={0.34} />
     </div>
   );

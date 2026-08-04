@@ -23,7 +23,13 @@ const HOLD_MS = 4200;
  * The dots are real controls, and taking one stops the loop — a carousel that
  * keeps moving after you have grabbed it is a carousel fighting its reader.
  */
-export function AppMockup({ className = "" }: { className?: string }) {
+export function AppMockup({
+  className = "",
+  rounded = "rounded-[22px]",
+}: {
+  className?: string;
+  rounded?: string;
+}) {
   const { t } = useLang();
   const reduce = useReducedMotion();
   const [index, setIndex] = useState(0);
@@ -40,7 +46,7 @@ export function AppMockup({ className = "" }: { className?: string }) {
 
   return (
     <div className={`flex flex-col ${className}`}>
-      <Device tab={tab} showSignIn={false} className="grow">
+      <Device tab={tab} showSignIn={false} rounded={rounded} className="min-h-0 grow">
         <AnimatePresence mode="wait">
           <motion.div
             key={index}
@@ -55,7 +61,7 @@ export function AppMockup({ className = "" }: { className?: string }) {
         </AnimatePresence>
       </Device>
 
-      <div className="mt-3 flex shrink-0 justify-center gap-1.5">
+      <div className="mt-2 flex shrink-0 justify-center gap-1.5">
         {SCENES.map((scene, i) => (
           <button
             key={scene.tab}

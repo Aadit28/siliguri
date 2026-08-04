@@ -37,11 +37,13 @@ export function Device({
    * clipped by the card's overflow.
    */
   showSignIn = true,
+  rounded = "rounded-[22px]",
 }: {
   tab: TabKey;
   children: ReactNode;
   className?: string;
   showSignIn?: boolean;
+  rounded?: string;
 }) {
   const { lang } = useLang();
   const s = appStrings(lang);
@@ -49,7 +51,7 @@ export function Device({
 
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-[22px] border border-line bg-paper ${className}`}
+      className={`flex flex-col overflow-hidden border border-line bg-paper ${rounded} ${className}`}
     >
       {/* Everything here is shrink-0 and nowrap: the shell renders as narrow as
           240px, where a wrapping "SOS 112" would read as a broken button. */}
