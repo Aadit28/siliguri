@@ -54,10 +54,22 @@ function badRequest(message) {
 // base64 photo attachments (a prescription photo is megabytes, not kilobytes);
 // every other route stays on the small default.
 async function readBody(req, { maxBytes = MAX_BODY_BYTES } = {}) {
-  if (req.body && typeof req.body === 'object') return req.body;
-  if (typeof req.body === 'string') {
-    if (Buffer.byteLength(req.body, 'utf8') > maxBytes) throw tooLarge();
-    return parseJson(req.body);
+  // On Vercel req.body is a lazy getter that parses on first access, so an
+  // invalid JSON body throws HERE rather than at our own JSON.parse below —
+  // which is why malformed input still surfaced as a 500 in production after
+  // the parser was hardened. Locally req.body is undefined and we read the
+  // stream ourselves, so this branch is production-only.
+  let provided;
+  try {
+    provided = req.body;
+  } catch {
+    throw badRequest('Send valid JSON.');
+  }
+  if (Buffer.isBuffer(provided)) return parseJson(provided.toString('utf8'));
+  if (provided && typeof provided === 'object') return provided;
+  if (typeof provided === 'string') {
+    if (Buffer.byteLength(provided, 'utf8') > maxBytes) throw tooLarge();
+    return parseJson(provided);
   }
   const chunks = [];
   let size = 0;
