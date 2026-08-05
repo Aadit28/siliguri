@@ -192,7 +192,7 @@ function TodayModal({ delay }: { delay: number }) {
 
   return (
     <ModalCard
-      num="02"
+      num="03"
       label={s.today.title}
       tone="plum"
       delay={delay}
@@ -233,7 +233,7 @@ function DoctorsModal({ delay }: { delay: number }) {
 
   return (
     <ModalCard
-      num="03"
+      num="04"
       label={s.doctors.title}
       tone="clay"
       delay={delay}
@@ -268,7 +268,7 @@ function GroceryModal({ delay }: { delay: number }) {
 
   return (
     <ModalCard
-      num="04"
+      num="02"
       label={s.grocery.title}
       tone="olive"
       delay={delay}
