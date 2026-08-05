@@ -25,6 +25,8 @@ export type AppStrings = {
     careTeam: string;
     members: [string, string];
   };
+  doctors: { title: string; rows: { name: string; area: string }[] };
+  grocery: { title: string; store: string; area: string; call: string };
   ask: { title: string; inReview: string; reviewNote: string; postTitle: string; postBody: string; author: string };
   admin: {
     title: string;
@@ -77,6 +79,20 @@ const en: AppStrings = {
     note: "Ma confirms this on her own phone.",
     careTeam: "Care team",
     members: ["Priya · Daughter", "Ward helper · Pradhan Nagar"],
+  },
+  doctors: {
+    title: "Doctors nearby",
+    rows: [
+      { name: "General physician", area: "Pradhan Nagar" },
+      { name: "Eye check-up", area: "Sevoke Road" },
+      { name: "North Bengal Medical College", area: "Siliguri" },
+    ],
+  },
+  grocery: {
+    title: "Daily needs",
+    store: "Grocery & daily needs",
+    area: "Ward 10 · delivers home",
+    call: "Call to order",
   },
   ask: {
     title: "Ask",
@@ -137,6 +153,20 @@ const hi: AppStrings = {
     note: "माँ अपने फ़ोन पर इसकी पुष्टि करेंगी।",
     careTeam: "केयर टीम",
     members: ["प्रिया · बेटी", "वार्ड हेल्पर · प्रधान नगर"],
+  },
+  doctors: {
+    title: "पास के डॉक्टर",
+    rows: [
+      { name: "जनरल फ़िज़िशियन", area: "प्रधान नगर" },
+      { name: "आँखों की जाँच", area: "सेवोक रोड" },
+      { name: "नॉर्थ बंगाल मेडिकल कॉलेज", area: "सिलीगुड़ी" },
+    ],
+  },
+  grocery: {
+    title: "रोज़मर्रा की ज़रूरतें",
+    store: "किराना और रोज़ का सामान",
+    area: "वार्ड 10 · घर तक डिलीवरी",
+    call: "फ़ोन पर ऑर्डर करें",
   },
   ask: {
     title: "पूछें",

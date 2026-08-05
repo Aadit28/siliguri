@@ -3,8 +3,7 @@
 import { Buildings, HouseLine, UsersThree } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
 import { Reveal } from "./Reveal";
-import { Panel, type TabKey } from "./mockups/Device";
-import { SceneGuardian, SceneServices } from "./mockups/scenes";
+import { AppMockup } from "./mockups/AppMockup";
 
 function Chip({
   tone,
@@ -25,28 +24,15 @@ function Chip({
   );
 }
 
-/**
- * A live mock-up rising out of the card's bottom edge. Coded rather than a
- * screenshot, so each card can show a different task instead of the same four
- * PNGs reappearing down the page.
- */
-function ScreenPeek({
-  children,
-  tab,
-}: {
-  children: React.ReactNode;
-  tab: TabKey;
-}) {
-  return (
-    <Panel label={tab} className="w-full shadow-[0_12px_32px_rgba(10,10,10,0.07)]">
-      {children}
-    </Panel>
-  );
-}
-
 const cardBase =
   "rounded-[16px] border border-line bg-paper p-7 sm:p-8 transition-shadow hover:shadow-[0_16px_40px_rgba(10,10,10,0.07)]";
 
+/**
+ * The role-switching mock-up moved here from the hero: this section's whole
+ * claim is "one app, three people", so the demo that proves it — pick a role,
+ * watch the same panel change — sits at its centre, and the three cards below
+ * carry the words without repeating the screens.
+ */
 export function Portals() {
   const { t, deva } = useLang();
   const p = t.portals;
@@ -67,8 +53,12 @@ export function Portals() {
         </p>
       </Reveal>
 
-      <div className="mt-14 grid grid-cols-1 gap-5 lg:grid-cols-12">
-        <Reveal delay={0.05} className="lg:col-span-7">
+      <Reveal delay={0.08} className="mt-12">
+        <AppMockup className="min-h-[380px] lg:min-h-[440px]" rounded="rounded-[24px]" />
+      </Reveal>
+
+      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-12">
+        <Reveal delay={0.05} className="lg:col-span-6">
           <article className={`${cardBase} flex h-full flex-col`}>
             <Chip tone="sky">
               <HouseLine size={22} weight="regular" />
@@ -82,23 +72,18 @@ export function Portals() {
             <p className={`mt-4 max-w-[44ch] text-[16px] leading-relaxed text-ink-muted ${deva}`}>
               {p.parent.body}
             </p>
-            <div className="mt-8 grid grow grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-              <ul className={`space-y-3 self-start text-[15px] text-ink ${deva}`}>
-                {p.parent.bullets.map((item) => (
-                  <li key={item} className="flex gap-3">
-                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-ink" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <ScreenPeek tab="services">
-                <SceneServices />
-              </ScreenPeek>
-            </div>
+            <ul className={`mt-6 space-y-3 text-[15px] text-ink ${deva}`}>
+              {p.parent.bullets.map((item) => (
+                <li key={item} className="flex gap-3">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-ink" />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </article>
         </Reveal>
 
-        <Reveal delay={0.12} className="lg:col-span-5">
+        <Reveal delay={0.12} className="lg:col-span-6">
           <article className={`${cardBase} flex h-full flex-col`}>
             <Chip tone="sage">
               <UsersThree size={22} weight="regular" />
@@ -112,11 +97,6 @@ export function Portals() {
             <p className={`mt-4 text-[16px] leading-relaxed text-ink-muted ${deva}`}>
               {p.guardian.body}
             </p>
-            <div className="mt-8">
-              <ScreenPeek tab="home">
-                <SceneGuardian />
-              </ScreenPeek>
-            </div>
           </article>
         </Reveal>
 

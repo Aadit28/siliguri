@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { CaretDown } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
-import { HeroBento } from "./HeroBento";
+import { HeroModals } from "./HeroModals";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -66,7 +66,7 @@ export function Hero() {
         </div>
 
         <div className="lg:col-span-6">
-          <HeroBento />
+          <HeroModals />
         </div>
       </div>
 
