@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { CaretDown } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
-import { FloraSpray } from "./Flora";
+import { FloraRoses } from "./Flora";
 import { HeroModals } from "./HeroModals";
 
 const ease = [0.16, 1, 0.3, 1] as const;
@@ -27,10 +27,10 @@ export function Hero() {
       id="top"
       className="hero-canvas relative overflow-hidden border-b border-line lg:flex lg:min-h-[calc(100dvh-68px)] lg:items-center"
     >
-      {/* The flowery accent: a sage line-drawn spray growing out of the hero's
+      {/* The flowery accent: monoline roses drawing themselves in the hero's
           bottom-left corner, behind the copy. Desktop only — on a phone the
           corner it lives in does not exist. */}
-      <FloraSpray className="absolute bottom-0 left-[-36px] hidden h-[340px] w-auto text-chip-sageink opacity-[0.38] lg:block xl:left-0 xl:h-[380px]" />
+      <FloraRoses className="absolute -bottom-10 left-[-30px] hidden h-[300px] w-[400px] opacity-[0.5] lg:block xl:left-0 xl:h-[340px] xl:w-[460px]" />
 
       <div className="relative z-10 mx-auto grid w-full max-w-[1560px] grid-cols-1 items-center gap-12 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-12 lg:gap-10 lg:py-8 xl:gap-12 xl:py-12">
         <div className="lg:col-span-6">
