@@ -80,9 +80,9 @@ body {
 }
 
 /* Hero backdrop. Four stacked gradients, no image and no external asset:
-   a dot field, a white spotlight, one restrained wash of the brand blue, and a
-   paper-to-alt base. The blue is the page's single accent at 9% — enough to
-   stop the section reading as flat white, far short of an AI gradient. */
+   a dot field, a white spotlight, two restrained washes of the app's sage
+   green, and a paper-to-alt base warmed slightly toward green. Blue stays
+   reserved for interactive elements; the ambient hue is the plant one. */
 .hero-canvas {
   background-image:
     radial-gradient(rgba(10, 10, 10, 0.06) 1px, transparent 1px),
@@ -93,15 +93,15 @@ body {
     ),
     radial-gradient(
       52% 62% at 4% 46%,
-      rgba(39, 110, 241, 0.14),
-      rgba(39, 110, 241, 0) 70%
+      rgba(78, 141, 96, 0.16),
+      rgba(78, 141, 96, 0) 70%
     ),
     radial-gradient(
       44% 46% at 96% 88%,
-      rgba(39, 110, 241, 0.07),
-      rgba(39, 110, 241, 0) 72%
+      rgba(78, 141, 96, 0.09),
+      rgba(78, 141, 96, 0) 72%
     ),
-    linear-gradient(176deg, #fafbfd 0%, #eef0f5 100%);
+    linear-gradient(176deg, #fafcfa 0%, #edf2ee 100%);
   background-size:
     22px 22px,
     100% 100%,

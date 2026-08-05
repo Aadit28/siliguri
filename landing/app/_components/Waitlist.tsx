@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckCircle, SpinnerGap } from "@phosphor-icons/react/dist/ssr";
 import { useLang } from "../_lib/lang";
+import { FloraSprig } from "./Flora";
 import { Reveal } from "./Reveal";
 
 const ROLES = ["family", "elder", "partner", "city"] as const;
@@ -70,8 +71,12 @@ export function Waitlist() {
   return (
     <section
       id="waitlist"
-      className="scroll-mt-[80px] mx-auto max-w-[1240px] px-5 py-24 sm:px-8 lg:py-32"
+      className="relative scroll-mt-[80px] mx-auto max-w-[1240px] px-5 py-24 sm:px-8 lg:py-32"
     >
+      {/* The spray's echo: one sprig in the empty ground under the spec list,
+          same sage, quieter. The form's column stays clear of decoration. */}
+      <FloraSprig className="absolute bottom-16 left-6 hidden h-[160px] w-auto text-chip-sageink opacity-[0.32] lg:block" />
+
       <div className="grid grid-cols-1 gap-14 lg:grid-cols-12 lg:gap-20">
         <Reveal className="lg:col-span-5">
           <h2
