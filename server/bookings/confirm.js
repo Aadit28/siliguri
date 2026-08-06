@@ -7,7 +7,9 @@ const {
   withCors,
 } = require('../_lib/auth');
 const {
+  SUBSCRIPTION_REQUIRED,
   approvalThresholdPaise,
+  bookingEntitlement,
   enforceRateLimit,
   firstRow,
   httpError,
@@ -44,6 +46,24 @@ module.exports = async function handler(req, res) {
     const held = await loadBooking(auth.supabase, holdId);
     const linkError = await requireFamilyLink(auth, held.family_id);
     if (linkError) return send(res, 403, linkError);
+
+    // The gate that matters is at the hold; this is the cheap second look. A
+    // hold can outlive the plan that allowed it — Razorpay can halt a mandate
+    // between the two calls — and the alternative is committing a booking for a
+    // household the paywall has already closed behind.
+    //
+    // family_id is the elder's account id, which is the key entitlement_for
+    // takes. The hold itself is left where it is: it expires on its own minutes
+    // from now and booking_release_expired() hands the seat back, whereas
+    // cancelling it here would take the seat off a family who may well pay and
+    // confirm inside the same five minutes.
+    const entitlement = await bookingEntitlement(auth.supabase, held.family_id);
+    if (!entitlement.allowed) {
+      return send(res, SUBSCRIPTION_REQUIRED.status, {
+        error: SUBSCRIPTION_REQUIRED.message,
+        code: SUBSCRIPTION_REQUIRED.code,
+      });
+    }
 
     await enforceRateLimit(auth.supabase, auth.user.id);
 

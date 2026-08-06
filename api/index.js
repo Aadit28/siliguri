@@ -58,6 +58,10 @@ const ROUTES = {
   'family/analytics': () => require('../server/family/analytics'),
   'consent/get': () => require('../server/consent/get'),
   'consent/set': () => require('../server/consent/set'),
+  // Mints a LiveKit join token. Answers 503 rather than throwing when the
+  // LiveKit credentials are absent, so an unconfigured project still serves
+  // every other route through this dispatcher.
+  'voice/token': () => require('../server/voice/token'),
 };
 
 module.exports = async function handler(req, res) {

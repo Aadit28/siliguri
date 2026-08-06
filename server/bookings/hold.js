@@ -1,6 +1,8 @@
 const { authenticate, readBody, send, sendServerError, withCors } = require('../_lib/auth');
 const {
   CREATED_BY,
+  SUBSCRIPTION_REQUIRED,
+  bookingEntitlement,
   enforceRateLimit,
   firstRow,
   isSlotFull,
@@ -47,6 +49,24 @@ module.exports = async function handler(req, res) {
     const idempotencyKey = requireUuid(body.idempotencyKey, 'idempotencyKey');
     const createdBy = CREATED_BY.includes(body.createdBy) ? body.createdBy : 'app';
     const { elderId, familyId } = await resolveFamilyContext(auth, body.elderId);
+
+    // The paywall, and the first thing checked once we know whose booking this
+    // is. Deliberately at the hold and not at the confirm: a family reads
+    // "choose a plan" before they have picked a time and told an elder it is
+    // sorted, and no seat is ever held for a booking that will be refused at
+    // the last step. Ahead of the city lookup and the rate limiter too — a
+    // household with no plan should not be told to set a city first, and should
+    // not spend booking budget on a door that is shut.
+    //
+    // No exception for the voice agent: created_by is provenance, not
+    // permission (see CREATED_BY), so a voice booking meets this same gate.
+    const entitlement = await bookingEntitlement(auth.supabase, elderId);
+    if (!entitlement.allowed) {
+      return send(res, SUBSCRIPTION_REQUIRED.status, {
+        error: SUBSCRIPTION_REQUIRED.message,
+        code: SUBSCRIPTION_REQUIRED.code,
+      });
+    }
 
     // search.js scopes what an elder is OFFERED to their own city, but a slotId
     // can reach this endpoint without passing through search at all — the voice

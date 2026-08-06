@@ -1,6 +1,42 @@
 import * as Speech from 'expo-speech';
+import { backendRequest } from './backend';
 
 type VoiceLang = 'en' | 'hi';
+
+/**
+ * What /api/voice/token hands back: everything the client needs to join the
+ * elder's room, including the ws URL, so the app carries no LiveKit config of
+ * its own.
+ */
+export type VoiceTokenGrant = {
+  token: string;
+  /** `wss://…` of the LiveKit project. */
+  url: string;
+  /** Deterministic `saathi-<elderId>` — one room per elder. */
+  room: string;
+  /** The DEVICE HOLDER, which is the guardian's id when they call for a parent. */
+  identity: string;
+  elderId: string;
+};
+
+/**
+ * Mints a room token for a live call with the Saathi agent.
+ *
+ * `elderId` is only needed when a guardian looks after more than one parent;
+ * the server resolves it from family_links otherwise and answers 400 when the
+ * choice is genuinely ambiguous.
+ *
+ * Throws with backendRequest's `code` attached. The one the caller must handle
+ * rather than show is `voice_not_configured` (503) — the LiveKit credentials
+ * are not on the server yet, which is a "coming soon", not a failure.
+ */
+export async function requestVoiceToken(token: string, elderId?: string | null): Promise<VoiceTokenGrant> {
+  return backendRequest<VoiceTokenGrant>('/api/voice/token', {
+    method: 'POST',
+    token,
+    body: elderId ? { elderId } : {},
+  });
+}
 
 function localeFor(lang: VoiceLang) {
   return lang === 'hi' ? 'hi-IN' : 'en-IN';

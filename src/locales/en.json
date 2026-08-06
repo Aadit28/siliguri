@@ -677,6 +677,35 @@
     "notSupported": "Voice input is not supported on this device. Please type instead.",
     "error": "Could not hear you. Try again."
   },
+  "voiceCall": {
+    "title": "Talk to Saathi",
+    "homeCta": "Talk to Saathi",
+    "homeHint": "Ask about your day, your medicines, or a booking",
+    "idleTitle": "Talk to Saathi",
+    "idleBody": "Tap the big button and just speak. Saathi listens in Hindi, Bengali or English.",
+    "callButton": "Start talking",
+    "connecting": "Connecting you…",
+    "connectingBody": "This takes a moment. Please stay on this screen.",
+    "inCall": "Saathi is listening",
+    "inCallBody": "Speak normally. Tap the red button when you are done.",
+    "hangUp": "End call",
+    "retry": "Try again",
+    "back": "Go back",
+    "comingSoonTitle": "Calling is coming soon",
+    "comingSoonBody": "We are still setting up voice calls. Everything else in the app works as usual, and you can type to Saathi in the Assistant tab.",
+    "openAssistant": "Type to Saathi instead",
+    "errorTitle": "The call did not go through",
+    "errorGeneric": "Something went wrong starting the call. Please try again.",
+    "errorNetwork": "We could not reach Saathi. Check your internet and try again.",
+    "errorSignIn": "Please sign in again to start a call.",
+    "errorNotAllowed": "You are not allowed to start a call for this person.",
+    "errorTooMany": "Too many attempts. Please wait a minute and try again.",
+    "errorDropped": "The call ended unexpectedly. You can start it again.",
+    "demoNotice": "Calling is not available in the demo account. Sign in with your own account to talk to Saathi.",
+    "forTitle": "Who is this call for?",
+    "forParent": "Calling for {{name}}",
+    "forChange": "Change from {{name}}"
+  },
   "pay": {
     "payUpi": "Pay via UPI",
     "payTo": "Pay {{name}}",
@@ -1161,6 +1190,7 @@
     "errorHoldExpired": "That took a little too long, so the time was given back. Please pick a time again.",
     "errorPickParent": "Please choose which family member this booking is for.",
     "errorStartAgain": "Please start this booking again from the beginning.",
+    "errorSubscriptionRequired": "Booking appointments is part of a Saathi plan. Choose a plan to book this time.",
     "errorGeneric": "Something went wrong. Please try again."
   },
   "consent": {

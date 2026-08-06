@@ -25,6 +25,7 @@ import {
   holdBookingSlot,
   isBookableVendorId,
   isHoldExpiredError,
+  isSubscriptionRequiredError,
   istTimeLabel,
   istTodayISO,
   newIdempotencyKey,
@@ -83,6 +84,10 @@ export default function BookingSlotsScreen() {
   // attempt is dead: the seat is back on the shelf and retrying the same
   // idempotency key can only fail again.
   const [holdExpired, setHoldExpired] = useState(false);
+  // The family has no plan covering bookings. Also distinct from a plain error:
+  // there is nothing to retry until they have bought one, so the sheet shows the
+  // way to /plans instead of a button that can only fail again.
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
 
   // Whom the appointment is for. A guardian of two parents cannot hold a slot
   // at all without naming one, and a guardian of one has to be able to see
@@ -163,6 +168,7 @@ export default function BookingSlotsScreen() {
       } catch (error) {
         setHold(null);
         setActionError(friendlyBookingError(error, t, 'hold'));
+        if (isSubscriptionRequiredError(error)) setSubscriptionRequired(true);
       } finally {
         setBusy(false);
       }
@@ -178,6 +184,7 @@ export default function BookingSlotsScreen() {
     setReceipt(null);
     setActionError(null);
     setHoldExpired(false);
+    setSubscriptionRequired(false);
     void runHold(next);
   }
 
@@ -195,6 +202,9 @@ export default function BookingSlotsScreen() {
       void loadSlots();
     } catch (error) {
       setActionError(friendlyBookingError(error, t, 'confirm'));
+      // The plan lapsed while the seat was held. Confirm is not retryable in
+      // that state either, so the sheet switches to the same paywall branch.
+      if (isSubscriptionRequiredError(error)) setSubscriptionRequired(true);
       if (isHoldExpiredError(error)) {
         // The five minutes ran out. The hold is gone server-side, so nothing may
         // be cancelled and this attempt's key is spent — drop the hold so the
@@ -215,6 +225,7 @@ export default function BookingSlotsScreen() {
     setReceipt(null);
     setActionError(null);
     setHoldExpired(false);
+    setSubscriptionRequired(false);
     setBusy(false);
   }
 
@@ -419,6 +430,31 @@ export default function BookingSlotsScreen() {
                       only fail again. Going back to the times starts a fresh
                       attempt with a fresh key. */}
                   <Button label={t('booking.pickAnotherTime')} onPress={closeSheet} />
+                </View>
+              </>
+            ) : subscriptionRequired ? (
+              <>
+                <Notice message={actionError ?? t('booking.errorSubscriptionRequired')} />
+                <View style={styles.sheetActions}>
+                  {/* Before the `hold` branch on purpose: a plan that lapsed
+                      under a live hold must show this and not a Confirm button
+                      the server will refuse again. releaseHold rather than
+                      closeSheet for the same reason — buying a plan takes
+                      minutes and nobody should sit on a seat while doing it; it
+                      degrades to a plain close when there is no hold. */}
+                  <Button
+                    label={t('plans.profileCta')}
+                    onPress={() => {
+                      void releaseHold();
+                      router.push('/plans');
+                    }}
+                  />
+                  <Button
+                    label={t('booking.close')}
+                    variant="secondary"
+                    disabled={busy}
+                    onPress={() => void releaseHold()}
+                  />
                 </View>
               </>
             ) : hold ? (

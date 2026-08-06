@@ -299,6 +299,10 @@ const BOOKING_ERROR_KEYS: Record<string, string> = {
   idempotency_key_reused: 'booking.errorStartAgain',
   idempotency_key_mismatch: 'booking.errorStartAgain',
   booking_hold_conflict: 'booking.errorSlotTaken',
+  // Not an RPC outcome: the plan gate in server/bookings/_shared.js, answered
+  // as a 402 by both hold and confirm. The screen shows a way to the plans
+  // rather than a retry, so it also has isSubscriptionRequiredError below.
+  subscription_required: 'booking.errorSubscriptionRequired',
 };
 
 function bookingErrorCode(e: unknown) {
@@ -321,6 +325,17 @@ export function isHoldExpiredError(e: unknown) {
 }
 
 /**
+ * True when the household has no plan that covers bookings. The one booking
+ * failure a retry can never fix: the answer is a subscription, so the screen
+ * offers the plans instead of the same button again. Raised by the hold and,
+ * for a plan that lapsed under a live hold, by the confirm.
+ */
+export function isSubscriptionRequiredError(e: unknown) {
+  if (bookingErrorCode(e) === 'subscription_required') return true;
+  return (e as { status?: number } | null)?.status === 402;
+}
+
+/**
  * Turns a rejected booking call into a sentence an elder can act on. Raw server
  * text is English-only and must never reach a Hindi screen. backendRequest
  * attaches the HTTP status; a failure with no status never reached the server.
@@ -338,6 +353,7 @@ export function friendlyBookingError(e: unknown, t: Translate, phase: BookingPha
   if (coded) return t(coded);
 
   if (status === 401) return t('booking.errorSignIn');
+  if (status === 402) return t('booking.errorSubscriptionRequired');
   if (status === 403) return t('booking.errorNotAllowed');
   if (status === 404) return t('booking.errorGone');
   if (status === 410) return t('booking.errorHoldExpired');

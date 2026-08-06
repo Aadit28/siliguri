@@ -4,6 +4,7 @@
 // door.
 
 const { badRequest, readBody, requireFamilyLink } = require('../_lib/auth');
+const { allowsFeature, entitlementFor } = require('../_lib/entitlements');
 const { guardianIdsForParent, sendPushToUsers } = require('../_lib/push');
 const {
   notifyVendorBooking,
@@ -97,6 +98,48 @@ const RPC_BUSINESS_ERRORS = {
     message: 'That time was being booked at the same moment. Please try again.',
   },
 };
+
+// The paywall answer, kept beside RPC_BUSINESS_ERRORS because it reaches the
+// caller the same way: a status, a machine-readable code the app and the voice
+// agent key on, and one sentence. 402 rather than 403 — nothing is wrong with
+// who is asking, there is simply no plan behind them yet.
+const SUBSCRIPTION_REQUIRED = {
+  status: 402,
+  code: 'subscription_required',
+  message: 'Booking appointments is part of a Saathi plan. Choose a plan to book this time.',
+};
+
+// May this household book at all?
+//
+// `bookings` enters the ladder at the cheapest paid tier (server/_lib/
+// entitlements.js), so today this is exactly "does this household have a live
+// plan" — asked through the ladder rather than hardcoded, so the day a free
+// booking allowance or a per-tier limit exists it is one edit there and none
+// here. There is no per-tier booking quota in the schema to enforce.
+//
+// The plan belongs to the ELDER, so this takes the beneficiary's id and never
+// the caller's: subscriptions.family_id and bookings.family_id are the same
+// key, which is what lets a guardian abroad pay for the parent who books.
+//
+// FAILS OPEN, deliberately and temporarily. Migration 19 is not applied to any
+// project yet, so entitlement_for does not exist and every booking in the app
+// would stop the moment this shipped — a paywall that has never taken a rupee
+// must not be the thing that breaks bookings before launch. FLIP TO FAIL-CLOSED
+// AT GA: once the migration is everywhere, an unreadable entitlement is a fault
+// and should answer 500, not hand out a free appointment.
+async function bookingEntitlement(client, elderId) {
+  let plan;
+  try {
+    plan = await entitlementFor(client, elderId);
+  } catch (error) {
+    console.warn(
+      `Entitlement lookup failed for elder ${elderId}; allowing the booking through`
+      + ` (fail-open until GA): ${error?.message || error}`,
+    );
+    return { allowed: true, plan: null, failedOpen: true };
+  }
+  return { allowed: allowsFeature(plan, 'bookings'), plan, failedOpen: false };
+}
 
 const DEFAULT_APPROVAL_THRESHOLD_PAISE = 50000;
 const RATE_LIMIT_MAX = 20;
@@ -486,9 +529,11 @@ module.exports = {
   BOOKING_COLUMNS,
   CANCELLABLE_STATUSES,
   CREATED_BY,
+  SUBSCRIPTION_REQUIRED,
   VENDOR_CATEGORIES,
   VENDOR_NOTIFIED_STATUSES,
   approvalThresholdPaise,
+  bookingEntitlement,
   enforceRateLimit,
   firstRow,
   httpError,

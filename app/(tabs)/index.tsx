@@ -190,6 +190,33 @@ export default function Home() {
             <CityPicker />
           </Section>
 
+          {/* Above the snapshot on purpose: talking is the shortest path
+              through this app for an elder who cannot read the rest of it. */}
+          <Section delay={20}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('voiceCall.homeCta')}
+              accessibilityHint={t('voiceCall.homeHint')}
+              onPress={() => router.push('/voice')}
+              style={({ pressed }) => [
+                styles.guardianRow,
+                { backgroundColor: colors.primary, borderColor: colors.primary },
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.rowIcon}>
+                <Feather name="mic" size={22} color={colors.primaryFg} />
+              </View>
+              <View style={styles.rowCopy}>
+                <Text style={[styles.rowLabel, { color: colors.primaryFg }]}>{t('voiceCall.homeCta')}</Text>
+                <Text style={[styles.rowMeta, { color: colors.primaryFg, opacity: 0.78 }]} numberOfLines={2}>
+                  {t('voiceCall.homeHint')}
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={22} color={colors.primaryFg} />
+            </Pressable>
+          </Section>
+
           <Section delay={40} style={styles.section}>
             <View style={styles.sectionHeader}>
               <H2>{t('home.snapshotTitle')}</H2>
