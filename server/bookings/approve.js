@@ -42,7 +42,14 @@ module.exports = async function handler(req, res) {
     const nextStatus = approve ? 'pending_vendor' : 'cancelled_user';
     const { data: updated, error } = await auth.supabase
       .from('bookings')
-      .update({ status: nextStatus })
+      // updated_at is the 15-minute clock booking_release_expired() reads for
+      // pending_vendor, and nothing else maintains it (there is no trigger on
+      // bookings). Leaving it at the confirm timestamp means a guardian who took
+      // longer than 15 minutes to answer produces a pending_vendor row that is
+      // already past the deadline, and the next sweep cancels it as a vendor
+      // timeout before the vendor has been asked anything. Approval is when the
+      // vendor's turn starts, so it is when their clock starts.
+      .update({ status: nextStatus, updated_at: new Date().toISOString() })
       .eq('id', bookingId)
       // Guards the race between two guardians answering at once, and makes the
       // decrement below impossible to run twice for one seat.

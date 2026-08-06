@@ -54,6 +54,7 @@ from ..agent import AgentTurn, OpenAIChatClient, VoiceSession
 from ..booking_client import BookingClient, HttpBookingClient, MockBookingClient
 from ..prompts import ElderContext, build_system_prompt, greeting_copy
 from .config import (
+    DISCARD_AUDIO_IF_UNINTERRUPTIBLE,
     MAX_ENDPOINTING_DELAY,
     MIN_ENDPOINTING_DELAY,
     MIN_INTERRUPTION_DURATION,
@@ -62,7 +63,7 @@ from .config import (
     SarvamSettings,
     elder_context_from_metadata,
 )
-from .lock import playback_policy, should_discard_user_turn
+from .lock import ReadbackGate, playback_policy
 from .sarvam_stt import SarvamSTT
 from .sarvam_tts import SarvamTTS
 
@@ -80,7 +81,7 @@ class SaathiVoiceAgent(Agent):
         self._core = core
         self._on_closed = on_closed
         self._turn_lock = asyncio.Lock()
-        self._readback_playing = False
+        self._readback = ReadbackGate()
 
     # -- lifecycle -------------------------------------------------------
     async def on_enter(self) -> None:
@@ -92,9 +93,11 @@ class SaathiVoiceAgent(Agent):
     ) -> None:
         text = (new_message.text_content or "").strip()
 
-        if should_discard_user_turn(
-            locked_playback_active=self._readback_playing, transcript=text
-        ):
+        # Snapshot before the check: whatever the answer is now, the same epoch
+        # is re-tested under the lock, where the readback may have finished in
+        # the meantime.
+        epoch = self._readback.epoch
+        if self._readback.should_discard(transcript=text, epoch=epoch):
             logger.info("dropped %r: spoken over a locked readback", text)
             raise StopResponse()
 
@@ -102,6 +105,12 @@ class SaathiVoiceAgent(Agent):
             raise StopResponse()
 
         async with self._turn_lock:
+            # The wait for this lock is exactly the window the pre-lock check
+            # cannot see: a readback finishing here makes the transcript older
+            # than the question it would be answering.
+            if self._readback.should_discard(transcript=text, epoch=epoch):
+                logger.info("dropped %r: queued before the readback finished", text)
+                raise StopResponse()
             turn = await asyncio.to_thread(self._core.user_says, text)
             await self._speak(turn)
         raise StopResponse()
@@ -124,12 +133,13 @@ class SaathiVoiceAgent(Agent):
         )
         logger.debug("saying (%s): %s", policy.reason, turn.reply)
 
-        self._readback_playing = policy.locked
+        if policy.locked:
+            self._readback.begin()
         handle = self.session.say(turn.reply, allow_interruptions=policy.allow_interruptions)
         try:
             await handle.wait_for_playout()
         finally:
-            self._readback_playing = False
+            self._readback.end()
 
         if turn.closed and self._on_closed is not None:
             self._on_closed()
@@ -201,9 +211,12 @@ async def entrypoint(ctx: JobContext) -> None:
             ),
             interruption=InterruptionOptions(
                 enabled=True,
-                # A "haan haan" over a locked readback is dropped rather than
-                # buffered into the next turn, where it could read as consent.
-                discard_audio_if_uninterruptible=True,
+                # Off: discarding the audio would also discard the elder
+                # reporting chest pain over the readback, which is the one
+                # thing that must get through. Everything spoken over a locked
+                # readback is transcribed and then dropped as text by
+                # `ReadbackGate`, where distress can be recognised first.
+                discard_audio_if_uninterruptible=DISCARD_AUDIO_IF_UNINTERRUPTIBLE,
                 min_duration=MIN_INTERRUPTION_DURATION,
                 min_words=MIN_INTERRUPTION_WORDS,
             ),

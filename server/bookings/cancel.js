@@ -9,7 +9,9 @@ const {
 const {
   BOOKING_COLUMNS,
   CANCELLABLE_STATUSES,
+  VENDOR_NOTIFIED_STATUSES,
   loadBooking,
+  notifyVendorCancelled,
   releaseSlot,
   requireUuid,
   toBooking,
@@ -54,11 +56,23 @@ module.exports = async function handler(req, res) {
 
     const slotReleased = await releaseSlot(auth.supabase, updated.slot_id);
 
+    // The pre-cancel status is the one read before the update: pending_vendor and
+    // confirmed are the states in which the vendor has already been WhatsApped
+    // about this booking, so leaving now without a word has them holding a time
+    // for a family that is not coming. Awaited before the response — Vercel
+    // freezes the function the moment it ends — and the raw row, not toBooking's
+    // camelCase, because the notifier reads snake_case columns off it.
+    const vendorNotify = VENDOR_NOTIFIED_STATUSES.includes(booking.status)
+      ? await notifyVendorCancelled(updated, auth.supabase)
+      : null;
+
     await writeAudit(auth.supabase, {
       actor: auth.user.id,
       action: 'booking.cancel',
       args: { bookingId, previousStatus: booking.status },
-      result: { bookingId, status: 'cancelled_user', slotReleased },
+      // "Was the vendor actually told" is the half of a cancellation that goes
+      // wrong silently, so it sits in the guardian's timeline next to the seat.
+      result: { bookingId, status: 'cancelled_user', slotReleased, vendorNotify },
       idempotencyKey: updated.idempotency_key,
       familyId: updated.family_id,
     });

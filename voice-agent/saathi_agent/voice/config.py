@@ -34,6 +34,15 @@ SILENCE_TIMEOUT_S = 9.0
 MIN_INTERRUPTION_DURATION = 0.7
 MIN_INTERRUPTION_WORDS = 2
 
+#: Never true. Discarding the audio captured during an uninterruptible
+#: utterance destroys it before Saaras ever sees it, so no transcript exists -
+#: and the distress carve-out in lock.py, which is the whole reason an elder
+#: can report chest pain over a readback, works on transcripts. Rule 1 (the
+#: readback cannot be cut off) is enforced by `allow_interruptions=False` on
+#: the say() handle; rule 2 (nothing said over it counts as consent) is
+#: enforced on the text by `ReadbackGate`.
+DISCARD_AUDIO_IF_UNINTERRUPTIBLE = False
+
 # --------------------------------------------------------------------------
 # Sarvam
 # --------------------------------------------------------------------------

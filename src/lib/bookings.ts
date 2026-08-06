@@ -121,10 +121,20 @@ export function istTodayISO() {
   return istDateISO(new Date().toISOString()) ?? toISO(1970, 0, 1);
 }
 
-/** dateFrom/dateTo for the next `days` calendar days, ends included. */
+/**
+ * dateFrom/dateTo for the next `days` calendar days, ends included.
+ *
+ * dateFrom is the current instant, not midnight IST: the server trusts a
+ * supplied dateFrom verbatim and only substitutes "now" when it is absent, so a
+ * plain day stamp re-offers this morning's slots — which nothing downstream
+ * refuses to hold, confirm, or send to the vendor. dateTo stays a calendar day
+ * because the last day must run to its end.
+ */
 export function nextDaysRange(days: number) {
-  const dateFrom = istTodayISO();
-  return { dateFrom, dateTo: shiftISO(dateFrom, Math.max(0, days - 1)) };
+  return {
+    dateFrom: new Date().toISOString(),
+    dateTo: shiftISO(istTodayISO(), Math.max(0, days - 1)),
+  };
 }
 
 /** "10:30 AM" in the elder's wall clock, from an absolute server timestamp. */
@@ -266,31 +276,80 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 export type BookingPhase = 'search' | 'hold' | 'confirm' | 'cancel' | 'approve' | 'list';
 
 /**
+ * The machine-readable codes the booking handlers answer business failures
+ * with, mapped to copy every language carries. Mirrors RPC_BUSINESS_ERRORS in
+ * server/bookings/_shared.js — a code missing here falls back to the generic
+ * sentence rather than to the server's English one.
+ */
+const BOOKING_ERROR_KEYS: Record<string, string> = {
+  hold_expired: 'booking.errorHoldExpired',
+  booking_not_confirmable: 'booking.errorHoldExpired',
+  booking_not_found: 'booking.errorGone',
+  slot_not_found: 'booking.errorSlotTaken',
+  slot_full: 'booking.errorSlotTaken',
+  slot_in_past: 'booking.errorSlotTaken',
+  idempotency_key_reused: 'booking.errorStartAgain',
+  idempotency_key_mismatch: 'booking.errorStartAgain',
+  booking_hold_conflict: 'booking.errorSlotTaken',
+};
+
+function bookingErrorCode(e: unknown) {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code : '';
+}
+
+/**
+ * True when the five minute hold ran out under the elder — the one confirm
+ * failure that cannot be retried with the same attempt. The seat is already
+ * back on the shelf, so the sheet has to send them to the slot list and the
+ * next try has to carry a brand new idempotency key.
+ */
+export function isHoldExpiredError(e: unknown) {
+  const code = bookingErrorCode(e);
+  if (code === 'hold_expired' || code === 'booking_not_confirmable') return true;
+  // Before the coded answers shipped, and for any handler still on the old
+  // shape: 410 is only ever raised for a hold that has gone.
+  return (e as { status?: number } | null)?.status === 410;
+}
+
+/**
  * Turns a rejected booking call into a sentence an elder can act on. Raw server
  * text is English-only and must never reach a Hindi screen. backendRequest
  * attaches the HTTP status; a failure with no status never reached the server.
  */
 export function friendlyBookingError(e: unknown, t: Translate, phase: BookingPhase): string {
-  const error = e as Error & { status?: number };
+  const error = e as Error & { status?: number; code?: string };
   const status = error?.status;
   const message = error?.message ?? '';
 
   if (status === undefined) return t('booking.errorNetwork');
+
+  // The code is the precise signal; the status branches below are the fallback
+  // for handlers that answer without one.
+  const coded = BOOKING_ERROR_KEYS[bookingErrorCode(error)];
+  if (coded) return t(coded);
+
   if (status === 401) return t('booking.errorSignIn');
   if (status === 403) return t('booking.errorNotAllowed');
   if (status === 404) return t('booking.errorGone');
+  if (status === 410) return t('booking.errorHoldExpired');
   if (status === 429) return t('booking.errorTooMany');
   if (status === 409) {
     // The city 409 only comes off search, and reads as a setup step rather
     // than a booking failure.
     if (/city/i.test(message)) return t('booking.errorNoCity');
     if (phase === 'hold') return t('booking.errorSlotTaken');
+    if (phase === 'confirm') return t('booking.errorHoldExpired');
     if (phase === 'cancel') return t('booking.errorNotCancellable');
     if (phase === 'approve') return t('booking.errorAlreadyAnswered');
     return t('booking.errorGeneric');
   }
   if (status >= 500) return t('booking.errorGeneric');
-  return message && message.length <= 120 ? message : t('booking.errorGeneric');
+  // Every remaining 4xx is a badRequest sentence written in English. The one
+  // worth its own copy is the guardian who looks after more than one parent,
+  // because it names something they can actually do about it.
+  if (/more than one parent/i.test(message)) return t('booking.errorPickParent');
+  return t('booking.errorGeneric');
 }
 
 /**

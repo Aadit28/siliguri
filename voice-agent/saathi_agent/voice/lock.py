@@ -19,10 +19,12 @@ irreversible booking is unit-testable in the base test run.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from ..guards import detect_distress
 from ..state import State
+from .config import MIN_ENDPOINTING_DELAY
 
 #: The only state whose spoken output is a readback. Reached exclusively by a
 #: successful `hold_slot`, which is what makes this safe to key on.
@@ -84,13 +86,64 @@ def playback_policy(
 def should_discard_user_turn(*, locked_playback_active: bool, transcript: str) -> bool:
     """Drop a transcript captured while a locked readback was still playing.
 
-    LiveKit already discards audio captured during an uninterruptible
-    utterance (`discard_audio_if_uninterruptible`); this is the second lock on
-    the same door, for the transcript that was already in flight when playback
-    started. Cheap, and the failure it prevents is a booking nobody agreed to.
+    This is the *only* lock on the door. LiveKit's own
+    `discard_audio_if_uninterruptible` is deliberately off (it would delete the
+    audio before it was ever transcribed, taking the distress carve-out below
+    with it), so every word spoken over a readback arrives here as text and is
+    judged on what it says.
     """
     if not locked_playback_active:
         return False
     if detect_distress(transcript):
         return False
     return True
+
+
+#: How long after a locked readback finishes a transcript is still treated as
+#: having been spoken *during* it. A genuine reply to the readback cannot be
+#: finalised sooner than the endpointing silence that ends it, so this window
+#: can only ever catch speech that overlapped the playback.
+POST_READBACK_GRACE_S = MIN_ENDPOINTING_DELAY
+
+
+@dataclass
+class ReadbackGate:
+    """Playback state for the readback, tracked across the turn lock.
+
+    A boolean flag checked before taking the lock is not enough. A transcript
+    finalised in the LLM/TTS gap sees the flag still false, blocks on the lock
+    while the readback is spoken, and is then processed *after* it - speech
+    that predates the question authorising the booking it answers. The epoch
+    makes that visible: a turn holding a stale epoch spoke before the current
+    readback finished, whatever the flag said when it arrived.
+    """
+
+    grace_s: float = POST_READBACK_GRACE_S
+    #: Bumped every time a locked readback finishes playing out.
+    epoch: int = 0
+    active: bool = False
+    ended_at: float | None = None
+
+    def begin(self) -> None:
+        self.active = True
+
+    def end(self, *, now: float | None = None) -> None:
+        """Playout finished. No-op unless a locked readback was in flight."""
+        if not self.active:
+            return
+        self.active = False
+        self.epoch += 1
+        self.ended_at = time.monotonic() if now is None else now
+
+    def should_discard(self, *, transcript: str, epoch: int, now: float | None = None) -> bool:
+        """Drop this transcript? `epoch` is the value snapshotted when it arrived."""
+        if detect_distress(transcript):
+            return False  # the one thing that always gets through (rule 2)
+        if self.active:
+            return True
+        if epoch != self.epoch:
+            return True  # a readback finished while this turn waited for the lock
+        if self.ended_at is None:
+            return False
+        moment = time.monotonic() if now is None else now
+        return moment - self.ended_at < self.grace_s

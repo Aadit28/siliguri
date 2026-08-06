@@ -13,6 +13,7 @@ import { markLoginIntent } from '../../src/lib/authNavigation';
 import { fetchService } from '../../src/lib/api';
 import { isDemoToken } from '../../src/lib/demoFamily';
 import { Service } from '../../src/lib/types';
+import ForWhomPicker, { useFamilyBeneficiary } from '../../src/components/ForWhomPicker';
 import {
   Booking,
   BookingSlot,
@@ -23,6 +24,7 @@ import {
   groupSlotsByDay,
   holdBookingSlot,
   isBookableVendorId,
+  isHoldExpiredError,
   istTimeLabel,
   istTodayISO,
   newIdempotencyKey,
@@ -35,8 +37,10 @@ import { istDateISO, shiftISO } from '../../src/lib/istDates';
 const DAYS_AHEAD = 7;
 
 // One booking attempt. The key is minted with the attempt and never again:
-// every retry of the hold, and the confirm that follows it, reuse this one.
-type Attempt = { slot: BookingSlot; idempotencyKey: string };
+// every retry of the hold, and the confirm that follows it, reuse this one. The
+// elder is pinned to the attempt too, so switching who it is for mid-flight
+// cannot confirm a hold that was taken in someone else's name.
+type Attempt = { slot: BookingSlot; idempotencyKey: string; elderId: string | null };
 
 function dayHeading(dayISO: string, locale: string, t: (key: string) => string) {
   const today = istTodayISO();
@@ -75,6 +79,23 @@ export default function BookingSlotsScreen() {
   const [receipt, setReceipt] = useState<Booking | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The hold ran out under the elder. Distinct from a plain error because the
+  // attempt is dead: the seat is back on the shelf and retrying the same
+  // idempotency key can only fail again.
+  const [holdExpired, setHoldExpired] = useState(false);
+
+  // Whom the appointment is for. A guardian of two parents cannot hold a slot
+  // at all without naming one, and a guardian of one has to be able to see
+  // that the booking is not for themselves.
+  const {
+    people: elders,
+    beneficiaryId: elderId,
+    setBeneficiaryId: setElderId,
+    selected: forElder,
+  } = useFamilyBeneficiary(token, {
+    self: t('booking.forMyself'),
+    unnamed: t('booking.parentFallback'),
+  });
 
   const loadSlots = useCallback(async () => {
     if (!token || !bookable || !vendorId) {
@@ -117,6 +138,14 @@ export default function BookingSlotsScreen() {
   const days = useMemo(() => groupSlotsByDay(slots), [slots]);
   const locale = dateLocale(lang);
 
+  // Read off the attempt rather than the picker: the sheet must name whoever
+  // the hold was actually taken for, even if the selection moved after.
+  const attemptForName = useMemo(() => {
+    const id = attempt?.elderId;
+    if (!id) return null;
+    return elders.find((elder) => elder.id === id)?.name ?? null;
+  }, [attempt?.elderId, elders]);
+
   // Runs the hold for the attempt already in state, so the retry button and the
   // first tap send the identical key.
   const runHold = useCallback(
@@ -128,6 +157,7 @@ export default function BookingSlotsScreen() {
         const held = await holdBookingSlot(token, {
           slotId: next.slot.id,
           idempotencyKey: next.idempotencyKey,
+          elderId: next.elderId,
         });
         setHold(held);
       } catch (error) {
@@ -141,16 +171,18 @@ export default function BookingSlotsScreen() {
   );
 
   function pickSlot(slot: BookingSlot) {
-    const next: Attempt = { slot, idempotencyKey: newIdempotencyKey() };
+    // A fresh key per attempt, and every retry inside the attempt reuses it.
+    const next: Attempt = { slot, idempotencyKey: newIdempotencyKey(), elderId };
     setAttempt(next);
     setHold(null);
     setReceipt(null);
     setActionError(null);
+    setHoldExpired(false);
     void runHold(next);
   }
 
   async function confirmHold() {
-    if (!token || !attempt || !hold) return;
+    if (!token || !attempt || !hold || busy) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -163,6 +195,15 @@ export default function BookingSlotsScreen() {
       void loadSlots();
     } catch (error) {
       setActionError(friendlyBookingError(error, t, 'confirm'));
+      if (isHoldExpiredError(error)) {
+        // The five minutes ran out. The hold is gone server-side, so nothing may
+        // be cancelled and this attempt's key is spent — drop the hold so the
+        // sheet stops offering Confirm, and send the elder back to the times,
+        // where pickSlot mints a new key for a new attempt.
+        setHold(null);
+        setHoldExpired(true);
+        void loadSlots();
+      }
     } finally {
       setBusy(false);
     }
@@ -173,12 +214,18 @@ export default function BookingSlotsScreen() {
     setHold(null);
     setReceipt(null);
     setActionError(null);
+    setHoldExpired(false);
     setBusy(false);
   }
 
   // Backing out of the readback hands the seat straight back instead of leaving
   // it parked for five minutes where nobody else can take it.
   async function releaseHold() {
+    // Never while a confirm is in flight. The server can commit that confirm
+    // before this cancel lands, and cancel accepts pending_vendor — the elder
+    // would end up with a booking the shop was told about and then cancelled
+    // behind their back, from a backdrop tap they meant as "not yet".
+    if (busy) return;
     const heldId = hold?.id ?? null;
     const heldToken = token;
     closeSheet();
@@ -233,6 +280,14 @@ export default function BookingSlotsScreen() {
           <H1 style={styles.vendorName}>{vendorName}</H1>
           {service?.address ? <Muted style={styles.address}>{service.address}</Muted> : null}
           <Muted style={styles.rangeNote}>{t('booking.next7Days')}</Muted>
+          <ForWhomPicker
+            people={elders}
+            selectedId={elderId}
+            onChange={setElderId}
+            title={t('booking.forTitle')}
+            chipLabel={t('booking.forParent', { name: forElder?.name ?? '' })}
+            changeLabel={t('booking.forChange', { name: forElder?.name ?? '' })}
+          />
         </View>
 
         {demo ? (
@@ -313,6 +368,11 @@ export default function BookingSlotsScreen() {
 
       <Sheet
         visible={attempt !== null}
+        // Four paths reach onClose (backdrop, X, handle tap, Android back), and
+        // all four mean "not yet", never "undo the request I already sent" —
+        // releaseHold ignores them while a confirm is in flight. Once there is
+        // a receipt the sheet just closes, so a dismissal after a booking has
+        // gone through can never cancel it.
         onClose={hold && !receipt ? () => void releaseHold() : closeSheet}
         title={receipt ? t('booking.receiptTitle') : t('booking.checkTitle')}
       >
@@ -328,6 +388,7 @@ export default function BookingSlotsScreen() {
                   vendorName={vendorName}
                   slot={attempt.slot}
                   amountPaise={receipt.amountPaise}
+                  forName={attemptForName}
                   locale={locale}
                   styles={styles}
                   t={t}
@@ -343,12 +404,24 @@ export default function BookingSlotsScreen() {
                   <Button label={t('booking.close')} variant="secondary" onPress={closeSheet} />
                 </View>
               </>
+            ) : holdExpired ? (
+              <>
+                <Notice message={actionError ?? t('booking.errorHoldExpired')} />
+                <View style={styles.sheetActions}>
+                  {/* No retry here on purpose: this attempt's key belongs to a
+                      hold the server has already released, and reusing it can
+                      only fail again. Going back to the times starts a fresh
+                      attempt with a fresh key. */}
+                  <Button label={t('booking.pickAnotherTime')} onPress={closeSheet} />
+                </View>
+              </>
             ) : hold ? (
               <>
                 <ReadbackRows
                   vendorName={vendorName}
                   slot={attempt.slot}
                   amountPaise={hold.amountPaise}
+                  forName={attemptForName}
                   locale={locale}
                   styles={styles}
                   t={t}
@@ -399,6 +472,7 @@ function ReadbackRows({
   vendorName,
   slot,
   amountPaise,
+  forName,
   locale,
   styles,
   t,
@@ -406,6 +480,8 @@ function ReadbackRows({
   vendorName: string;
   slot: BookingSlot;
   amountPaise: number | null;
+  /** Null for someone booking for themselves — a row saying so is only noise. */
+  forName: string | null;
   locale: string;
   styles: ReturnType<typeof makeStyles>;
   t: (key: string, options?: Record<string, unknown>) => string;
@@ -414,6 +490,9 @@ function ReadbackRows({
   // previous UTC date, and the readback must not name yesterday.
   const dayISO = istDateISO(slot.startsAt);
   const rows = [
+    // Whose appointment this is comes first: a guardian reading the sheet has
+    // to see the name before they agree to anything.
+    ...(forName ? [{ label: t('booking.forLabel'), value: forName }] : []),
     { label: t('booking.vendorLabel'), value: vendorName },
     { label: t('booking.dateLabel'), value: dayISO ? dayHeading(dayISO, locale, t) : '—' },
     { label: t('booking.timeLabel'), value: istTimeLabel(slot.startsAt) },

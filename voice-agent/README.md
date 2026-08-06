@@ -111,7 +111,12 @@ a successful `hold_slot` can put the machine there.
   cannot have been answering a question they had not finished hearing — this
   is the difference between a confirmed booking and a confirmed booking
   nobody agreed to
-- distress is the one thing that gets through that filter
+- so is anything *queued* before it finished: `ReadbackGate` carries an epoch
+  across the turn lock, so a transcript that waited out the readback is not
+  processed as the reply to it
+- distress is the one thing that gets through that filter, which is why
+  LiveKit's own `discard_audio_if_uninterruptible` stays off — deleting the
+  audio would delete the transcript the carve-out reads
 - handoff and close are never locked
 
 Both decisions are pure functions over `State`, tested in
@@ -123,8 +128,11 @@ Every tool call and result lands in an in-memory audit trace
 (`session.dump_audit()` → JSONL), the same shape the server writes to
 `audit_log`. The suite asserts, per BUILD_GUIDE D.8:
 
-1. `confirm_booking` never fires without a prior `hold_slot` in the session
-2. the same idempotency key is reused on a retried booking attempt
+1. `confirm_booking` never fires without a prior `hold_slot` in the session,
+   nor on a yes the elder spoke before hearing that hold read back
+2. the same idempotency key is reused on a retried booking attempt, retired
+   once that attempt's hold is released or expires, and never shown to the
+   model — in an argument or in a result
 3. no orphaned holds after the suite
 4. fabricated vendor / slot / member ids are rejected before the network
 5. a distress word mid-booking drops the hold and hands off

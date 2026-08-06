@@ -298,6 +298,18 @@ export default function ProfileScreen() {
       <H2 style={styles.sectionHeader}>{t('profile.moreTitle')}</H2>
 
       <Card style={styles.card}>
+        <Body>{t('plans.profileBody')}</Body>
+        <Button label={t('plans.profileCta')} variant="secondary" onPress={() => router.push('/plans')} />
+      </Card>
+
+      {/* Withdrawal has to be as easy as the grant was, so consent is its own
+          row here rather than a paragraph inside the privacy page. */}
+      <Card style={styles.card}>
+        <Body>{t('consent.profileBody')}</Body>
+        <Button label={t('consent.profileCta')} variant="secondary" onPress={() => router.push('/consent')} />
+      </Card>
+
+      <Card style={styles.card}>
         <Body>{t('help.privacyBody')}</Body>
         <Button label={t('help.privacyCta')} variant="secondary" onPress={() => router.push('/privacy')} />
       </Card>

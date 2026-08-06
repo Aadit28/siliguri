@@ -170,9 +170,16 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
 class IdempotencyStore:
     """One uuid4 per booking attempt, reused for every write in that attempt.
 
-    A booking attempt is identified by the slot being held. The confirm that
-    follows inherits the hold's key, so a retried hold *and* a retried confirm
-    both collapse onto the same server-side row (BUILD_GUIDE C.2).
+    A booking attempt is identified by the slot being held *for this attempt*.
+    The confirm that follows inherits the hold's key, so a retried hold *and* a
+    retried confirm both collapse onto the same server-side row (BUILD_GUIDE
+    C.2).
+
+    The attempt is the unit, not the slot: once its hold is released, expired
+    or cancelled, `drop_slot` retires the key so the next hold of the same slot
+    is a new attempt and mints a new one. Without that, the idempotency
+    contract (same key, same row) hands back the dead hold forever and the slot
+    is unbookable for the rest of the call.
     """
 
     def __init__(self) -> None:
@@ -187,6 +194,13 @@ class IdempotencyStore:
             self._by_slot[slot_id] = key
             self.issued.append(key)
         return key
+
+    def drop_slot(self, slot_id: str) -> str | None:
+        """Retire this slot's key. The next `for_slot` starts a fresh attempt."""
+        return self._by_slot.pop(str(slot_id), None)
+
+    def drop_hold(self, hold_id: str) -> str | None:
+        return self._by_hold.pop(str(hold_id), None)
 
     def bind_hold(self, hold_id: str, key: str) -> None:
         self._by_hold[hold_id] = key
@@ -207,6 +221,21 @@ class IdempotencyStore:
 # --------------------------------------------------------------------------
 
 
+def redact_runtime_fields(value: Any) -> Any:
+    """Strip runtime-owned fields out of anything heading for the model.
+
+    Stripping them from the *arguments* only covers half the door: the booking
+    API echoes the idempotency key back on every hold and booking row, and a
+    key sitting in model context can be read aloud over TTS, land in the
+    transcript, or be lifted by an injection riding in a vendor name.
+    """
+    if isinstance(value, dict):
+        return {k: redact_runtime_fields(v) for k, v in value.items() if k not in RUNTIME_OWNED_FIELDS}
+    if isinstance(value, list):
+        return [redact_runtime_fields(item) for item in value]
+    return value
+
+
 class ToolOutcome(BaseModel):
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
@@ -219,7 +248,9 @@ class ToolOutcome(BaseModel):
     def tool_content(self) -> str:
         """Exactly what the model sees as the tool result."""
         if self.ok:
-            return json.dumps({"ok": True, "data": self.data}, ensure_ascii=False)
+            return json.dumps(
+                {"ok": True, "data": redact_runtime_fields(self.data)}, ensure_ascii=False
+            )
         assert self.rejection is not None
         return json.dumps({"ok": False, "error": self.rejection.as_dict()}, ensure_ascii=False)
 
@@ -291,6 +322,10 @@ class ToolDispatcher:
         try:
             data = self._invoke(name, args_dict, key)
         except BookingError as exc:
+            if name == ToolName.CONFIRM_BOOKING and exc.code == "hold_expired":
+                # Server-side TTL, no client release: retire the attempt so a
+                # re-hold of the same slot is not answered with the dead one.
+                self._retire_attempt(args_dict["hold_id"])
             return ToolOutcome(
                 tool=name,
                 args=args_dict,
@@ -316,6 +351,13 @@ class ToolDispatcher:
             idempotency_key=key,
             model_supplied_key=model_supplied_key,
         )
+
+    def _retire_attempt(self, hold_id: str) -> None:
+        """This hold is dead: its slot's key must not be reused for the next try."""
+        hold = self.memory.holds.get(str(hold_id)) or {}
+        if hold.get("slot_id"):
+            self.idempotency.drop_slot(str(hold["slot_id"]))
+        self.idempotency.drop_hold(str(hold_id))
 
     def _invoke(self, name: str, args: dict[str, Any], key: str | None) -> Any:
         if name == ToolName.SEARCH_VENDORS:

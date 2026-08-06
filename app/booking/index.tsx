@@ -13,6 +13,7 @@ import { useTheme } from '../../src/context/ThemeContext';
 import { markLoginIntent } from '../../src/lib/authNavigation';
 import { fetchServices } from '../../src/lib/api';
 import { isDemoToken } from '../../src/lib/demoFamily';
+import ForWhomPicker, { useFamilyBeneficiary } from '../../src/components/ForWhomPicker';
 import {
   Booking,
   BookingStatus,
@@ -61,22 +62,39 @@ export default function MyBookingsScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // /api/bookings/mine is one family at a time, and it answers a guardian of
+  // several parents with a 400 rather than guessing. Naming the elder is what
+  // lets that guardian open this screen at all.
+  const {
+    people: elders,
+    beneficiaryId: elderId,
+    setBeneficiaryId: setElderId,
+    selected: forElder,
+    loading: eldersLoading,
+  } = useFamilyBeneficiary(token, {
+    self: t('booking.forMyself'),
+    unnamed: t('booking.parentFallback'),
+  });
+
   const load = useCallback(async () => {
     if (!token || isDemoToken(token)) {
       setLoading(false);
       return;
     }
+    // Waiting for the links keeps the first read from going out without an
+    // elderId and coming back as the "which parent?" 400.
+    if (eldersLoading) return;
     setLoading(true);
     setLoadError(null);
     try {
-      setBookings(await listMyBookings(token));
+      setBookings(await listMyBookings(token, elderId));
     } catch (error) {
       setBookings([]);
       setLoadError(friendlyBookingError(error, t, 'list'));
     } finally {
       setLoading(false);
     }
-  }, [t, token]);
+  }, [elderId, eldersLoading, t, token]);
 
   useEffect(() => {
     void load();
@@ -158,6 +176,14 @@ export default function MyBookingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <H1>{title}</H1>
         <Muted>{t('booking.myBody')}</Muted>
+        <ForWhomPicker
+          people={elders}
+          selectedId={elderId}
+          onChange={setElderId}
+          title={t('booking.forTitle')}
+          chipLabel={t('booking.forParent', { name: forElder?.name ?? '' })}
+          changeLabel={t('booking.forChange', { name: forElder?.name ?? '' })}
+        />
 
         {actionError ? (
           <View style={styles.notice}>

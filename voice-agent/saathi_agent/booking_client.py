@@ -178,7 +178,9 @@ class HttpBookingClient:
             "price_paise": row.get("amountPaise"),
             "status": row.get("status"),
             "expires_at": row.get("holdExpiresAt"),
-            "idempotency_key": row.get("idempotencyKey"),
+            # The server echoes `idempotencyKey` back; it is deliberately not
+            # carried here. The runtime already owns the key on the outcome,
+            # and a copy in a tool result is a copy in the model's context.
         }
 
     # -- protocol --------------------------------------------------------
@@ -259,6 +261,11 @@ class HttpBookingClient:
 # --------------------------------------------------------------------------
 # Mock
 # --------------------------------------------------------------------------
+
+#: Kept on the stored row, stripped from every returned payload. Mirrors
+#: `tools.RUNTIME_OWNED_FIELDS` without importing it (the client is the lower
+#: layer and must not depend on the tool surface).
+_PRIVATE_ROW_FIELDS: frozenset[str] = frozenset({"idempotency_key"})
 
 _SEED_VENDORS: list[dict[str, Any]] = [
     {
@@ -370,6 +377,13 @@ class MockBookingClient:
     def _record(self, name: str, **kwargs: Any) -> None:
         self.calls.append((name, kwargs))
 
+    @staticmethod
+    def _public(row: dict[str, Any]) -> dict[str, Any]:
+        """The row as a caller sees it. The stored row keeps its idempotency
+        key (the server does too); the returned copy does not, because that
+        copy ends up in the model's context."""
+        return {k: v for k, v in row.items() if k not in _PRIVATE_ROW_FIELDS}
+
     def orphaned_holds(self) -> list[dict[str, Any]]:
         """Holds still occupying capacity. Must be empty when a suite ends."""
         return [h for h in self.holds.values() if h["status"] == "held"]
@@ -415,7 +429,7 @@ class MockBookingClient:
         if existing:
             # Retry of the same booking attempt: same key, same hold, no
             # second unit of capacity consumed.
-            return dict(self.holds[existing])
+            return self._public(self.holds[existing])
 
         slot = self.slots.get(slot_id)
         if slot is None:
@@ -441,13 +455,13 @@ class MockBookingClient:
         }
         self.holds[hold_id] = hold
         self._holds_by_key[idempotency_key] = hold_id
-        return dict(hold)
+        return self._public(hold)
 
     def confirm_booking(self, hold_id: str, idempotency_key: str) -> dict[str, Any]:
         self._record("confirm_booking", hold_id=hold_id, idempotency_key=idempotency_key)
         existing = self._bookings_by_key.get(idempotency_key)
         if existing:
-            return dict(self.bookings[existing])
+            return self._public(self.bookings[existing])
 
         hold = self.holds.get(hold_id)
         if hold is None:
@@ -473,7 +487,7 @@ class MockBookingClient:
         hold["status"] = "confirmed"
         self.bookings[booking_id] = booking
         self._bookings_by_key[idempotency_key] = booking_id
-        return dict(booking)
+        return self._public(booking)
 
     def cancel_booking(self, booking_id: str) -> dict[str, Any]:
         self._record("cancel_booking", booking_id=booking_id)
@@ -484,7 +498,7 @@ class MockBookingClient:
         slot = self.slots.get(booking["slot_id"])
         if slot and slot["booked"] > 0:
             slot["booked"] -= 1
-        return dict(booking)
+        return self._public(booking)
 
     def release_hold(self, hold_id: str) -> dict[str, Any]:
         self._record("release_hold", hold_id=hold_id)
@@ -496,7 +510,7 @@ class MockBookingClient:
             slot = self.slots.get(hold["slot_id"])
             if slot and slot["booked"] > 0:
                 slot["booked"] -= 1
-        return dict(hold)
+        return self._public(hold)
 
     def create_reminder(self, what: str, time_local: str, repeat: str) -> dict[str, Any]:
         self._record("create_reminder", what=what, time_local=time_local, repeat=repeat)

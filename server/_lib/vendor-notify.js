@@ -18,6 +18,7 @@ const { sendPushToUsers, guardianIdsForParent } = require('./push');
 
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || 'v23.0';
 const BOOKING_TEMPLATE = process.env.WHATSAPP_BOOKING_TEMPLATE || 'booking_vendor_confirm';
+const BOOKING_CANCEL_TEMPLATE = process.env.WHATSAPP_BOOKING_CANCEL_TEMPLATE || 'booking_vendor_cancelled';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // _lib/whatsapp.js already has sendTemplate(phone, name, lang, bodyParams), but
@@ -225,12 +226,65 @@ async function notifyVendorBooking(booking, client) {
   }
 }
 
+// The other half of notifyVendorBooking: the family called the booking off after
+// the vendor had already been asked to hold the time (pending_vendor) or had
+// tapped Accept (confirmed). Without this the vendor's last word on the matter
+// is "a booking is waiting for you" and they keep the slot for a family that is
+// not coming.
+//
+// Template `booking_vendor_cancelled` body parameters, in order:
+//   {{1}} vendor name  {{2}} customer name  {{3}} when  {{4}} booking ref
+// No buttons: there is nothing left for the vendor to answer.
+//
+// Same degradation as notifyVendorBooking — never throws, and an unconfigured
+// BSP is reported through the return value rather than failing the cancel the
+// family already asked for.
+async function notifyVendorCancellation(booking, client) {
+  const id = bookingId(booking);
+  if (!id) {
+    console.warn('Vendor cancel notify skipped: booking has no id.');
+    return { queued: false, reason: 'no_booking_id' };
+  }
+  if (!whatsappConfigured()) {
+    console.warn(`Vendor cancel notify skipped (WhatsApp not configured) for booking ${id}.`);
+    return { queued: false, reason: 'whatsapp_not_configured' };
+  }
+
+  const db = client || safeAdminClient();
+  if (!db) return { queued: false, reason: 'no_db_client' };
+
+  try {
+    const vendor = await loadVendor(db, booking);
+    if (!vendor) return { queued: false, reason: 'vendor_not_found' };
+    if (!vendor.phone) {
+      console.warn(`Vendor cancel notify skipped: service ${vendor.id} has no phone number.`);
+      return { queued: false, reason: 'vendor_has_no_phone' };
+    }
+
+    const customer = booking.customer_name || booking.contact_name || 'A Saathi family';
+    const reference = String(id).slice(0, 8);
+
+    const result = await sendTemplateWithButtons(
+      vendor.phone,
+      BOOKING_CANCEL_TEMPLATE,
+      [vendor.name, customer, slotLabel(booking), reference],
+      [],
+    );
+    return { queued: true, messageId: result?.messages?.[0]?.id || null, phone: vendor.phone };
+  } catch (error) {
+    console.error(`Vendor cancel notify failed for booking ${id}:`, error?.message || error);
+    return { queued: false, reason: 'send_failed' };
+  }
+}
+
 module.exports = {
   notifyVendorBooking,
+  notifyVendorCancellation,
   notifyFamilyOfBooking,
   familyRecipientsForBooking,
   writeBookingAudit,
   sendTemplateWithButtons,
   loadVendor,
   BOOKING_TEMPLATE,
+  BOOKING_CANCEL_TEMPLATE,
 };

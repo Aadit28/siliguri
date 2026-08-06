@@ -101,6 +101,46 @@ async function entitlementFor(client, userId) {
   return plan === FREE_PLAN || isPlanId(plan) ? plan : FREE_PLAN;
 }
 
+// Who the billing audit line belongs to.
+//
+// A subscription row is keyed to the PAYER, but audit_log.family_id is the
+// ELDER's account id everywhere else in this schema (bookings/_shared.js
+// resolveFamilyContext: "the elder's account id IS the family key"). Filing a
+// guardian's payment under the guardian therefore hides it from the timeline
+// the family actually reads, which is keyed by the elder.
+//
+// Returns { familyId, parentIds, reason }:
+//   - payer guards exactly one elder -> that elder is the family.
+//   - payer guards nobody           -> the payer IS the elder, as before.
+//   - payer guards several          -> familyId null. One card can cover two
+//     households and nothing in a webhook says which one was bought for, so the
+//     row is filed unattributed with the candidates in reason/parentIds rather
+//     than guessed onto the wrong elder's timeline.
+//
+// Never throws: this only decorates an audit write, and losing the family key
+// is worth a log, never a failed checkout or a redelivered webhook.
+async function elderFamilyContext(client, payerId) {
+  const id = String(payerId || '').trim();
+  if (!id) return { familyId: null, parentIds: [], reason: 'no_payer' };
+
+  const { data, error } = await client
+    .from('family_links')
+    .select('parent_id')
+    .eq('guardian_id', id)
+    .eq('status', 'active');
+  if (error) {
+    console.warn('family_links lookup failed for billing audit:', error?.message || error);
+    return { familyId: null, parentIds: [], reason: 'family_lookup_failed' };
+  }
+
+  const parentIds = [...new Set((data || []).map((row) => row.parent_id).filter(Boolean))];
+  if (parentIds.length === 1) return { familyId: parentIds[0], parentIds, reason: null };
+  if (parentIds.length > 1) {
+    return { familyId: null, parentIds, reason: 'multiple_elder_households' };
+  }
+  return { familyId: id, parentIds: [], reason: null };
+}
+
 // The wire shape of a subscription row, shared by /api/billing/subscribe and
 // /api/billing/status so the app never sees two spellings of the same record.
 function toSubscription(row) {
@@ -124,6 +164,7 @@ module.exports = {
   PLAN_FEATURES,
   PLAN_IDS,
   allowsFeature,
+  elderFamilyContext,
   entitlementFor,
   featuresFor,
   isPlanId,

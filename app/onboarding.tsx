@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Feather } from '@expo/vector-icons';
 import Animated, { Easing, FadeIn, ReduceMotion } from 'react-native-reanimated';
+import ConsentPanel from '../src/components/ConsentPanel';
 import { Button, H1, Muted } from '../src/components/ui';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
@@ -97,18 +98,27 @@ export default function Onboarding() {
   const pastel = pastelForMode(mode);
   const styles = makeStyles(colors);
 
-  // step 0 is the portal chooser; 1-3 are that portal's slides.
+  // step 0 is the portal chooser; 1-3 are that portal's slides; the last step
+  // is consent.
   const [kind, setKind] = useState<OnboardingKind | null>(null);
   const [step, setStep] = useState(0);
 
   const slides = kind ? SLIDES[kind] : [];
-  const slide = step > 0 ? slides[step - 1] : null;
-  const isLast = kind !== null && step === slides.length;
+  const slide = step > 0 && step <= slides.length ? slides[step - 1] : null;
+
+  // Consent is asked once, here, after the slides rather than before them: the
+  // reader has to know what Saathi does before "may we send you reminders" is a
+  // question they can answer. Every toggle writes as it is tapped, so leaving
+  // by Skip or by the back gesture cannot lose an answer already given.
+  const consentStep = slides.length + 1;
+  const isConsentStep = kind !== null && step === consentStep;
+  const isLast = isConsentStep;
+  const totalSteps = kind ? consentStep : 0;
 
   // Scope for the GSAP selectors, and the key that replays the timeline. No-op
   // on native, where the Reanimated `entering` above handles the same job.
   const scopeRef = useRef(null);
-  useIntroAnimation(scopeRef, slide ? `${kind}-${slide.key}` : 'chooser');
+  useIntroAnimation(scopeRef, slide ? `${kind}-${slide.key}` : isConsentStep ? 'consent' : 'chooser');
 
   function leave(chosen: OnboardingKind) {
     // Best-effort: if the flag never lands the intro simply shows again, which
@@ -209,6 +219,14 @@ export default function Onboarding() {
               ))}
             </View>
           </Animated.View>
+        ) : isConsentStep ? (
+          <Animated.View key="consent" entering={stepIn} style={styles.stage}>
+            <H1 {...anim('item')} style={styles.slideTitle}>{t('consent.onboardingTitle')}</H1>
+            <Text {...anim('item')} style={styles.slideBody}>{t('consent.onboardingBody')}</Text>
+            <View {...anim('item')} style={styles.consent}>
+              <ConsentPanel compact />
+            </View>
+          </Animated.View>
         ) : slide && kind ? (
           <Animated.View key={`${kind}-${slide.key}`} entering={stepIn} style={styles.stage}>
             <View {...anim('badge')}>
@@ -234,11 +252,11 @@ export default function Onboarding() {
               {...anim('footer')}
               style={styles.dots}
               accessibilityRole="progressbar"
-              accessibilityLabel={t('onboarding.progress', { step, total: slides.length })}
+              accessibilityLabel={t('onboarding.progress', { step, total: totalSteps })}
             >
-              {slides.map((item, index) => (
+              {Array.from({ length: totalSteps }, (_, index) => (
                 <View
-                  key={item.key}
+                  key={index}
                   style={[
                     styles.dot,
                     index === step - 1
@@ -304,6 +322,7 @@ function makeStyles(colors: AppColors) {
       color: colors.textMuted,
     },
     slideTitle: { marginTop: space.sm },
+    consent: { alignSelf: 'stretch', marginTop: space.sm },
     slideBody: {
       fontFamily: family.regular,
       fontSize: font.md,

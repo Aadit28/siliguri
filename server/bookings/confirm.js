@@ -15,6 +15,7 @@ const {
   notifyGuardiansForApproval,
   notifyVendor,
   requireUuid,
+  rpcBusinessError,
   toBooking,
   writeAudit,
 } = require('./_shared');
@@ -51,7 +52,24 @@ module.exports = async function handler(req, res) {
       p_idempotency_key: idempotencyKey,
       p_approval_threshold_paise: approvalThresholdPaise(),
     });
-    if (error) throw error;
+    if (error) {
+      // hold_expired is the routine one: an elder who paused to ask a family
+      // member takes longer than five minutes, and as a 500 the answer was both
+      // useless ("please try again" re-raises it for ever with the same holdId)
+      // and noisy (every paused elder logged as a server fault). These are
+      // outcomes, so they get a status and a code the app can act on.
+      const known = rpcBusinessError(error);
+      if (!known) throw error;
+      await writeAudit(auth.supabase, {
+        actor: auth.user.id,
+        action: 'booking.confirm',
+        args: { holdId, thresholdPaise: approvalThresholdPaise() },
+        result: { bookingId: holdId, error: known.code },
+        idempotencyKey,
+        familyId: held.family_id,
+      });
+      return send(res, known.status, { error: known.message, code: known.code });
+    }
 
     // Fall back to re-reading the row: the confirm function is the authority on
     // the new status, and answering with a stale one would tell an elder the

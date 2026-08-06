@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { adminClient, send, sendServerError, withCors } = require('../_lib/auth');
+const { elderFamilyContext } = require('../_lib/entitlements');
 
 // Razorpay's subscription webhook: the only thing in this codebase allowed to
 // say a subscription is paid for.
@@ -267,6 +268,24 @@ module.exports = async function handler(req, res) {
     const outcome = (Array.isArray(data) ? data[0] : data) || {};
     const row = outcome.subscription || null;
 
+    // subscriptions.user_id is the payer. audit_log.family_id is the ELDER's
+    // account id — what the guardian and elder timelines query by — and for the
+    // ordinary case, a guardian abroad paying for a parent in Siliguri, those
+    // are two different accounts.
+    //
+    // subscriptions.family_id already holds the beneficiary the purchase named,
+    // validated at checkout, so it answers this directly. The walk is the
+    // fallback for a row written before that column existed: one household
+    // resolves, several cannot be attributed from a webhook at all and are
+    // filed with a null family and the candidates in args rather than guessed
+    // onto the wrong elder's timeline.
+    let family = { familyId: null, parentIds: [], reason: 'unmatched_subscription' };
+    if (row?.family_id) {
+      family = { familyId: row.family_id, parentIds: [row.family_id], reason: null };
+    } else if (row?.user_id) {
+      family = await elderFamilyContext(client, row.user_id);
+    }
+
     await writeAudit(client, {
       action: `billing.${name}`,
       args: {
@@ -276,6 +295,8 @@ module.exports = async function handler(req, res) {
         mapped_status: status,
         current_end: entity?.current_end ?? null,
         event_id: eventId || null,
+        payer_id: row?.user_id || null,
+        ...(family.reason ? { family_resolution: family.reason, elder_ids: family.parentIds } : {}),
       },
       result: {
         matched: outcome.matched === true,
@@ -285,10 +306,7 @@ module.exports = async function handler(req, res) {
         plan: row?.plan || null,
       },
       eventId,
-      // The payer's account is the family anchor everywhere else in this
-      // schema, so the billing timeline lands in the same guardian view as the
-      // bookings.
-      familyId: row?.user_id || null,
+      familyId: family.familyId,
     });
 
     if (outcome.matched !== true) {

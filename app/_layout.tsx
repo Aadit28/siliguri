@@ -166,6 +166,8 @@ function RootStack() {
               options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
             />
             <Stack.Screen name="privacy" options={{ title: '' }} />
+            <Stack.Screen name="consent" options={{ title: '' }} />
+            <Stack.Screen name="plans" options={{ title: '' }} />
             <Stack.Screen name="profile" options={{ title: '' }} />
             <Stack.Screen name="new-post" options={{ presentation: 'modal', title: '' }} />
             <Stack.Screen name="service/[id]" options={{ title: '' }} />

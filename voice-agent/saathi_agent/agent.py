@@ -321,6 +321,10 @@ class VoiceSession:
                 turn.outcomes = outcomes + turn.outcomes
                 return turn
 
+        if reply:
+            # This reply is about to be spoken. If it is the readback, the
+            # clock the confirm gate compares consent against starts here.
+            self.state.mark_readback_delivered()
         return AgentTurn(reply=reply, outcomes=outcomes, state=self.state.state)
 
     def _assistant_message(self, response: LLMResponse) -> dict[str, Any]:
@@ -361,29 +365,39 @@ class VoiceSession:
                 return outcome
 
         outcome = self.dispatcher.dispatch(call.name, call.arguments)
-        if outcome.ok:
-            self._apply_effects(outcome)
-        self.audit.record(
-            origin="model",
-            outcome=outcome,
-            state_before=state_before,
-            state_after=self.state.state,
-        )
+        try:
+            if outcome.ok:
+                self._apply_effects(outcome)
+        finally:
+            # In a finally so a state-effect bug can never erase the record of
+            # a write that already happened server-side.
+            self.audit.record(
+                origin="model",
+                outcome=outcome,
+                state_before=state_before,
+                state_after=self.state.state,
+            )
         return outcome
 
     def _apply_effects(self, outcome: ToolOutcome) -> None:
         tool, data = outcome.tool, outcome.data
 
+        # A search is informational and never gated by can_call, so its state
+        # effect has to be able to do nothing: looking something up from
+        # PENDING_GUARDIAN or RECEIPT must not raise InvalidTransition and kill
+        # the turn mid-call.
         if tool == ToolName.SEARCH_VENDORS:
             if not data:
                 return  # nothing found is not progress; the model re-queries
             target = State.DISAMBIGUATE if len(data) > 1 else State.SLOT_FILL
             if not self.state.can_transition(target):
                 target = State.SLOT_FILL
-            self.state.transition_to(target, "search_vendors")
+            if self.state.can_transition(target):
+                self.state.transition_to(target, "search_vendors")
 
         elif tool == ToolName.SEARCH_SLOTS:
-            self.state.transition_to(State.SLOT_FILL, "search_slots")
+            if self.state.can_transition(State.SLOT_FILL):
+                self.state.transition_to(State.SLOT_FILL, "search_slots")
 
         elif tool == ToolName.HOLD_SLOT:
             previous = self.state.refs.get("hold_id")
@@ -409,6 +423,9 @@ class VoiceSession:
                 }
             )
             self.state.transition_to(State.READBACK_CONFIRM, "hold_slot")
+            # New details on the table: the elder has to hear these read back
+            # before any yes counts, even if they already said one this turn.
+            self.state.mark_readback_pending()
 
         elif tool == ToolName.CONFIRM_BOOKING:
             self.state.transition_to(State.EXECUTING, "confirm_booking")
@@ -469,8 +486,15 @@ class VoiceSession:
                 ),
             )
         else:
-            if hold_id in self.memory.holds:
-                self.memory.holds[hold_id]["status"] = "released"
+            hold = self.memory.holds.get(hold_id)
+            if hold is not None:
+                hold["status"] = "released"
+            # The attempt this key identified is over. Keeping it would make a
+            # later hold of the same slot replay the dead row (same key, same
+            # booking) and read a released hold back to the elder.
+            if hold and hold.get("slot_id"):
+                self.dispatcher.idempotency.drop_slot(str(hold["slot_id"]))
+            self.dispatcher.idempotency.drop_hold(hold_id)
             if self.state.refs.get("hold_id") == hold_id:
                 self.state.refs.pop("hold_id", None)
             outcome = ToolOutcome(

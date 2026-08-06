@@ -19,6 +19,7 @@ import importlib
 import importlib.util
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -165,6 +166,91 @@ def test_barge_in_during_a_locked_readback_is_dropped_except_distress(
         lock.should_discard_user_turn(locked_playback_active=locked, transcript=transcript)
         is discarded
     )
+
+
+def test_a_transcript_queued_before_the_readback_finished_is_dropped() -> None:
+    """Regression: the flag was checked before the turn lock and cleared the
+    instant playout ended, so a "haan" finalised in the LLM/TTS gap waited out
+    the readback on the lock and was then processed as the answer to it."""
+    gate = lock.ReadbackGate()
+
+    # Finalised while nothing is playing: the pre-lock check lets it through.
+    epoch = gate.epoch
+    assert gate.should_discard(transcript="haan", epoch=epoch, now=0.0) is False
+
+    # It blocks on the turn lock while the previous turn speaks the readback.
+    gate.begin()
+    assert gate.should_discard(transcript="haan", epoch=epoch, now=0.5) is True
+    gate.end(now=1.0)
+
+    # Re-checked on the far side of the lock, it is now stale: this speech
+    # predates the question it would be answering.
+    assert gate.should_discard(transcript="haan", epoch=epoch, now=1.0) is True
+
+    # Speech that genuinely follows the readback snapshots the new epoch and
+    # cannot be finalised sooner than the endpointing silence that ends it.
+    fresh = gate.epoch
+    assert fresh != epoch
+    assert gate.should_discard(
+        transcript="haan", epoch=fresh, now=1.0 + lock.POST_READBACK_GRACE_S
+    ) is False
+
+
+def test_speech_finalised_inside_the_grace_window_is_still_readback_speech() -> None:
+    """A transcript cannot be finalised sooner than the endpointing delay after
+    the speech ends, so anything arriving faster than that overlapped playout."""
+    gate = lock.ReadbackGate()
+    gate.begin()
+    gate.end(now=10.0)
+
+    assert gate.should_discard(transcript="haan haan", epoch=gate.epoch, now=10.1) is True
+    assert gate.should_discard(
+        transcript="haan haan", epoch=gate.epoch, now=10.0 + lock.POST_READBACK_GRACE_S + 0.01
+    ) is False
+    # Distress is never held back, in the window or out of it.
+    assert gate.should_discard(transcript="chest pain", epoch=gate.epoch, now=10.1) is False
+
+
+def test_distress_over_a_locked_readback_reaches_a_human(client, context) -> None:
+    """Regression: `discard_audio_if_uninterruptible=True` deleted the audio of
+    an elder reporting chest pain mid-readback, so no transcript was ever made
+    and the distress carve-out could not fire. The audio now survives to text,
+    where the gate lets distress - and only distress - through."""
+    assert config.DISCARD_AUDIO_IF_UNINTERRUPTIBLE is False
+
+    gate = lock.ReadbackGate()
+    gate.begin()
+    distress = "আমার বুকে ব্যথা হচ্ছে"
+    assert gate.should_discard(transcript=distress, epoch=gate.epoch) is False
+    assert gate.should_discard(transcript="haan haan", epoch=gate.epoch) is True
+
+    session = make_session(
+        client,
+        [
+            [{"tool_calls": [SHARMA_SEARCH]}, {"tool_calls": [SHARMA_SLOTS]}, {"content": "কোন দিন?"}],
+            [{"tool_calls": [HOLD_THU]}, {"content": "৩০০ টাকা। ঠিক আছে?"}],
+            [],
+        ],
+        context,
+    )
+    session.user_says("ডাঃ শর্মার অ্যাপয়েন্টমেন্ট")
+    assert session.user_says("বৃহস্পতিবার বিকেল চারটে").state is State.READBACK_CONFIRM
+
+    turn = session.user_says(distress)
+
+    assert turn.handed_off is True
+    assert client.orphaned_holds() == [], "the hold goes back before the human arrives"
+    assert client.bookings == {}
+
+
+def test_the_worker_wires_the_audio_discard_flag_from_config() -> None:
+    """The worker cannot be imported without the voice extra, so the one line
+    this defect turned on is checked at the source."""
+    source = (
+        Path(__file__).resolve().parents[1] / "saathi_agent" / "voice" / "worker.py"
+    ).read_text(encoding="utf-8")
+    assert "discard_audio_if_uninterruptible=DISCARD_AUDIO_IF_UNINTERRUPTIBLE" in source
+    assert "discard_audio_if_uninterruptible=True" not in source
 
 
 def test_lock_follows_a_real_booking_through_the_machine(client, context) -> None:

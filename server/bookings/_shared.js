@@ -5,7 +5,11 @@
 
 const { badRequest, readBody, requireFamilyLink } = require('../_lib/auth');
 const { guardianIdsForParent, sendPushToUsers } = require('../_lib/push');
-const { notifyVendorBooking, writeBookingAudit } = require('../_lib/vendor-notify');
+const {
+  notifyVendorBooking,
+  notifyVendorCancellation,
+  writeBookingAudit,
+} = require('../_lib/vendor-notify');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,6 +39,64 @@ const BOOKING_COLUMNS =
 // still wants to call off. Everything else (completed, expired, the cancelled
 // states) is terminal and must not decrement a slot a second time.
 const CANCELLABLE_STATUSES = ['held', 'pending_guardian', 'pending_vendor', 'confirmed'];
+
+// The states in which the vendor has already had the booking pushed at them on
+// WhatsApp — pending_vendor because the request went out, confirmed because they
+// tapped Accept. Cancelling out of either leaves the vendor's last message
+// saying an appointment is on, so these are the ones that owe them a follow-up.
+const VENDOR_NOTIFIED_STATUSES = ['pending_vendor', 'confirmed'];
+
+// Business outcomes the booking_* functions raise as P0001/P0002. They are the
+// caller's cue to do something different, not server faults: left to
+// sendServerError they become a 500 with "please try again", which for
+// hold_expired is advice that can never work (the same holdId re-raises it for
+// ever) and which buries real faults in noise from elders who simply paused.
+// The `code` is the machine-readable half the app and the voice agent key on.
+const RPC_BUSINESS_ERRORS = {
+  hold_expired: {
+    // 409 rather than 410: the mobile client keys the "pick the time again"
+    // recovery off the 409 branch of friendlyBookingError, and the `code` below
+    // is what actually distinguishes this from the other conflicts.
+    status: 409,
+    code: 'hold_expired',
+    message: 'The five minute hold ran out. Please pick the time again.',
+  },
+  booking_not_confirmable: {
+    status: 409,
+    code: 'booking_not_confirmable',
+    message: 'This booking can no longer be confirmed. Please pick the time again.',
+  },
+  booking_not_found: {
+    status: 404,
+    code: 'booking_not_found',
+    message: 'That hold is gone. Please pick a time again.',
+  },
+  slot_not_found: {
+    status: 404,
+    code: 'slot_not_found',
+    message: 'That time is no longer available. Please pick another.',
+  },
+  slot_full: {
+    status: 409,
+    code: 'slot_full',
+    message: 'That time was just taken. Please pick another time.',
+  },
+  idempotency_key_reused: {
+    status: 409,
+    code: 'idempotency_key_reused',
+    message: 'That request was already used for a different time. Please start again.',
+  },
+  idempotency_key_mismatch: {
+    status: 409,
+    code: 'idempotency_key_mismatch',
+    message: 'This confirmation does not match the hold. Please start again.',
+  },
+  booking_hold_conflict: {
+    status: 409,
+    code: 'booking_hold_conflict',
+    message: 'That time was being booked at the same moment. Please try again.',
+  },
+};
 
 const DEFAULT_APPROVAL_THRESHOLD_PAISE = 50000;
 const RATE_LIMIT_MAX = 20;
@@ -271,6 +333,17 @@ async function notifyVendor(row, client) {
   }
 }
 
+// Same contract as notifyVendor, for the booking the family called off after the
+// vendor had already been told about it. Also takes the RAW bookings row.
+async function notifyVendorCancelled(row, client) {
+  try {
+    return await notifyVendorCancellation(row, client);
+  } catch (error) {
+    console.error('Vendor cancel notify threw for booking', row?.id, error?.message || error);
+    return { queued: false, reason: 'notify_threw' };
+  }
+}
+
 async function vendorName(client, vendorId) {
   if (!vendorId) return 'a booking';
   const { data, error } = await client
@@ -320,15 +393,37 @@ async function notifyGuardiansForApproval(client, auth, booking) {
 // count we just read; a competing hold moves `booked` under us and the retry
 // picks up the new number. Only ever called once the booking row has already
 // moved to a cancelled state, so it cannot run twice for one seat.
+//
+// Returning false means the seat was NOT handed back, and nothing in the system
+// will hand it back later: by the time this runs the booking is already in a
+// terminal state, and booking_release_expired() only revisits 'held' and
+// 'pending_vendor' rows. The slot then advertises one opening fewer than it has
+// until a person repairs it, so every caller records the result in its audit row
+// and the log line below is the thing to grep when capacity drifts down.
+// (The real fix is a SQL function that flips the status and decrements the seat
+// in one transaction — the repo's own invariant that the SQL owns atomicity.)
+const RELEASE_SLOT_ATTEMPTS = 5;
+
 async function releaseSlot(client, slotId) {
   if (!slotId) return false;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  let lastError = null;
+  for (let attempt = 0; attempt < RELEASE_SLOT_ATTEMPTS; attempt += 1) {
     const { data: slot, error: readError } = await client
       .from('vendor_slots')
       .select('id,booked')
       .eq('id', slotId)
       .maybeSingle();
-    if (readError || !slot) break;
+    // A transient read failure is worth another go — giving up on the first one
+    // spends a seat on a blip. A missing slot is not: there is nothing to
+    // decrement and retrying cannot conjure the row.
+    if (readError) {
+      lastError = readError;
+      continue;
+    }
+    if (!slot) {
+      console.error('Could not release slot capacity: slot', slotId, 'no longer exists.');
+      return false;
+    }
 
     const booked = Number(slot.booked || 0);
     if (booked <= 0) return true;
@@ -340,12 +435,20 @@ async function releaseSlot(client, slotId) {
       .eq('booked', booked)
       .select('id')
       .maybeSingle();
-    if (writeError) break;
+    if (writeError) {
+      lastError = writeError;
+      continue;
+    }
+    // No row back means the CAS lost to a concurrent hold or release; the next
+    // pass reads the number they left behind.
     if (updated) return true;
   }
-  // A slot keeping a phantom seat shows one fewer opening than it really has:
-  // recoverable by the expiry sweeper, invisible to nobody.
-  console.error('Could not release slot capacity for', slotId);
+  console.error(
+    `Slot capacity leak: could not release a seat on slot ${slotId} after ${RELEASE_SLOT_ATTEMPTS}`
+    + ' attempts. The slot now shows one opening fewer than it has and no sweep will recover it;'
+    + ' vendor_slots.booked needs a manual correction.'
+    + (lastError ? ` Last error: ${lastError.message}` : ''),
+  );
   return false;
 }
 
@@ -355,11 +458,25 @@ function isSlotFull(error) {
   return String(error?.message || '').toLowerCase().includes('slot_full');
 }
 
+// Maps a raised booking_* error onto its 4xx answer, or null when it is a
+// genuine fault that should still become a 500. The raised message is the whole
+// identifier — `raise exception using message = 'hold_expired'` arrives on
+// error.message verbatim — so an exact match is tried first and a contains-scan
+// only covers a driver that decorates it.
+function rpcBusinessError(error) {
+  const message = String(error?.message || '').trim();
+  if (!message) return null;
+  if (RPC_BUSINESS_ERRORS[message]) return RPC_BUSINESS_ERRORS[message];
+  const name = Object.keys(RPC_BUSINESS_ERRORS).find((key) => message.includes(key));
+  return name ? RPC_BUSINESS_ERRORS[name] : null;
+}
+
 module.exports = {
   BOOKING_COLUMNS,
   CANCELLABLE_STATUSES,
   CREATED_BY,
   VENDOR_CATEGORIES,
+  VENDOR_NOTIFIED_STATUSES,
   approvalThresholdPaise,
   enforceRateLimit,
   firstRow,
@@ -368,9 +485,11 @@ module.exports = {
   loadBooking,
   notifyGuardiansForApproval,
   notifyVendor,
+  notifyVendorCancelled,
   rangeEnd,
   rangeStart,
   releaseSlot,
+  rpcBusinessError,
   requestParams,
   requireGuardianOfFamily,
   requireUuid,

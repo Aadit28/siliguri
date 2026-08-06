@@ -13,7 +13,14 @@ import json
 import pytest
 
 from conftest import PERSONA_DIR, load_persona, make_session, persona_ids, run_persona
-from saathi_agent import MockBookingClient, RejectionCode, State, ToolName, openai_tool_schemas
+from saathi_agent import (
+    MockBookingClient,
+    RejectionCode,
+    State,
+    ToolName,
+    ToolOutcome,
+    openai_tool_schemas,
+)
 
 SHARMA_SEARCH = {
     "name": "search_vendors",
@@ -71,6 +78,128 @@ def test_confirm_after_a_search_but_before_a_hold_is_still_blocked(client, conte
     assert confirm.rejection.code is RejectionCode.STATE_BLOCKED
     assert session.state.state is State.SLOT_FILL
     assert "confirm_booking" not in tool_names(client)
+
+
+def test_hold_and_confirm_in_one_turn_cannot_book(client, context) -> None:
+    """Regression: a yes that predates the readback is not consent.
+
+    The elder says "haan" about the vendor, and the model tries to hold and
+    confirm in the same response. The hold legitimately moves the machine to
+    READBACK_CONFIRM mid-turn, so the state check alone passes - but the
+    readback has not been spoken yet, and the elder cannot have agreed to a
+    fee they have not heard.
+    """
+    session = make_session(
+        client,
+        [[
+            {"tool_calls": [SHARMA_SEARCH]},
+            {"tool_calls": [SHARMA_SLOTS]},
+            {"tool_calls": [HOLD_THU, {"name": "confirm_booking",
+                                       "arguments": {"hold_id": "{{hold_id}}"}}]},
+            {"content": "ডাঃ শর্মা, বৃহস্পতিবার বিকেল ৪টা, ৩০০ টাকা। ঠিক আছে?"},
+        ]],
+        context,
+    )
+
+    turn = session.user_says("haan, Dr. Sharma theek hai")
+
+    confirm = [o for o in turn.outcomes if o.tool == ToolName.CONFIRM_BOOKING][0]
+    assert confirm.ok is False
+    assert confirm.rejection.code is RejectionCode.STATE_BLOCKED
+    assert "confirm_booking" not in tool_names(client)
+    assert client.bookings == {}
+    assert session.state.state is State.READBACK_CONFIRM
+
+    session.close()
+
+
+def test_the_yes_after_the_readback_still_books(client, context) -> None:
+    """The other half of the same rule: the legitimate two-turn flow works."""
+    session = make_session(
+        client,
+        [
+            [{"tool_calls": [SHARMA_SEARCH]}, {"tool_calls": [SHARMA_SLOTS]}, {"content": "কোন দিন?"}],
+            [{"tool_calls": [HOLD_THU]}, {"content": "৩০০ টাকা। ঠিক আছে?"}],
+            [{"tool_calls": [{"name": "confirm_booking", "arguments": {"hold_id": "{{hold_id}}"}}]},
+             {"content": "হয়ে গেছে।"}],
+        ],
+        context,
+    )
+    session.user_says("ডাঃ শর্মা")
+    session.user_says("বৃহস্পতিবার")
+    turn = session.user_says("হ্যাঁ")
+
+    assert turn.outcomes[0].ok is True
+    assert len(client.bookings) == 1
+
+
+def test_a_search_from_pending_guardian_does_not_crash_the_turn(client, context) -> None:
+    """Regression: searches are not gated, so their state effect must be able
+    to do nothing. PENDING_GUARDIAN has no edge to DISAMBIGUATE or SLOT_FILL,
+    and an InvalidTransition here left the elder listening to silence."""
+    banerjee_search = {"name": "search_vendors",
+                       "arguments": {"category": "doctor", "query": "ব্যানার্জি"}}
+    session = make_session(
+        client,
+        [
+            [{"tool_calls": [banerjee_search]},
+             {"tool_calls": [{"name": "search_slots",
+                              "arguments": {"vendor_id": "vnd_dr_banerjee",
+                                            "date_range": "2026-08-11..2026-08-16"}}]},
+             {"content": "কোন দিন?"}],
+            [{"tool_calls": [{"name": "hold_slot",
+                              "arguments": {"slot_id": "slot_banerjee_fri_1100"}}]},
+             {"content": "৬০০ টাকা। ঠিক আছে?"}],
+            [{"tool_calls": [{"name": "confirm_booking", "arguments": {"hold_id": "{{hold_id}}"}}]},
+             {"content": "রিয়াদিদির অনুমতি লাগবে।"}],
+            # While the guardian is still deciding, the elder asks about
+            # something else. Both searches are illegal transitions from here.
+            [{"tool_calls": [{"name": "search_vendors", "arguments": {"category": "doctor"}}]},
+             {"tool_calls": [SHARMA_SLOTS]},
+             {"content": "ডাঃ শর্মার মঙ্গলবার আর বৃহস্পতিবার ফাঁকা।"}],
+        ],
+        context,
+    )
+    session.user_says("ডাঃ ব্যানার্জি")
+    session.user_says("শুক্রবার")
+    assert session.user_says("হ্যাঁ").state is State.PENDING_GUARDIAN
+
+    turn = session.user_says("আর ডাঃ শর্মার কী অবস্থা?")
+
+    assert [o.ok for o in turn.outcomes] == [True, True]
+    assert turn.reply
+    assert session.state.state is State.PENDING_GUARDIAN, "a lookup must not move a booked call"
+    # And the turn was still audited, one event per call.
+    assert session.audit.events[-1].tool == ToolName.SEARCH_SLOTS
+
+
+def test_hold_from_disambiguate_is_refused_before_any_capacity_is_taken(client, context) -> None:
+    """Regression: can_call allowed a hold the transition table then refused,
+    so a real server-side hold existed before the crash. The rejection now
+    happens before dispatch - nothing is held, and the turn survives."""
+    session = make_session(
+        client,
+        [[
+            {"tool_calls": [SHARMA_SEARCH]},
+            {"tool_calls": [SHARMA_SLOTS]},
+            # Two doctors match, so the machine drops back to DISAMBIGUATE.
+            {"tool_calls": [{"name": "search_vendors", "arguments": {"category": "doctor"}}]},
+            {"tool_calls": [HOLD_THU]},
+            {"content": "শর্মা না ব্যানার্জি, কার কাছে?"},
+        ]],
+        context,
+    )
+
+    turn = session.user_says("ডাক্তার দেখাতে হবে")
+
+    hold = [o for o in turn.outcomes if o.tool == ToolName.HOLD_SLOT][0]
+    assert hold.ok is False
+    assert hold.rejection.code is RejectionCode.STATE_BLOCKED
+    assert "hold_slot" not in tool_names(client)
+    assert client.holds == {}
+    assert client.slots["slot_sharma_thu_1600"]["booked"] == 0
+    assert session.state.state is State.DISAMBIGUATE
+    assert turn.reply
 
 
 @pytest.mark.parametrize("persona_id", persona_ids())
@@ -174,6 +303,96 @@ def test_the_model_is_never_shown_the_idempotency_parameter() -> None:
         params = schema["function"]["parameters"]
         assert "idempotency_key" not in params["properties"]
         assert "idempotency_key" not in params["required"]
+
+
+def test_the_idempotency_key_never_reaches_the_model_in_a_result(client, context) -> None:
+    """Regression: stripping the key from the arguments covered half the door.
+
+    The booking rows come back carrying it, and `tool_content` serialises them
+    verbatim - so the key landed in model context on every hold and confirm,
+    where it can be spoken over TTS or lifted by an injection in a vendor name.
+    """
+    session = make_session(
+        client,
+        [
+            [{"tool_calls": [SHARMA_SEARCH]}, {"tool_calls": [SHARMA_SLOTS]}, {"content": "কোন দিন?"}],
+            [{"tool_calls": [HOLD_THU]}, {"content": "ঠিক আছে?"}],
+            [{"tool_calls": [{"name": "confirm_booking", "arguments": {"hold_id": "{{hold_id}}"}}]},
+             {"content": "হয়ে গেছে।"}],
+        ],
+        context,
+    )
+    session.user_says("ডাঃ শর্মা")
+    hold_turn = session.user_says("বৃহস্পতিবার")
+    confirm_turn = session.user_says("ঠিক আছে")
+
+    key = hold_turn.outcomes[0].idempotency_key
+    assert key
+
+    for outcome in (hold_turn.outcomes[0], confirm_turn.outcomes[0]):
+        assert "idempotency_key" not in json.loads(outcome.tool_content())["data"]
+
+    # Nothing else leaked it into the transcript either.
+    assert key not in json.dumps(session.messages, ensure_ascii=False)
+    # The runtime still has it, and the server still received it.
+    assert client.holds[hold_turn.outcomes[0].data["hold_id"]]["idempotency_key"] == key
+
+
+def test_tool_content_redacts_runtime_fields_whatever_the_client_returns() -> None:
+    """The choke point, tested on its own: a transport that echoes the key back
+    (the real API does) must not be able to put it in front of the model."""
+    leaky = ToolOutcome(
+        tool=ToolName.HOLD_SLOT,
+        args={"slot_id": "slot_sharma_thu_1600"},
+        ok=True,
+        data={"hold_id": "hold_1", "idempotency_key": "leaked-key",
+              "nested": [{"idempotency_key": "leaked-key"}]},
+        idempotency_key="leaked-key",
+    )
+    assert "leaked-key" not in leaky.tool_content()
+    assert json.loads(leaky.tool_content())["data"]["hold_id"] == "hold_1"
+
+
+def test_a_released_hold_retires_its_slot_key(client) -> None:
+    from saathi_agent.tools import IdempotencyStore
+
+    store = IdempotencyStore()
+    first = store.for_slot("slot_sharma_thu_1600")
+    assert store.for_slot("slot_sharma_thu_1600") == first, "one key per attempt, not per call"
+
+    assert store.drop_slot("slot_sharma_thu_1600") == first
+    assert store.for_slot("slot_sharma_thu_1600") != first, "a new attempt needs a new key"
+
+
+def test_re_holding_a_released_slot_takes_a_live_hold_not_the_dead_one(client, context) -> None:
+    """Regression: the key was pinned to the slot for the whole call, so a
+    re-hold replayed the released row - the agent then read a dead hold back
+    and confirm failed with hold_expired forever."""
+    hold_tue = {"name": "hold_slot", "arguments": {"slot_id": "slot_sharma_tue_1600"}}
+    session = make_session(
+        client,
+        [
+            [{"tool_calls": [SHARMA_SEARCH]}, {"tool_calls": [SHARMA_SLOTS]}, {"content": "কোন দিন?"}],
+            [{"tool_calls": [HOLD_THU]}, {"content": "বৃহস্পতিবার। ঠিক আছে?"}],
+            [{"tool_calls": [hold_tue]}, {"content": "মঙ্গলবার। ঠিক আছে?"}],
+            [{"tool_calls": [HOLD_THU]}, {"content": "আবার বৃহস্পতিবার। ঠিক আছে?"}],
+        ],
+        context,
+    )
+    session.user_says("ডাঃ শর্মা")
+    first = session.user_says("বৃহস্পতিবার").outcomes[0]
+    session.user_says("না, মঙ্গলবার")  # releases the Thursday hold
+    again = session.user_says("না না, বৃহস্পতিবারই").outcomes[0]
+
+    assert again.ok is True
+    assert again.idempotency_key != first.idempotency_key
+    assert again.data["hold_id"] != first.data["hold_id"]
+    assert again.data["status"] == "held", "the elder must not hear a released hold read back"
+    assert client.holds[first.data["hold_id"]]["status"] == "released"
+    assert client.slots["slot_sharma_thu_1600"]["booked"] == 1
+
+    session.close()
+    assert client.orphaned_holds() == []
 
 
 # --------------------------------------------------------------------------

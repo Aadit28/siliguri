@@ -67,10 +67,18 @@ def test_confirm_blocked_without_explicit_yes() -> None:
         assert "explicit yes" in why
 
 
+def readback_delivered(m: ConversationStateMachine) -> ConversationStateMachine:
+    """The readback for the current attempt has been spoken. A yes only counts
+    once this has happened, so every consent test has to walk through it."""
+    m.mark_readback_pending()
+    m.mark_readback_delivered()
+    return m
+
+
 @pytest.mark.parametrize("phrase", ["haan", "ঠিক আছে", "theek hai", "confirm", "yes", "হ্যাঁ"])
 def test_every_explicit_yes_unlocks_confirm(phrase: str) -> None:
-    m = machine_in(State.READBACK_CONFIRM)
-    m.last_user_utterance = phrase
+    m = readback_delivered(machine_in(State.READBACK_CONFIRM))
+    m.observe_user(phrase)
     assert m.can_call(ToolName.CONFIRM_BOOKING) == (True, "")
 
 
@@ -84,12 +92,61 @@ def test_negation_vetoes_a_yes(phrase: str) -> None:
 
 
 def test_hold_requires_a_slot_filling_state() -> None:
-    for state in (State.IDLE, State.INTENT, State.RECEIPT):
+    # DISAMBIGUATE is refused with the rest: two vendors are still in play, so
+    # there is nothing to hold yet.
+    for state in (State.IDLE, State.INTENT, State.DISAMBIGUATE, State.RECEIPT):
         allowed, _ = machine_in(state).can_call(ToolName.HOLD_SLOT)
         assert not allowed
-    for state in (State.DISAMBIGUATE, State.SLOT_FILL, State.READBACK_CONFIRM):
+    for state in (State.SLOT_FILL, State.READBACK_CONFIRM):
         allowed, _ = machine_in(state).can_call(ToolName.HOLD_SLOT)
         assert allowed
+
+
+def test_the_hold_gate_and_the_transition_table_agree() -> None:
+    """A gate that allows a hold from a state the table cannot leave for
+    READBACK_CONFIRM books capacity and then crashes on the transition."""
+    for state in State:
+        allowed, _ = machine_in(state).can_call(ToolName.HOLD_SLOT)
+        if allowed:
+            assert machine_in(state).can_transition(State.READBACK_CONFIRM), (
+                f"hold_slot is permitted in {state} but {state} -> READBACK_CONFIRM is illegal"
+            )
+
+
+def test_a_yes_spoken_before_the_readback_is_not_consent() -> None:
+    """Regression: the elder's "haan" was answering the previous question.
+
+    The utterance arrives, *then* the hold lands and the readback is composed.
+    Nothing the elder has said yet can be an answer to details they have not
+    heard, so the gate has to refuse until they speak again.
+    """
+    m = machine_in(State.SLOT_FILL)
+    m.observe_user("haan, Dr. Sharma theek hai")  # said before any hold existed
+
+    m.transition_to(State.READBACK_CONFIRM, "hold_slot")
+    m.mark_readback_pending()
+
+    allowed, why = m.can_call(ToolName.CONFIRM_BOOKING)
+    assert not allowed
+    assert "not been delivered" in why
+
+    # Still refused after the readback is spoken: the yes predates it.
+    m.mark_readback_delivered()
+    assert m.can_call(ToolName.CONFIRM_BOOKING)[0] is False
+
+    # Only a reply that arrives after hearing it unlocks the call.
+    m.observe_user("haan")
+    assert m.can_call(ToolName.CONFIRM_BOOKING) == (True, "")
+
+
+def test_a_correction_demands_a_fresh_yes() -> None:
+    """The elder consented to Thursday; the new hold is Tuesday."""
+    m = readback_delivered(machine_in(State.READBACK_CONFIRM))
+    m.observe_user("হ্যাঁ")
+    assert m.can_call(ToolName.CONFIRM_BOOKING)[0] is True
+
+    m.mark_readback_pending()  # a corrected hold replaced the details
+    assert m.can_call(ToolName.CONFIRM_BOOKING)[0] is False
 
 
 # --------------------------------------------------------------------------

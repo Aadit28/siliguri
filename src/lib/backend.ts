@@ -61,10 +61,17 @@ export async function backendRequest<T>(path: string, options: RequestOptions = 
   if (!contentType.includes('application/json')) {
     throw new Error('The auth server is not running. Check the API URL and deployment.');
   }
-  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (!res.ok) {
-    const error = new Error(data.error || 'Request failed.') as Error & { status?: number };
+    const error = new Error(data.error || 'Request failed.') as Error & {
+      status?: number;
+      code?: string;
+    };
     error.status = res.status;
+    // Business failures answer with a machine-readable code (hold_expired,
+    // slot_full, …). The screens key their translated copy off that code — the
+    // { error } sentence beside it is English and is only a developer aid.
+    if (typeof data.code === 'string' && data.code) error.code = data.code;
     throw error;
   }
   return data as T;

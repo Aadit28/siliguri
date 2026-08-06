@@ -66,12 +66,43 @@ create index if not exists bookings_family_created_idx
 create index if not exists bookings_slot_id_idx
   on public.bookings (slot_id);
 
--- The sweeper reads only the two waiting states, so it gets one partial index
+-- The sweeper reads only the three waiting states, so it gets one partial index
 -- each instead of scanning every completed booking ever made.
 create index if not exists bookings_hold_expiry_idx
   on public.bookings (hold_expires_at) where status = 'held';
 create index if not exists bookings_vendor_wait_idx
   on public.bookings (updated_at) where status = 'pending_vendor';
+create index if not exists bookings_guardian_wait_idx
+  on public.bookings (updated_at) where status = 'pending_guardian';
+
+-- updated_at is not decoration here: it is the clock booking_release_expired
+-- reads for both the guardian wait and the vendor wait, so leaving it to each
+-- writer to remember is a seat that never comes back. The trigger makes every
+-- update to a booking restart that clock, whatever wrote it - the confirm
+-- function, the approve endpoint, a hand fix in the dashboard.
+--
+-- security invoker, like the migration 15 triggers: the row is already being
+-- written by whoever fired this, so the function needs no privileges of its
+-- own; search_path is still pinned because an empty one is the only search
+-- path that cannot be pointed somewhere else.
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+revoke execute on function public.set_updated_at() from public, anon, authenticated;
+
+drop trigger if exists bookings_set_updated_at on public.bookings;
+create trigger bookings_set_updated_at
+before update on public.bookings
+for each row execute function public.set_updated_at();
 
 -- 3. FAMILY READ HELPER ------------------------------------------------------
 -- A policy expression runs with the querying role's privileges, and
@@ -169,6 +200,23 @@ begin
   returning * into v_slot;
 
   if not found then
+    -- Before calling the slot full: a retry carrying the same key can have been
+    -- the request that took the last seat. Its insert was still uncommitted
+    -- when the select above looked, then this update blocked on its row lock,
+    -- and by the time the lock cleared `booked < capacity` was false. The seat
+    -- is ours, not a stranger's, so the key answers before the capacity does -
+    -- read committed gives this select a fresh snapshot that includes the
+    -- winner's committed row.
+    select * into v_booking
+    from public.bookings
+    where idempotency_key = p_idempotency_key;
+    if found then
+      if v_booking.slot_id <> p_slot_id then
+        raise exception using errcode = 'P0001', message = 'idempotency_key_reused';
+      end if;
+      return to_jsonb(v_booking);
+    end if;
+
     if exists (select 1 from public.vendor_slots where id = p_slot_id) then
       raise exception using errcode = 'P0001', message = 'slot_full',
         hint = 'This time is already taken. Please choose another.';
@@ -212,6 +260,13 @@ begin
     where idempotency_key = p_idempotency_key;
     if not found then
       raise exception using errcode = 'P0001', message = 'booking_hold_conflict';
+    end if;
+    -- The same crossed-request check the fast path makes: two requests sharing
+    -- a key but naming different slots must not hand the loser the winner's
+    -- booking for a slot it never asked for. The decrement above rolls back
+    -- with the exception, so the seat count is left exactly as found.
+    if v_booking.slot_id <> p_slot_id then
+      raise exception using errcode = 'P0001', message = 'idempotency_key_reused';
     end if;
   end if;
 
@@ -275,7 +330,8 @@ begin
   end if;
 
   -- hold_expires_at is cleared because the five minute hold is over; from here
-  -- updated_at is the clock the sweeper reads.
+  -- updated_at is the clock the sweeper reads - written explicitly for the
+  -- reader's sake, though bookings_set_updated_at would set it anyway.
   update public.bookings
   set status = v_next_status,
       hold_expires_at = null,
@@ -289,6 +345,25 @@ $$;
 
 -- Called by the cron that already prunes rate_events and alerts:
 --   select public.booking_release_expired();
+--
+-- Returns the released bookings themselves, as a jsonb array of
+--   {id, slot_id, status, elder_id, family_id, service_id}
+-- and '[]' when nothing was due. Counts would be cheaper to build and useless
+-- to the caller: the cron's real job is telling each family that their hold
+-- expired or their provider never answered, and it cannot address a family it
+-- was never given. service_id is bookings.vendor_id under the name the
+-- notification helpers already look for, since that column points at
+-- public.services.
+--
+-- Three waits are swept here:
+--   held            - the five minute hold, keyed off hold_expires_at.
+--   pending_guardian- 24 hours. Chosen over a tighter window because the payer
+--                     is usually a child several time zones away: anything
+--                     shorter cancels bookings while the family is asleep, and
+--                     a day still frees the seat well before most slots come
+--                     round. Released as 'expired' rather than a new status,
+--                     so the app's existing terminal handling covers it.
+--   pending_vendor  - 15 minutes, the provider's answer window.
 drop function if exists public.booking_release_expired();
 create or replace function public.booking_release_expired()
 returns jsonb
@@ -298,12 +373,16 @@ set search_path = ''
 as $$
   with released as (
     update public.bookings
-    set status = case when status = 'held' then 'expired' else 'cancelled_vendor_timeout' end,
+    set status = case
+          when status in ('held','pending_guardian') then 'expired'
+          else 'cancelled_vendor_timeout'
+        end,
         hold_expires_at = null,
         updated_at = now()
     where (status = 'held' and hold_expires_at <= now())
+       or (status = 'pending_guardian' and updated_at <= now() - interval '24 hours')
        or (status = 'pending_vendor' and updated_at <= now() - interval '15 minutes')
-    returning slot_id, status
+    returning id, slot_id, status, elder_id, family_id, vendor_id as service_id
   ),
   freed as (
     -- greatest(..., 0) so a double sweep or a hand edit can never drive the
@@ -318,11 +397,10 @@ as $$
     where slot.id = taken.slot_id
     returning slot.id
   )
-  select jsonb_build_object(
-    'expired', count(*) filter (where status = 'expired'),
-    'vendor_timeout', count(*) filter (where status = 'cancelled_vendor_timeout'),
-    'slots_freed', (select count(*) from freed)
-  )
+  -- `freed` is not selected from, and still runs: a data-modifying CTE is
+  -- executed once and to completion whether or not the main query reads it.
+  -- Deleting it because it looks unused would stop the seats coming back.
+  select coalesce(jsonb_agg(to_jsonb(released)), '[]'::jsonb)
   from released;
 $$;
 

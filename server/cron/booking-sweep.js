@@ -22,12 +22,19 @@ const MESSAGES = {
   },
 };
 
-// The rpc may return rows, a single row, or a count depending on how it is
-// declared; only rows carry enough to notify anyone.
+// booking_release_expired() answers with a jsonb ARRAY of the booking rows it
+// released — { id, slot_id, status, elder_id, family_id, service_id } each, and
+// [] when nothing was due.
+//
+// The `row.id` filter is what keeps a non-booking object out of the loop. An
+// earlier build of the function returned a single {expired, vendor_timeout,
+// slots_freed} counts object, which this wrapped as a one-element array: the
+// loop then read a counts object as a booking, so no family was ever told their
+// hold had expired, the endpoint reported released:1 on every tick, and
+// audit_log collected one all-null junk row every five minutes for ever.
 function rowsFrom(data) {
-  if (Array.isArray(data)) return data.filter((row) => row && typeof row === 'object');
-  if (data && typeof data === 'object') return [data];
-  return [];
+  const rows = Array.isArray(data) ? data : [data];
+  return rows.filter((row) => row && typeof row === 'object' && row.id);
 }
 
 module.exports = async function handler(req, res) {
@@ -62,14 +69,18 @@ module.exports = async function handler(req, res) {
         actor: 'system:booking-sweep',
         action: 'booking.release_expired',
         args: {
-          booking_id: booking.id || null,
+          booking_id: booking.id,
           // Shares cancelled_vendor_timeout with an explicit vendor reject; the
           // reason is the only thing that separates them.
           reason: 'timeout',
           slot_id: booking.slot_id || null,
         },
         result: { status: booking.status || null, pushed: result.sent },
-        idempotencyKey: booking.id ? `booking:${booking.id}:sweep` : null,
+        // audit_write's p_idempotency_key is typed uuid, so the old
+        // `booking:<id>:sweep` string raised 22P02 and writeBookingAudit
+        // swallowed it — the expiry never reached the ledger at all. The booking
+        // id is the uuid, and it is released exactly once.
+        idempotencyKey: booking.id,
         familyId: booking.family_id || null,
       });
     }
