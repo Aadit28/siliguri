@@ -178,6 +178,10 @@ function RootStack() {
             <Stack.Screen name="booking/[vendorId]" options={{ title: '' }} />
             <Stack.Screen name="calendar" options={{ title: '' }} />
             <Stack.Screen name="voice" options={{ title: '' }} />
+            {/* Provider-side calendar. Reachable by URL only: a vendor is sent
+                the link, and putting it in the elder's navigation would offer
+                every senior a screen that answers 403 for them. */}
+            <Stack.Screen name="vendor/index" options={{ title: '' }} />
             {/* Guardian screens mount <AppHeader /> themselves (same as the tab
                 screens) so a direct load of /guardian keeps the bell, language,
                 theme and sign-out controls instead of dead-ending. */}

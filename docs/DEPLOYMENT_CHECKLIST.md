@@ -23,6 +23,15 @@ Apply in order via **Supabase Dashboard → SQL Editor**. Each is idempotent (us
   - Plan tiers: `care`, `care_plus`, `care_total`
   - Safe re-run: subscription id is unique; webhook reconciles
 
+- [ ] **Migration 21** — `supabase-migration-21-vendor-mgmt.sql`
+  - `services.owner_account_id` — the login that manages a listing; grants `/api/vendor/*` over that row
+  - Safe re-run: `add column if not exists` plus a partial index
+  - Until it is applied, all four `/api/vendor/*` routes answer `503 vendor_mgmt_not_configured` and the provider screen shows an explanation rather than an error. Nothing else in the app is affected.
+  - After applying, set an owner per claimed listing:
+    ```sql
+    update public.services set owner_account_id = '<user_accounts.id>' where id = '<services.id>';
+    ```
+
 - [ ] **Seed vendor slots** (one per city, at launch)
   ```bash
   node scripts/seed-vendor-slots.js --project prod --city siliguri

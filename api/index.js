@@ -62,6 +62,13 @@ const ROUTES = {
   // LiveKit credentials are absent, so an unconfigured project still serves
   // every other route through this dispatcher.
   'voice/token': () => require('../server/voice/token'),
+  // The vendor's own side of the booking core. Every one of these resolves the
+  // caller's owned services rows first (migration 21) and answers 503 where
+  // that migration has not run.
+  'vendor/slots': () => require('../server/vendor/slots'),
+  'vendor/slot-save': () => require('../server/vendor/slot-save'),
+  'vendor/slot-delete': () => require('../server/vendor/slot-delete'),
+  'vendor/booking-decide': () => require('../server/vendor/booking-decide'),
 };
 
 module.exports = async function handler(req, res) {
