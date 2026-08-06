@@ -1,4 +1,4 @@
-# saathi voice agent — week 1 (text mode) + week 2 (audio loop)
+# saathi voice agent — week 1 (text mode) + week 2 (audio loop) + week 3 (latency)
 
 The booking agent's brain, and the audio layer wrapped around it. Per
 [`docs/BUILD_GUIDE.md`](../docs/BUILD_GUIDE.md) Part D.7, tool-call traces are
@@ -25,10 +25,13 @@ Moves to `apps/voice-agent/` when the monorepo migration (Part A) lands.
 | `saathi_agent/prompts.py` | System prompt + the fixed reviewed copy for greeting, handoff, silence, close |
 | `tests/personas/*.json` | Six scripted suites, data not code |
 | **`saathi_agent/voice/worker.py`** | The LiveKit Agents entrypoint: room → Saaras → `VoiceSession` → Bulbul → room |
-| **`saathi_agent/voice/sarvam_stt.py`** | `livekit.agents.stt.STT` over Saaras (`saaras:v3`) |
-| **`saathi_agent/voice/sarvam_tts.py`** | `livekit.agents.tts.TTS` over Bulbul |
+| **`saathi_agent/voice/sarvam_stt.py`** | `livekit.agents.stt.STT` over Saaras (`saaras:v3`) — WebSocket, REST fallback |
+| **`saathi_agent/voice/sarvam_tts.py`** | `livekit.agents.tts.TTS` over Bulbul — WebSocket + sentence chunking, REST fallback |
 | **`saathi_agent/voice/lock.py`** | The readback interruption lock, as pure functions. No LiveKit import |
 | **`saathi_agent/voice/config.py`** | Env wiring, the D.4 elder tuning numbers, job-metadata → `ElderContext`. No LiveKit import |
+| **`saathi_agent/voice/sarvam_ws.py`** | The Sarvam WebSocket contract as pure functions: URLs, client frames, a decoder. No LiveKit import |
+| **`saathi_agent/voice/cache.py`** | Pre-synthesized fixed frames on disk + the `warm` CLI. No LiveKit import |
+| **`saathi_agent/voice/metrics.py`** | Per-turn latency records + the `report` CLI. No LiveKit import |
 
 Two rules are enforced in code rather than in the prompt, because prompts are
 suggestions: `confirm_booking` is refused unless the machine is in
@@ -92,6 +95,13 @@ WebSocket — Fly / Railway / a small ap-south-1 box, never Vercel (D.1).
 | `SAATHI_API_TOKEN`, `SAATHI_ELDER_ID` | — | Booking API auth, as in week 1 |
 | `SAATHI_LLM_BASE_URL`, `SAATHI_LLM_API_KEY`, `SAATHI_LLM_MODEL` | `gpt-4o-mini` | The tool-calling model, unchanged from week 1 |
 | `SAATHI_LOG_LEVEL` | `INFO` | — |
+| `SARVAM_STREAMING` | `1` | `0`/`false`/`no`/`off` puts **both** adapters back on REST. Anything else, including a typo, leaves the sockets on — disabling them has to be deliberate |
+| `SARVAM_STT_WS_URL` | `wss://api.sarvam.ai/speech-to-text/ws` | Saaras socket. Overridable so a moved endpoint is an env change, not a release |
+| `SARVAM_TTS_WS_URL` | `wss://api.sarvam.ai/text-to-speech/ws` | Bulbul socket |
+| `SARVAM_STT_SAMPLE_RATE` | `16000` | The socket takes 16k or 8k only. `8000` for the Exotel phone channel (D.9) |
+| `SARVAM_TTS_CODEC` | `linear16` | Streaming output codec. `linear16` is raw PCM (`audio/pcm`), which skips the framework decoder and the `livekit-agents[codecs]` extra |
+| `SAATHI_TTS_CACHE_DIR` | `voice-agent/.cache/tts` | Pre-synthesized fixed frames |
+| `SAATHI_METRICS_DIR` | `voice-agent/.metrics` | Per-turn latency JSONL, one file per call |
 
 Who is on the call comes from the job dispatch metadata, not the environment:
 `{"elder_name": …, "language": "bn", "city": …, "family_members": [{"id", "name", "relation"}]}`
@@ -122,6 +132,83 @@ a successful `hold_slot` can put the machine there.
 Both decisions are pure functions over `State`, tested in
 `tests/test_voice_scaffold.py` with no audio stack present.
 
+## Latency (week 3)
+
+Four changes, all of them outside the confirm gate.
+
+**Both Sarvam adapters stream.** STT goes up the Saaras socket in 50ms
+base64 frames as the elder speaks, so the transcript is not waiting on an
+upload that starts only once endpointing has fired. TTS comes back down the
+Bulbul socket, so playback starts on the first chunk instead of the last.
+`SARVAM_STREAMING=0` puts both back on REST, and a socket that will not open
+falls back to REST for that turn rather than failing it — after the first
+refusal the adapter stops re-paying the connect timeout.
+
+**The sentence tokenizer is ours now.** The framework only inserts its own
+(`tts.StreamAdapter`) in front of a TTS whose capabilities say
+`streaming=False`. Declare `streaming=True` and the reply arrives as text, so
+`_SarvamSynthesizeStream` runs `tokenize.basic.SentenceTokenizer` itself and
+pushes sentence by sentence. Getting this wrong is silent — one synthesis
+request for the whole reply, and the first audio a sentence and a half late.
+
+**Fixed frames are pre-synthesized.** Six lines are reviewed copy rather than
+model output (greeting, handoff, silence re-prompt, polite close, error
+apology, the readback's fixed tail). They are synthesized once to
+`.cache/tts/<voice>/` and played from disk on an exact text match:
+
+```bash
+python -m saathi_agent.voice.cache warm                 # everything missing
+python -m saathi_agent.voice.cache warm --dry-run       # no key needed
+python -m saathi_agent.voice.cache list
+```
+
+The key covers voice, model, language, sample rate and pace, so changing any
+of them is a miss rather than yesterday's voice halfway through a call. An
+unwarmed worker logs a warning and synthesizes normally.
+
+**Every turn is timed.** One JSONL line per turn in `.metrics/<session>.jsonl`:
+`user_speech_end → stt_final → llm_done → tts_first_chunk → playback_start →
+playback_end`.
+
+```bash
+python -m saathi_agent.voice.metrics report             # p50/p95 per span
+python -m saathi_agent.voice.metrics report .metrics/lk_room.jsonl --json
+```
+
+There is no `llm_first_token`. The core is synchronous and runs a whole tool
+loop per turn, so nothing tokenwise exists to stamp; `llm_done` is the honest
+name and `response` (speech end → playback start) is the number the elder
+actually experiences.
+
+### How much of the Sarvam socket contract is verified
+
+Worth being precise about, because none of it can be exercised offline:
+
+- **Documented** on docs.sarvam.ai: both endpoint URLs, `api-subscription-key`
+  as a handshake header, the STT query parameters and their enums, the STT
+  audio frame and `{"type": "flush"}`, the STT `data`/`events`/`error` server
+  frames with `START_SPEECH`/`END_SPEECH`, and the TTS
+  `config`/`text`/`flush` client frames and `audio`/`event`/`error` replies.
+- **Cross-checked** against the official `livekit-plugins-sarvam` 1.6.8
+  source, which settles what the docs leave ambiguous: audio is base64 of raw
+  little-endian int16 with no WAV container even though `encoding` says
+  `audio/wav`, and TTS audio lives at `data.audio`.
+- **Undocumented, marked TODO in `sarvam_ws.py`:** `{"type":
+  "end_of_stream"}` — the official plugin sends it and it is harmless if the
+  server ignores it.
+- **Inferred, marked TODO:** interim transcripts. Saaras v3 emits one
+  VAD-gated transcript per utterance and the documented schema has no
+  `is_final`, so the INTERIM path is forward-compatible plumbing, not
+  something observed. It exists so that if a partial ever does arrive it is
+  surfaced as interim rather than mistaken for a final — half a sentence
+  answering a readback is the failure that matters here.
+
+Two ordering rules are enforced in `SarvamSTTDecoder` and unit-tested:
+`END_SPEECH` arrives *before* the transcript it closes, so END_OF_SPEECH is
+held until FINAL_TRANSCRIPT has been emitted (otherwise the turn closes on an
+empty utterance), and a held one is released after a second if the transcript
+never lands (otherwise the turn never closes at all).
+
 ## The gate
 
 Every tool call and result lands in an in-memory audit trace
@@ -150,14 +237,12 @@ Every tool call and result lands in an in-memory audit trace
   is generated. Handing the eight tools to the framework's LLM node would put
   the `confirm_booking` gate back inside the model's reach, which is the one
   thing D.2 says never to do.
-- **REST, not WebSocket, for both Sarvam adapters.** Verified against
-  `livekit-agents` 1.6.8: both declare `streaming=False`, so AgentSession
-  wraps STT in its VAD-driven stream adapter (which is where the 700ms
-  endpointing applies) and puts its sentence tokenizer in front of TTS (which
-  is the "speak clause 1 while clause 2 generates" trick from D.5, minus the
-  socket). The Saaras/Bulbul WebSocket paths are the week-3 latency job;
-  guessing at a frame protocol that cannot be exercised offline is not a
-  scaffold.
+- **The Sarvam wire contract lives in `sarvam_ws.py`, not in the adapters.**
+  Every frame we send and every frame we decode is a pure function, so the
+  part that can actually be wrong is unit-tested in the base install with a
+  fake socket and no key. The adapters are left with connection management.
+  (Week 2 shipped REST-only for both; the sockets landed in week 3, with the
+  documented-vs-inferred split spelled out above.)
 - **An official `livekit-plugins-sarvam` exists.** These adapters are here to
   pin model, mode and language policy to the elder case — auto language
   detection for mid-sentence Benglish, `transcribe` and never `translate`.

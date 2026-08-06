@@ -114,7 +114,10 @@ def test_adapters_implement_the_livekit_base_classes() -> None:
 
     speech_to_text = SarvamSTT(api_key="test-key")
     assert speech_to_text.model == config.DEFAULT_SAARAS_MODEL
-    assert speech_to_text.capabilities.streaming is False  # VAD adapter supplies the stream
+    # Week 3 turned the socket on by default; week 2's REST path is still
+    # there and is what `SARVAM_STREAMING=0` selects.
+    assert speech_to_text.capabilities.streaming is True
+    assert SarvamSTT(api_key="test-key", streaming=False).capabilities.streaming is False
 
     text_to_speech = SarvamTTS(api_key="test-key", language="bn")
     assert text_to_speech.sample_rate == config.DEFAULT_TTS_SAMPLE_RATE

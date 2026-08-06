@@ -185,6 +185,26 @@ class SarvamSettings:
         return self.api_key
 
 
+def utf8_console() -> None:
+    """Make stdout survive Bengali and Devanagari.
+
+    The Windows console defaults to cp1252, so a CLI that prints the reviewed
+    copy - which is the whole point of the cache warmer - dies on the first
+    line with a UnicodeEncodeError. Deploy tooling that crashes on the text it
+    exists to handle is not deploy tooling.
+    """
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):  # pragma: no cover - a redirected pipe
+            pass
+
+
 def tts_mime_type(codec: str) -> str:
     """Emitter MIME for a Bulbul `output_audio_codec`.
 
