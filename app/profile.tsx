@@ -303,6 +303,11 @@ export default function ProfileScreen() {
       </Card>
 
       <Card style={styles.card}>
+        <Body>{t('booking.myBody')}</Body>
+        <Button label={t('booking.myCta')} variant="secondary" onPress={() => router.push('/booking')} />
+      </Card>
+
+      <Card style={styles.card}>
         <Body>{t('profile.familyBody')}</Body>
         <Button label={t('profile.familyCta')} variant="secondary" onPress={() => router.push('/help')} />
       </Card>

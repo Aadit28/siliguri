@@ -424,6 +424,14 @@ export default function GuardianDashboard() {
             {/* The parallel door: the parent read a code out over the phone
                 instead of waiting for a WhatsApp OTP. Same destination. */}
             <Button label={t('family.haveCodeCta')} variant="secondary" onPress={() => router.push('/join')} />
+            {/* Bookings over the family's spend threshold wait here for a yes;
+                the push alert lands on /guardian, so the door must be visible
+                from this screen. */}
+            <Button
+              label={t('booking.approvalsCta')}
+              variant="secondary"
+              onPress={() => router.push('/booking/approvals')}
+            />
           </View>
         </View>
 

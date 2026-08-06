@@ -30,6 +30,7 @@ import {
 import { AppColors, family, radius, Tokens } from '../../src/lib/theme';
 import { useTokens } from '../../src/lib/useTokens';
 import { fetchService, toggleFavorite as toggleFavoriteRemote } from '../../src/lib/api';
+import { isBookableVendorId } from '../../src/lib/bookings';
 import { Service } from '../../src/lib/types';
 import { useServicePreferences } from '../../src/lib/servicePreferences';
 import { useAuth } from '../../src/context/AuthContext';
@@ -340,6 +341,15 @@ export default function ServiceDetail() {
         ) : null}
 
         <View style={{ gap: tk.space.md }}>
+          {/* Only a real directory row can have slots: the seeded catalogue
+              entries ("m-3") would come back as a 400 nobody can act on. */}
+          {isBookableVendorId(id) ? (
+            <Button
+              label={t('booking.bookCta')}
+              icon={<Feather name="calendar" size={18} color={colors.primaryFg} />}
+              onPress={() => router.push(`/booking/${id}`)}
+            />
+          ) : null}
           <Button
             label={isFav ? t('services.removeFavorite') : t('services.addFavorite')}
             variant="secondary"

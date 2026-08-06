@@ -171,6 +171,9 @@ function RootStack() {
             <Stack.Screen name="service/[id]" options={{ title: '' }} />
             <Stack.Screen name="activity/[id]" options={{ title: '' }} />
             <Stack.Screen name="post/[id]" options={{ title: '' }} />
+            <Stack.Screen name="booking/index" options={{ title: '' }} />
+            <Stack.Screen name="booking/approvals" options={{ title: '' }} />
+            <Stack.Screen name="booking/[vendorId]" options={{ title: '' }} />
             <Stack.Screen name="calendar" options={{ title: '' }} />
             {/* Guardian screens mount <AppHeader /> themselves (same as the tab
                 screens) so a direct load of /guardian keeps the bell, language,

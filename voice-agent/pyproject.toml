@@ -11,13 +11,23 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Week 2 audio loop. Kept out of the base dependencies on purpose: the text
+# suite must stay runnable (and CI cheap) on a machine with no LiveKit, so
+# saathi_agent.voice imports these lazily and fails with a readable error.
+# httpx is already a base dependency and carries both Sarvam adapters.
+# Pinned to 1.6+: TurnHandlingOptions replaced the flat min_endpointing_delay
+# kwargs there, and 2.0 removes the old ones outright.
+voice = [
+  "livekit-agents>=1.6,<2",
+  "livekit-plugins-silero>=1.6,<2",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["saathi_agent"]
+packages = ["saathi_agent", "saathi_agent.voice"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

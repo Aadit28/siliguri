@@ -33,6 +33,12 @@ const ROUTES = {
   'community/post': () => require('../server/community/post'),
   'community/reply': () => require('../server/community/reply'),
   'community/like': () => require('../server/community/like'),
+  'billing/plans': () => require('../server/billing/plans'),
+  'billing/subscribe': () => require('../server/billing/subscribe'),
+  'billing/status': () => require('../server/billing/status'),
+  // Razorpay posts here. Signature verification needs the raw request bytes,
+  // which this dispatcher cannot hand it — see the header of the handler.
+  'billing/webhook': () => require('../server/billing/webhook'),
   'admin/announcement': () => require('../server/admin/announcement'),
   'admin/service': () => require('../server/admin/service'),
   'admin/callback': () => require('../server/admin/callback'),
@@ -50,6 +56,8 @@ const ROUTES = {
   'family/care-team': () => require('../server/family/care-team'),
   'family/favorites': () => require('../server/family/favorites'),
   'family/analytics': () => require('../server/family/analytics'),
+  'consent/get': () => require('../server/consent/get'),
+  'consent/set': () => require('../server/consent/set'),
 };
 
 module.exports = async function handler(req, res) {

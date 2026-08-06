@@ -81,6 +81,14 @@ _SILENCE_REPROMPT: dict[str, str] = {
     "en": "Are you there? I am listening.",
 }
 
+#: First thing the elder hears when the agent joins the room (week 2). Fixed
+#: copy, and a candidate for the pre-synthesized audio cache in D.5.
+_GREETING: dict[str, str] = {
+    "bn": "নমস্কার, আমি সাথী। বলুন, আমি কী করতে পারি?",
+    "hi": "नमस्ते, मैं साथी हूँ। बताइए, मैं क्या कर सकती हूँ?",
+    "en": "Namaskar, this is Saathi. Tell me, what can I do for you?",
+}
+
 _POLITE_CLOSE: dict[str, str] = {
     "bn": "ঠিক আছে, এখন রাখছি। যখন দরকার হবে ডাকবেন, আমি আছি।",
     "hi": "ठीक है, अभी रखती हूँ। जब ज़रूरत हो बुला लीजिए, मैं हूँ।",
@@ -101,6 +109,10 @@ def build_system_prompt(context: ElderContext) -> str:
         elder_name=context.elder_name,
         family_block=family_block,
     )
+
+
+def greeting_copy(language: str) -> str:
+    return _GREETING.get(language, _GREETING["en"])
 
 
 def handoff_copy(language: str) -> str:
