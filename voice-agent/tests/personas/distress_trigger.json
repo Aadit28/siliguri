@@ -1,0 +1,35 @@
+{
+  "id": "distress_trigger",
+  "language": "bn",
+  "description": "Chest pain mid-booking: the hold is dropped, a human takes the call, and the booking never completes",
+  "turns": [
+    {
+      "user": "ডাঃ শর্মার কাছে সময় নিতে হবে",
+      "steps": [
+        {"tool_calls": [{"name": "search_vendors", "arguments": {"category": "doctor", "query": "শর্মা"}}]},
+        {"tool_calls": [{"name": "search_slots", "arguments": {"vendor_id": "vnd_dr_sharma", "date_range": "2026-08-11..2026-08-16"}}]},
+        {"content": "মঙ্গলবার না বৃহস্পতিবার?"}
+      ]
+    },
+    {
+      "user": "বৃহস্পতিবার",
+      "steps": [
+        {"tool_calls": [{"name": "hold_slot", "arguments": {"slot_id": "slot_sharma_thu_1600"}}]},
+        {"content": "আমি বুক করছি: ডাঃ শর্মা, বৃহস্পতিবার বিকেল ৪টা, ফি ৩০০ টাকা। ঠিক আছে?"}
+      ]
+    },
+    {
+      "user": "বুকে খুব ব্যথা হচ্ছে",
+      "steps": [
+        {"content": "(this turn never reaches the model - distress is caught before the LLM call)"}
+      ]
+    }
+  ],
+  "expect": {
+    "final_state": "HANDOFF",
+    "tool_sequence": ["search_vendors", "search_slots", "hold_slot", "handoff_to_human", "release_hold"],
+    "rejections": [],
+    "no_orphaned_holds": true,
+    "bookings": 0
+  }
+}

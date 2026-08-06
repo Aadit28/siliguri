@@ -56,21 +56,7 @@ saathi/
 
 In-memory counters die on serverless — every cold start resets. Move to Postgres (already have `rate_events`, migration 12) or Upstash Redis:
 
-```sql
--- atomic sliding-window check, one round trip
-create or replace function check_rate_limit(p_key text, p_max int, p_window interval)
-returns boolean language sql as $$
-  with recent as (
-    select count(*) n from rate_events
-    where key = p_key and created_at > now() - p_window
-  )
-  insert into rate_events(key)
-  select p_key from recent where n < p_max
-  returning true;
-$$;
-```
-
-Null return = limited. One function, no race, works across all serverless instances.
+Implemented in `supabase-migration-18-audit-consent.sql` as `check_rate_limit(p_key, p_max, p_window)`. Two corrections to the original draft here: the column on `rate_events` is `bucket` (migration 12), not `key`; and a single-statement CTE version is racy — a statement's snapshot is fixed before it can take a lock, so two callers at max-1 both pass. The shipped function takes `pg_advisory_xact_lock(hashtext(key))` first, then counts and inserts, and returns `false` (not null) when limited.
 
 ### B.2 Payments + plan ladder
 
@@ -89,7 +75,7 @@ Null return = limited. One function, no race, works across all serverless instan
 ```sql
 create table audit_log (
   id bigint generated always as identity primary key,
-  actor uuid not null,            -- user or 'agent:voice'
+  actor text not null,            -- user id string or 'agent:voice'
   action text not null,           -- tool name / endpoint
   args jsonb not null,
   result jsonb,
@@ -118,7 +104,7 @@ create table vendor_slots (
   duration_min int not null default 15,
   capacity int not null default 1,
   booked int not null default 0,
-  city_id text not null
+  city_id uuid not null references cities(id)
 );
 
 create table bookings (
@@ -134,7 +120,7 @@ create table bookings (
   amount_paise int,
   idempotency_key uuid unique not null,
   created_by text not null,          -- 'app' | 'voice_agent'
-  city_id text not null,
+  city_id uuid not null references cities(id),
   created_at timestamptz default now()
 );
 ```

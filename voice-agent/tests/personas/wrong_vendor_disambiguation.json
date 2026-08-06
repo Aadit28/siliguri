@@ -1,0 +1,42 @@
+{
+  "id": "wrong_vendor_disambiguation",
+  "language": "bn",
+  "description": "Two doctors match; elder rejects the first and picks the other. Fee is over the family cap, so the booking parks in PENDING_GUARDIAN",
+  "turns": [
+    {
+      "user": "ডাক্তার দেখাতে হবে",
+      "steps": [
+        {"tool_calls": [{"name": "search_vendors", "arguments": {"category": "doctor"}}]},
+        {"content": "দুজন আছেন: ডাঃ শর্মা, আর ডাঃ ব্যানার্জি (হার্টের ডাক্তার)। কার কাছে?"}
+      ]
+    },
+    {
+      "user": "শর্মা নয়, ব্যানার্জি ডাক্তারবাবু",
+      "steps": [
+        {"tool_calls": [{"name": "search_slots", "arguments": {"vendor_id": "vnd_dr_banerjee", "date_range": "2026-08-11..2026-08-16"}}]},
+        {"content": "ডাঃ ব্যানার্জি বুধবার আর শুক্রবার সকাল ১১টায় দেখেন। কোন দিন?"}
+      ]
+    },
+    {
+      "user": "শুক্রবার",
+      "steps": [
+        {"tool_calls": [{"name": "hold_slot", "arguments": {"slot_id": "slot_banerjee_fri_1100"}}]},
+        {"content": "আমি বুক করছি: ডাঃ ব্যানার্জি, শুক্রবার সকাল ১১টা, ফি ৬০০ টাকা। ঠিক আছে?"}
+      ]
+    },
+    {
+      "user": "হ্যাঁ, করে দাও",
+      "steps": [
+        {"tool_calls": [{"name": "confirm_booking", "arguments": {"hold_id": "{{hold_id}}"}}]},
+        {"content": "ফি ৬০০ টাকা বলে রিয়াদিদির অনুমতি লাগবে। ওঁকে জানিয়ে দিয়েছি, উত্তর এলেই বলব।"}
+      ]
+    }
+  ],
+  "expect": {
+    "final_state": "PENDING_GUARDIAN",
+    "tool_sequence": ["search_vendors", "search_slots", "hold_slot", "confirm_booking"],
+    "rejections": [],
+    "no_orphaned_holds": true,
+    "bookings": 1
+  }
+}

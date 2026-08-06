@@ -1,0 +1,89 @@
+const {
+  authenticate,
+  readBody,
+  requireFamilyLink,
+  send,
+  sendServerError,
+  withCors,
+} = require('../_lib/auth');
+const {
+  approvalThresholdPaise,
+  enforceRateLimit,
+  firstRow,
+  httpError,
+  loadBooking,
+  notifyGuardiansForApproval,
+  notifyVendor,
+  requireUuid,
+  toBooking,
+  writeAudit,
+} = require('./_shared');
+
+// The irreversible half of the two-phase booking. booking_confirm decides the
+// fork itself — over the family's threshold it parks the booking on the
+// guardian, otherwise it goes straight to the vendor — and the same idempotency
+// key returns the same result on a retry rather than booking twice.
+module.exports = async function handler(req, res) {
+  withCors(res);
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
+
+  try {
+    const auth = await authenticate(req);
+    if (auth.error) return send(res, 401, { error: auth.error });
+
+    const body = await readBody(req);
+    const holdId = requireUuid(body.holdId, 'holdId');
+    const idempotencyKey = requireUuid(body.idempotencyKey, 'idempotencyKey');
+
+    // The SQL function is given only the hold id, so the "may this caller
+    // confirm it" question is answered here: without this, knowing a hold's uuid
+    // would be enough to commit another family's money.
+    const held = await loadBooking(auth.supabase, holdId);
+    const linkError = await requireFamilyLink(auth, held.family_id);
+    if (linkError) return send(res, 403, linkError);
+
+    await enforceRateLimit(auth.supabase, auth.user.id);
+
+    const { data, error } = await auth.supabase.rpc('booking_confirm', {
+      p_hold_id: holdId,
+      p_idempotency_key: idempotencyKey,
+      p_approval_threshold_paise: approvalThresholdPaise(),
+    });
+    if (error) throw error;
+
+    // Fall back to re-reading the row: the confirm function is the authority on
+    // the new status, and answering with a stale one would tell an elder the
+    // appointment is booked when it is still waiting on somebody.
+    const returned = firstRow(data);
+    const row = returned && returned.id ? returned : await loadBooking(auth.supabase, holdId);
+    const booking = toBooking(row);
+    if (!booking) throw httpError(404, 'That hold is gone. Please pick a time again.');
+
+    // Both branches are awaited before the response — Vercel freezes the
+    // function the moment it ends.
+    let notified = null;
+    if (booking.status === 'pending_guardian') {
+      notified = { guardiansAlerted: await notifyGuardiansForApproval(auth.supabase, auth, row) };
+    } else if (booking.status === 'pending_vendor') {
+      // The raw row, not the mapped booking: the notifier reads snake_case
+      // columns off it. Its { queued, reason } goes into the audit row, because
+      // "the vendor was never told" is the failure worth being able to find.
+      notified = { vendorNotify: await notifyVendor(row, auth.supabase) };
+    }
+
+    await writeAudit(auth.supabase, {
+      actor: auth.user.id,
+      action: 'booking.confirm',
+      args: { holdId, thresholdPaise: approvalThresholdPaise() },
+      result: { bookingId: booking.id, status: booking.status, ...(notified || {}) },
+      idempotencyKey,
+      familyId: booking.familyId || held.family_id,
+    });
+
+    return send(res, 200, { booking });
+  } catch (error) {
+    return sendServerError(res, error, 'Could not confirm this appointment. Please try again.');
+  }
+};

@@ -1,0 +1,31 @@
+{
+  "id": "silence_abandon",
+  "language": "bn",
+  "description": "Elder goes quiet at the readback; one re-prompt, then a polite close that releases the hold",
+  "turns": [
+    {
+      "user": "ডাক্তারের কাছে যেতে হবে",
+      "steps": [
+        {"tool_calls": [{"name": "search_vendors", "arguments": {"category": "doctor", "query": "শর্মা"}}]},
+        {"tool_calls": [{"name": "search_slots", "arguments": {"vendor_id": "vnd_dr_sharma", "date_range": "2026-08-11..2026-08-16"}}]},
+        {"content": "মঙ্গলবার না বৃহস্পতিবার?"}
+      ]
+    },
+    {
+      "user": "বৃহস্পতিবার",
+      "steps": [
+        {"tool_calls": [{"name": "hold_slot", "arguments": {"slot_id": "slot_sharma_thu_1600"}}]},
+        {"content": "আমি বুক করছি: ডাঃ শর্মা, বৃহস্পতিবার বিকেল ৪টা, ফি ৩০০ টাকা। ঠিক আছে?"}
+      ]
+    },
+    {"silence": true},
+    {"silence": true}
+  ],
+  "expect": {
+    "final_state": "IDLE",
+    "tool_sequence": ["search_vendors", "search_slots", "hold_slot", "release_hold"],
+    "rejections": [],
+    "no_orphaned_holds": true,
+    "bookings": 0
+  }
+}

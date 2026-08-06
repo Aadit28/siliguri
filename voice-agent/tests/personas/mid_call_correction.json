@@ -1,0 +1,54 @@
+{
+  "id": "mid_call_correction",
+  "language": "bn",
+  "description": "Elder corrects the day during the readback; only the day is re-confirmed",
+  "turns": [
+    {
+      "user": "ডাঃ শর্মাকে দেখাতে হবে এই সপ্তাহে",
+      "steps": [
+        {"tool_calls": [{"name": "search_vendors", "arguments": {"category": "doctor", "query": "শর্মা"}}]},
+        {"tool_calls": [{"name": "search_slots", "arguments": {"vendor_id": "vnd_dr_sharma", "date_range": "2026-08-11..2026-08-16"}}]},
+        {"content": "মঙ্গলবার আর বৃহস্পতিবার বিকেল ৪টা ফাঁকা আছে।"}
+      ]
+    },
+    {
+      "user": "বৃহস্পতিবার",
+      "steps": [
+        {"tool_calls": [{"name": "hold_slot", "arguments": {"slot_id": "slot_sharma_thu_1600"}}]},
+        {"content": "আমি বুক করছি: ডাঃ শর্মা, বৃহস্পতিবার বিকেল ৪টা, ফি ৩০০ টাকা। ঠিক আছে?"}
+      ]
+    },
+    {
+      "user": "না, বৃহস্পতিবার নয়, মঙ্গলবার",
+      "steps": [
+        {"tool_calls": [{"name": "search_slots", "arguments": {"vendor_id": "vnd_dr_sharma", "date_range": "2026-08-11..2026-08-11"}}]},
+        {"tool_calls": [{"name": "hold_slot", "arguments": {"slot_id": "slot_sharma_tue_1600"}}]},
+        {"content": "তাহলে মঙ্গলবার। বাকি সব আগের মতোই। ঠিক আছে?"}
+      ]
+    },
+    {
+      "user": "হ্যাঁ",
+      "steps": [
+        {"tool_calls": [{"name": "confirm_booking", "arguments": {"hold_id": "{{hold_id}}"}}]},
+        {"content": "হয়ে গেছে। মঙ্গলবার বিকেল ৪টা, ডাঃ শর্মা।"}
+      ]
+    }
+  ],
+  "expect": {
+    "final_state": "RECEIPT",
+    "tool_sequence": [
+      "search_vendors",
+      "search_slots",
+      "hold_slot",
+      "search_slots",
+      "release_hold",
+      "hold_slot",
+      "confirm_booking"
+    ],
+    "rejections": [],
+    "no_orphaned_holds": true,
+    "bookings": 1,
+    "corrections": 1,
+    "readback_fields_after_correction": ["date"]
+  }
+}
