@@ -329,6 +329,11 @@ export default function BookingSlotsScreen() {
                 <Text style={styles.dayHeading}>{dayHeading(day.dayISO, locale, t)}</Text>
                 {day.slots.map((slot) => {
                   const full = slot.spotsRemaining <= 0;
+                  // Null where the vendor has never quoted a rate. The row then
+                  // says nothing about money rather than carrying "the shop
+                  // will tell you" forty times down a list — the readback, which
+                  // is where somebody actually agrees to pay, still spells it out.
+                  const price = rupeesFromPaise(slot.pricePaise);
                   return (
                     <Pressable
                       key={slot.id}
@@ -338,7 +343,7 @@ export default function BookingSlotsScreen() {
                         full
                           ? t('booking.full')
                           : t('booking.spotsLeft', { count: slot.spotsRemaining })
-                      }`}
+                      }${price ? ` — ${t('booking.feeLabel')} ${price}` : ''}`}
                       disabled={full || busy}
                       onPress={() => pickSlot(slot)}
                       style={({ pressed }) => [
@@ -356,6 +361,7 @@ export default function BookingSlotsScreen() {
                           {full ? t('booking.full') : t('booking.spotsLeft', { count: slot.spotsRemaining })}
                         </Muted>
                       </View>
+                      {price ? <Text style={styles.slotPrice}>{price}</Text> : null}
                       {full ? null : <Feather name="chevron-right" size={22} color={colors.textSubtle} />}
                     </Pressable>
                   );
@@ -577,6 +583,14 @@ function makeStyles(colors: AppColors, tk: Tokens) {
       lineHeight: tk.font.lg * 1.2,
     },
     slotMeta: { fontSize: tk.font.sm },
+    // Same weight and size as the time: the fee is the other half of what the
+    // elder is agreeing to, and a whispered price is a price nobody read.
+    slotPrice: {
+      color: colors.text,
+      fontFamily: family.semibold,
+      fontSize: tk.font.lg,
+      lineHeight: tk.font.lg * 1.2,
+    },
     stateCard: { alignItems: 'center', gap: tk.space.sm, paddingVertical: tk.space.xl },
     stateTitle: { textAlign: 'center' },
     stateText: { textAlign: 'center' },

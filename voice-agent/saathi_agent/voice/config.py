@@ -10,8 +10,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..prompts import ElderContext, FamilyMember
+
+#: `voice-agent/` - the package lives at `<root>/saathi_agent/voice/config.py`.
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------
 # Elder tuning (BUILD_GUIDE D.4). These are not defaults anyone should trust
@@ -61,6 +65,44 @@ DEFAULT_TTS_SAMPLE_RATE = 22050
 #: Slightly under natural pace. Telephony (8kHz) tuning is a week-3 job.
 DEFAULT_TTS_PACE = 0.9
 
+# --------------------------------------------------------------------------
+# Streaming (week 3, BUILD_GUIDE D.5)
+# --------------------------------------------------------------------------
+
+#: Saaras streaming socket. Overridable because the contract below is pinned to
+#: what Sarvam documents today; a moved endpoint should be an env change.
+DEFAULT_STT_WS_URL = "wss://api.sarvam.ai/speech-to-text/ws"
+DEFAULT_TTS_WS_URL = "wss://api.sarvam.ai/text-to-speech/ws"
+
+#: The socket takes 16k or 8k only. 8000 is the Exotel phone channel (D.9).
+DEFAULT_STT_SAMPLE_RATE = 16000
+
+#: `linear16` is raw PCM, which the emitter takes as `audio/pcm` and hands
+#: straight to the room - no decoder, no `livekit-agents[codecs]` extra, and
+#: none of the container framing that the WAV path gets wrong on a socket.
+DEFAULT_TTS_CODEC = "linear16"
+
+TTS_CODEC_TO_MIME: dict[str, str] = {
+    "linear16": "audio/pcm",
+    "wav": "audio/wav",
+    "mp3": "audio/mp3",
+    "opus": "audio/opus",
+    "flac": "audio/flac",
+    "aac": "audio/aac",
+}
+
+#: `SARVAM_STREAMING=0` puts both adapters back on REST. One switch, because
+#: the failure they degrade from is the same one: the socket is unreachable or
+#: the contract moved, and a call that still completes on REST beats a call
+#: that does not happen.
+DEFAULT_STREAMING = True
+
+#: Pre-synthesized fixed frames (greeting, re-prompt, apology, close).
+DEFAULT_TTS_CACHE_DIR = PACKAGE_ROOT / ".cache" / "tts"
+
+#: Per-turn latency records, one JSONL file per call.
+DEFAULT_METRICS_DIR = PACKAGE_ROOT / ".metrics"
+
 LANGUAGE_TO_SARVAM: dict[str, str] = {"bn": "bn-IN", "hi": "hi-IN", "en": "en-IN"}
 
 
@@ -89,6 +131,18 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+#: Anything else - including a typo - leaves streaming on. Turning the socket
+#: off is the deliberate act; a misspelled value must not silently do it.
+_FALSEY = frozenset({"0", "false", "no", "off"})
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() not in _FALSEY
+
+
 @dataclass(frozen=True)
 class SarvamSettings:
     """One read of the environment, shared by the STT and TTS adapters."""
@@ -100,6 +154,11 @@ class SarvamSettings:
     tts_voice: str = DEFAULT_BULBUL_VOICE
     tts_sample_rate: int = DEFAULT_TTS_SAMPLE_RATE
     tts_pace: float = DEFAULT_TTS_PACE
+    streaming: bool = DEFAULT_STREAMING
+    stt_ws_url: str = DEFAULT_STT_WS_URL
+    tts_ws_url: str = DEFAULT_TTS_WS_URL
+    stt_sample_rate: int = DEFAULT_STT_SAMPLE_RATE
+    tts_codec: str = DEFAULT_TTS_CODEC
 
     @classmethod
     def from_env(cls) -> SarvamSettings:
@@ -111,6 +170,11 @@ class SarvamSettings:
             tts_voice=os.environ.get("BULBUL_VOICE", DEFAULT_BULBUL_VOICE),
             tts_sample_rate=_int_env("SARVAM_TTS_SAMPLE_RATE", DEFAULT_TTS_SAMPLE_RATE),
             tts_pace=_float_env("SARVAM_TTS_PACE", DEFAULT_TTS_PACE),
+            streaming=_bool_env("SARVAM_STREAMING", DEFAULT_STREAMING),
+            stt_ws_url=os.environ.get("SARVAM_STT_WS_URL") or DEFAULT_STT_WS_URL,
+            tts_ws_url=os.environ.get("SARVAM_TTS_WS_URL") or DEFAULT_TTS_WS_URL,
+            stt_sample_rate=_int_env("SARVAM_STT_SAMPLE_RATE", DEFAULT_STT_SAMPLE_RATE),
+            tts_codec=os.environ.get("SARVAM_TTS_CODEC") or DEFAULT_TTS_CODEC,
         )
 
     def require_api_key(self) -> str:
@@ -119,6 +183,48 @@ class SarvamSettings:
                 "SARVAM_API_KEY is not set - the STT and TTS adapters cannot authenticate."
             )
         return self.api_key
+
+
+def tts_mime_type(codec: str) -> str:
+    """Emitter MIME for a Bulbul `output_audio_codec`.
+
+    An unknown codec is not guessed at: the emitter would hand the bytes to a
+    decoder that cannot read them and the elder would hear silence, which is
+    harder to debug than a startup error.
+    """
+    try:
+        return TTS_CODEC_TO_MIME[codec]
+    except KeyError:
+        raise ValueError(
+            f"Unsupported SARVAM_TTS_CODEC {codec!r}; known: {sorted(TTS_CODEC_TO_MIME)}"
+        ) from None
+
+
+def bulbul_rest_payload(
+    *,
+    text: str,
+    target_language_code: str,
+    speaker: str,
+    model: str,
+    pace: float,
+    sample_rate: int,
+    output_audio_codec: str = "wav",
+) -> dict[str, object]:
+    """The `/text-to-speech` REST body.
+
+    Shared so the live adapter and the cache warmer cannot drift: a cached
+    greeting synthesized with different settings than the live path is a voice
+    that changes halfway through the call.
+    """
+    return {
+        "text": text,
+        "target_language_code": target_language_code,
+        "speaker": speaker,
+        "model": model,
+        "pace": pace,
+        "speech_sample_rate": sample_rate,
+        "output_audio_codec": output_audio_codec,
+    }
 
 
 # --------------------------------------------------------------------------

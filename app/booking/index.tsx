@@ -248,11 +248,13 @@ export default function MyBookingsScreen() {
                   </View>
                 </View>
                 {asked ? <Muted style={styles.bookingMeta}>{t('booking.requestedOn', { date: asked })}</Muted> : null}
-                {fee ? (
-                  <Muted style={styles.bookingMeta}>
-                    {t('booking.feeLabel')}: {fee}
-                  </Muted>
-                ) : null}
+                {/* Always shown, even unpriced. A card with no fee line reads as
+                    "free" or as a page still loading; "the shop will tell you"
+                    is the honest answer and the reason the booking is sitting
+                    with a guardian rather than with the vendor. */}
+                <Muted style={styles.bookingMeta}>
+                  {t('booking.feeLabel')}: {fee ?? t('booking.feeUnknown')}
+                </Muted>
                 {canCancelBooking(booking.status) ? (
                   <Button
                     label={t('booking.cancelBooking')}

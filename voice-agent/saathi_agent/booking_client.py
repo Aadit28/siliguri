@@ -160,9 +160,12 @@ class HttpBookingClient:
             "duration_min": row.get("durationMin"),
             "capacity": row.get("capacity"),
             "booked": row.get("booked"),
-            # The slot payload carries no price; the amount is decided when
-            # the hold is taken. Readback price comes from the hold.
-            "price_paise": None,
+            # Indicative only: what this time costs today (migration 20), or
+            # None where the vendor has never quoted a rate. The READBACK price
+            # still comes from the hold and never from here — the hold is what
+            # stamps the amount onto the booking, and the elder must be read the
+            # number they will actually be charged.
+            "price_paise": row.get("pricePaise"),
         }
 
     def _booking_row(self, row: dict[str, Any]) -> dict[str, Any]:

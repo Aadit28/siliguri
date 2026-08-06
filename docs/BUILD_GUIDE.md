@@ -142,6 +142,10 @@ returning id;
 
 Zero rows = slot gone; caller re-searches. Idempotency: unique index on `bookings.idempotency_key`; insert conflict = return existing row.
 
+### C.2a Pricing (what `amount_paise` is filled from)
+
+A booking's price is resolved once, at hold time, and written onto the booking row: **slot override (`vendor_slots.price_paise`) > vendor base rate (`services.base_price_paise`) > null** (migration 20). Null is a supported outcome, not a gap — a plumber cannot quote a job they have not seen — and it is exactly what sends the booking to a guardian in C.3 below, with the app telling the elder the shop will quote. Stamping at hold rather than reading live at confirm or at display is deliberate: whatever fee the readback spoke is the fee the elder agreed to, even if the vendor edits their rate a minute later. Zero is a real price (a free clinic slot) and confirms straight through; only null asks a person.
+
 ### C.3 Guardian approval fork
 
 `confirm_booking` checks family policy: `amount_paise > family.approval_threshold` OR first-time vendor → status `pending_guardian`, push to guardian (push infra exists, migration 11), booking finalizes on guardian ack. Configurable timeout fallback per family risk setting.

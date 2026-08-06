@@ -1,5 +1,34 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+Deployed as the Vercel project **saathi-landing** (saathi-landing.vercel.app). It holds two
+surfaces: the marketing page at `/`, and the guardian desk at `/guardian`.
+
+## Guardian desk (`/guardian`)
+
+The NRI guardian's web command center: pending booking approvals, recent bookings, and the
+linked-parent overview. It talks to the **main** Saathi API (the `saathi` Vercel project), so
+every call is cross-origin — `server/_lib/auth.js` answers `Access-Control-Allow-Origin: *`
+with `Authorization` allowed and no origin allow-list, which is what makes that work.
+
+Everything under `/guardian` is client-rendered: the API token lives in `sessionStorage`
+(deliberately, not `localStorage` — see `app/guardian/_lib/session.ts`), so no server render
+can know who is asking.
+
+### Environment
+
+| Variable | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_SAATHI_API_BASE` | Recommended | `https://saathi.vercel.app/api` | API root of the main app, **including** the `/api` suffix. No trailing slash needed. |
+
+Set it in the saathi-landing Vercel project (all environments). `NEXT_PUBLIC_*` values are
+inlined at build time, so changing it needs a redeploy of the landing project, not just an env
+edit. For local work against a dev API:
+
+```bash
+# landing/.env.local  (git-ignored)
+NEXT_PUBLIC_SAATHI_API_BASE=http://127.0.0.1:8788/api
+```
+
 ## Getting Started
 
 First, run the development server:

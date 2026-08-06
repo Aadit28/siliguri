@@ -95,6 +95,24 @@ _POLITE_CLOSE: dict[str, str] = {
     "en": "That is alright, I will stop here. Call me whenever you need, I am here.",
 }
 
+#: The turn raised - a booking API 500, a model timeout, a bug. The elder gets
+#: a sentence instead of dead air, and it promises nothing: whatever failed may
+#: or may not have gone through, so this line must never imply either.
+_ERROR_APOLOGY: dict[str, str] = {
+    "bn": "একটু সমস্যা হচ্ছে। আর একবার বলবেন?",
+    "hi": "थोड़ी दिक्कत हो रही है। एक बार फिर बताइएगा?",
+    "en": "I am having a little trouble. Could you say that once more?",
+}
+
+#: The fixed half of the readback. The vendor, day, time and fee come from the
+#: model; this question does not, because the confirm gate keys on the answer
+#: to it. Pre-synthesized with the other fixed frames (D.5).
+_READBACK_TAIL: dict[str, str] = {
+    "bn": "ঠিক আছে?",
+    "hi": "ठीक है?",
+    "en": "Is that alright?",
+}
+
 
 def build_system_prompt(context: ElderContext) -> str:
     if context.family_members:
@@ -125,3 +143,23 @@ def silence_reprompt(language: str) -> str:
 
 def polite_close(language: str) -> str:
     return _POLITE_CLOSE.get(language, _POLITE_CLOSE["en"])
+
+
+def error_apology(language: str) -> str:
+    return _ERROR_APOLOGY.get(language, _ERROR_APOLOGY["en"])
+
+
+def readback_tail(language: str) -> str:
+    return _READBACK_TAIL.get(language, _READBACK_TAIL["en"])
+
+
+#: Every line the elder hears that is not model output, by name. The cache
+#: warmer walks this; anything added here is pre-synthesized on the next warm.
+FIXED_FRAMES: dict[str, dict[str, str]] = {
+    "greeting": _GREETING,
+    "handoff": _HANDOFF_COPY,
+    "silence_reprompt": _SILENCE_REPROMPT,
+    "polite_close": _POLITE_CLOSE,
+    "error_apology": _ERROR_APOLOGY,
+    "readback_tail": _READBACK_TAIL,
+}

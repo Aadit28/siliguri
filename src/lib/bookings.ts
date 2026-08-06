@@ -45,6 +45,13 @@ export type BookingSlot = {
   capacity: number;
   booked: number;
   spotsRemaining: number;
+  /**
+   * What this time costs, already resolved by the server: the slot's own price
+   * where it has one, otherwise the vendor's standing rate (migration 20).
+   * Null is a real answer and not a loading state — the shop has not quoted
+   * this job, and the fee shown must say so rather than guess.
+   */
+  pricePaise: number | null;
   vendor: BookingVendor | null;
 };
 
@@ -179,11 +186,12 @@ export function groupSlotsByDay(slots: BookingSlot[]): BookingSlotDay[] {
   return days;
 }
 
-/** Whole rupees. Paise are never shown to this audience. */
-export function rupeesFromPaise(paise: number | null | undefined) {
-  if (paise === null || paise === undefined || !Number.isFinite(paise)) return null;
-  return `₹${Math.round(paise / 100)}`;
-}
+/**
+ * Whole rupees, re-exported rather than written twice: a booking fee and a plan
+ * price are the same kind of number to the person reading them, and the copy
+ * that lived here rendered ₹1200 where billing renders ₹1,200.
+ */
+export { rupeesFromPaise } from './billing';
 
 // ----- Endpoints -----
 

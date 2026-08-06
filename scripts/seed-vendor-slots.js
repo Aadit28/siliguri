@@ -8,6 +8,15 @@
 // medical_shop
 // home_service -> 09:00-21:00 IST, hourly slots, capacity 3
 //
+// It also gives each doctor a demo consultation fee (services.base_price_paise,
+// migration 20) so the booking flow can be shown quoting a real number instead
+// of "the shop will tell you" on every single appointment. Only doctors are
+// priced: a chemist's basket and a plumber's job genuinely cannot be quoted
+// before the visit, and leaving those null is what exercises the guardian
+// approval fork. The fee goes on the VENDOR rather than on each slot because
+// the slot upsert below deliberately never touches a row that already exists —
+// a per-slot price would silently miss every slot seeded by an earlier run.
+//
 // Idempotent: vendor_slots already carries a unique (vendor_id, starts_at)
 // constraint (migration 17), so this upserts with ON CONFLICT DO NOTHING —
 // a slot that exists from an earlier run is left exactly as it is, never
@@ -115,6 +124,25 @@ const DAYS_AHEAD = 7;
 const IST_OFFSET = '+05:30';
 const UPSERT_CHUNK = 500;
 
+// A tier-2 private consultation, ₹300 to ₹800 in ₹50 steps. Every value stays
+// under the ₹500 default approval threshold or just over it, so a demo shows
+// both sides of the guardian fork without anybody editing an env var.
+const DOCTOR_FEE_MIN_PAISE = 30000;
+const DOCTOR_FEE_MAX_PAISE = 80000;
+const DOCTOR_FEE_STEP_PAISE = 5000;
+
+// Derived from the vendor's uuid rather than drawn at random: a re-run must not
+// re-price a doctor an elder already saw quoted, and a screenshot taken today
+// has to still match the app next week.
+function demoDoctorFeePaise(vendorId) {
+  let hash = 0;
+  for (let i = 0; i < vendorId.length; i += 1) {
+    hash = (hash * 31 + vendorId.charCodeAt(i)) >>> 0;
+  }
+  const steps = (DOCTOR_FEE_MAX_PAISE - DOCTOR_FEE_MIN_PAISE) / DOCTOR_FEE_STEP_PAISE + 1;
+  return DOCTOR_FEE_MIN_PAISE + (hash % steps) * DOCTOR_FEE_STEP_PAISE;
+}
+
 // Siliguri time, fixed offset, same as server/bookings/_shared.js.
 function isoAt(dateStr, hh, mm) {
   const hour = String(hh).padStart(2, '0');
@@ -178,6 +206,42 @@ function buildSlotRows(vendors, cityId) {
   return rows;
 }
 
+// Prices the doctors that have no fee yet. Idempotent in the same sense the
+// slot upsert is: a vendor priced by an earlier run, or by a real person in the
+// dashboard, is left exactly as it is — a demo seeder must never overwrite a
+// number somebody chose.
+async function seedDoctorFees(supabase, vendors) {
+  const priced = Object.prototype.hasOwnProperty.call(vendors[0], 'base_price_paise');
+  if (!priced) {
+    console.warn(
+      'services.base_price_paise not found: run supabase-migration-20-pricing.sql to seed demo'
+        + ' consultation fees. Slots will still be seeded, and every booking made against them'
+        + ' will go to a guardian for approval because nothing quotes a price.',
+    );
+    return;
+  }
+
+  const unpriced = vendors.filter(
+    (vendor) => vendor.category === 'doctor'
+      && (vendor.base_price_paise === null || vendor.base_price_paise === undefined),
+  );
+  if (!unpriced.length) {
+    console.log('Every doctor already carries a consultation fee. Left alone.');
+    return;
+  }
+
+  for (const vendor of unpriced) {
+    const fee = demoDoctorFeePaise(vendor.id);
+    const { error } = await supabase
+      .from('services')
+      .update({ base_price_paise: fee })
+      .eq('id', vendor.id);
+    if (error) throw new Error(`services price update for ${vendor.name}: ${error.message}`);
+    console.log(`  ${vendor.name}: ₹${fee / 100}`);
+  }
+  console.log(`Priced ${unpriced.length} doctor(s).`);
+}
+
 async function main() {
   const supabase = createClient(url, key, {
     auth: { persistSession: false },
@@ -186,9 +250,14 @@ async function main() {
 
   const city = await resolveCity(supabase, cityArg);
 
+  // select('*') rather than a column list: base_price_paise only exists once
+  // migration 20 has been applied, and naming a column PostgREST has not seen
+  // yet fails the whole read. Its presence on the returned row is also the
+  // probe below — this script has to keep working on a database that is still
+  // on migration 19.
   const { data: vendors, error: vendorsError } = await supabase
     .from('services')
-    .select('id,name,category')
+    .select('*')
     .eq('city_id', city.id)
     .in('category', CATEGORIES);
   if (vendorsError) throw new Error(`services lookup: ${vendorsError.message}`);
@@ -197,6 +266,8 @@ async function main() {
     console.log(`No ${CATEGORIES.join('/')} vendors found for ${city.name}. Nothing to seed.`);
     return;
   }
+
+  await seedDoctorFees(supabase, vendors);
 
   const rows = buildSlotRows(vendors, city.id);
   console.log(`${city.name} (${city.slug}): ${vendors.length} vendors, ${rows.length} slot rows to attempt.`);

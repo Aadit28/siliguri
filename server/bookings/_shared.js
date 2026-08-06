@@ -189,7 +189,15 @@ function toBooking(row) {
   };
 }
 
-function toSlot(row) {
+// basePricePaise is the VENDOR's standing rate (services.base_price_paise),
+// read separately by the caller because it lives on another table. The slot's
+// own price_paise overrides it — see migration 20 — and both being absent is a
+// supported state: the elder is told the shop will quote, and booking_confirm
+// sends the booking to a guardian rather than to the vendor.
+//
+// Read with ?? and not ||, twice over: a genuinely free slot is priced 0 and
+// must not fall through to the vendor's rate or back to "unknown".
+function toSlot(row, basePricePaise) {
   const capacity = Number(row.capacity || 0);
   const booked = Number(row.booked || 0);
   const vendor = row.vendor || null;
@@ -201,6 +209,9 @@ function toSlot(row) {
     capacity,
     booked,
     spotsRemaining: Math.max(0, capacity - booked),
+    // Missing until migration 20 runs, so numberOrNull absorbs the undefined
+    // rather than reporting NaN as a fee.
+    pricePaise: numberOrNull(row.price_paise) ?? numberOrNull(basePricePaise),
     vendor: vendor
       ? {
           id: vendor.id,
