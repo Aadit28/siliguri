@@ -23,9 +23,15 @@ export function canUseWhatsApp(phone?: string | null) {
   return normalizeWhatsAppPhone(phone) !== null;
 }
 
-export function whatsappChatUrl(phone?: string | null) {
+export function whatsappChatUrl(phone?: string | null, text?: string | null) {
   const intl = normalizeWhatsAppPhone(phone);
-  return intl ? `https://wa.me/${intl}` : null;
+  if (!intl) return null;
+  const message = String(text ?? '').trim();
+  // wa.me carries the message as a query parameter, so the shop's chat opens
+  // with it already typed and the elder's only remaining act is send. Nothing
+  // is transmitted until they do: this is a compose deep link, not a send API,
+  // which is exactly why it needs no Business account and no template approval.
+  return message ? `https://wa.me/${intl}?text=${encodeURIComponent(message)}` : `https://wa.me/${intl}`;
 }
 
 export function whatsappCallUrl(phone?: string | null) {
@@ -65,8 +71,8 @@ export async function openWhatsAppShare(text: string) {
   return openExternalUrl(`https://wa.me/?text=${encodeURIComponent(trimmed)}`);
 }
 
-export async function openWhatsAppChat(phone?: string | null) {
-  const url = whatsappChatUrl(phone);
+export async function openWhatsAppChat(phone?: string | null, text?: string | null) {
+  const url = whatsappChatUrl(phone, text);
   if (!url) return false;
 
   return openExternalUrl(url);
