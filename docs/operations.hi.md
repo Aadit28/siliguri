@@ -32,12 +32,29 @@ Migrations repo की जड़ में पड़ी सादी SQL फ़�
 नहीं रोकेगा। ज़्यादातर में `if not exists` की सुरक्षा लिखी है, फिर भी चलाने से
 पहले पढ़ लें।
 
-किसी एक को लगाने के लिए उसे Supabase SQL editor में चिपका दें, या personal access
-token के साथ Management API इस्तेमाल करें:
+किसी एक को लगाने के लिए उसे Supabase SQL editor में चिपका दें, या script चलाएँ:
 
 ```bash
-curl -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d @payload.json
+node scripts/apply-migration.mjs supabase-migration-21-vendor-mgmt.sql
 ```
+
+यह कई फ़ाइलें दिए गए क्रम में लगाती है और पहली विफलता पर रुक जाती है — बाद की
+फ़ाइलें पहले वाली पर टिकी हैं (migration 20, migration 17 के बनाए function को
+बदलता है), इसलिए विफलता के बाद आगे बढ़ना उस database पर फ़ाइल लगाना होगा जिसे
+उसकी पिछली फ़ाइल मिली ही नहीं।
+
+**Token कहाँ रहता है।** Script पहले `$SUPABASE_PAT` देखती है, फिर
+`~/.secrets/supabase-saathi.pat` — उस फ़ाइल में सिर्फ़ token होता है, और कुछ नहीं।
+इसे Supabase dashboard → Account → Access Tokens से बनाएँ। इसे कभी command
+argument के रूप में नहीं भेजा जाता, क्योंकि arguments shell history और process
+list में दिखते हैं। यह उस account के हर project पर पूरा नियंत्रण देता है, इसलिए
+इसकी जगह `.secrets` है — यह repository या किसी `.env` फ़ाइल में नहीं जाता।
+
+सीधा endpoint, अगर curl करना हो: `POST
+https://api.supabase.com/v1/projects/$PROJECT_REF/database/query` के साथ
+`{"query": "<sql>"}`. सफलता = 200/201 और खाली array — DDL कोई row नहीं लौटाता।
+JSON body ऐसे tool से बनाएँ जो ठीक से escape करे; PowerShell 5.1 का
+`ConvertTo-Json` इतने बड़े SQL body को बिगाड़ देता है, इसीलिए script Node में है।
 
 schema बदलने के बाद, उस नए column पर filter करने वाला कोड भेजने से पहले जाँच लें
 कि PostgREST को वह column दिख भी रहा है या नहीं। जिस column को PostgREST ने अभी

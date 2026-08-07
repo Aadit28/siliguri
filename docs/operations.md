@@ -28,12 +28,29 @@ Migrations are plain SQL files at the repo root, applied in filename order. They
 are not tracked by a migration tool, so nothing stops you running one twice.
 Most are written with `if not exists` guards, but read before you run.
 
-To apply one, paste it into the Supabase SQL editor, or use the Management API
-with a personal access token:
+To apply one, paste it into the Supabase SQL editor, or run the script:
 
 ```bash
-curl -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d @payload.json
+node scripts/apply-migration.mjs supabase-migration-21-vendor-mgmt.sql
 ```
+
+It takes several files and applies them in the order given, stopping at the
+first failure — later files build on earlier ones (migration 20 replaces a
+function migration 17 creates), so continuing past a failure would apply a file
+against a database that never got its predecessor.
+
+**Where the token lives.** The script reads `$SUPABASE_PAT`, and failing that
+`~/.secrets/supabase-saathi.pat` — the file holds the token and nothing else.
+Generate it at Supabase dashboard → Account → Access Tokens. It is never passed
+as a command argument, because arguments land in shell history and in the
+process list. It grants full control of every project on that account, so it
+belongs in `.secrets` and never in this repository or a `.env` file.
+
+The raw endpoint, if you would rather curl it: `POST
+https://api.supabase.com/v1/projects/$PROJECT_REF/database/query` with
+`{"query": "<sql>"}`. Success is 200/201 with an empty array — DDL returns no
+rows. Build the JSON body with a tool that escapes properly; PowerShell 5.1's
+`ConvertTo-Json` mangles SQL bodies this size, which is why the script is Node.
 
 After a schema change, check that PostgREST can see the new column before
 shipping code that filters on it. A filter naming a column PostgREST has not
