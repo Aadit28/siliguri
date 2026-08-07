@@ -38,6 +38,7 @@ import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat } from '../../src/lib/whatsapp';
+import OrderSheet from '../../src/components/OrderSheet';
 
 // Dates must follow the in-app language toggle, not the device locale — a phone
 // set to English would otherwise print English dates inside a Hindi screen.
@@ -68,6 +69,7 @@ export default function ServiceDetail() {
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const [showTrustDetails, setShowTrustDetails] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
   const isFav = id ? favoriteSet.has(id) : false;
 
   // localStorage is the offline source of truth; when signed in, mirror the
@@ -396,10 +398,30 @@ export default function ServiceDetail() {
               </View>
             ) : null}
           </View>
+          {/* Ordering rides on the same WhatsApp number the Call and WhatsApp
+              buttons above use, so it appears exactly where a shop is already
+              reachable and nowhere else. */}
+          {showWhatsApp ? (
+            <View style={styles.orderAction}>
+              <Button label={t('order.open')} variant="primary" onPress={() => setOrderOpen(true)} />
+            </View>
+          ) : null}
         </View>
       ) : null}
 
       <DialFallbackDialog number={failedNumber} onClose={clearFailedNumber} />
+      <OrderSheet
+        visible={orderOpen}
+        onClose={() => setOrderOpen(false)}
+        serviceId={service.id}
+        shopName={service.name}
+        phone={service.phone}
+        // The signed-in account's own name. A guardian ordering for a parent is
+        // not handled here yet: this screen has no elder picker, and stamping
+        // the guardian's name on a parent's delivery would be worse than
+        // leaving the line out, which is what an empty name does.
+        forName={user?.user_metadata?.full_name || null}
+      />
     </View>
   );
 }
@@ -557,6 +579,7 @@ function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) 
     },
     footerTitle: { fontFamily: family.medium, fontSize: tk.font.xs },
     footerActions: { flexDirection: 'row', gap: tk.space.sm },
+    orderAction: { marginTop: tk.space.sm },
     waBtn: {
       minHeight: 56,
       flexDirection: 'row',

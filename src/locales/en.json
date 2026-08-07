@@ -677,6 +677,26 @@
     "notSupported": "Voice input is not supported on this device. Please type instead.",
     "error": "Could not hear you. Try again."
   },
+  "order": {
+    "open": "Order on WhatsApp",
+    "title": "Order from {{shop}}",
+    "subtitle": "Write what you need. We will type the message; you read it and press send in WhatsApp.",
+    "itemLabel": "What do you need?",
+    "itemPlaceholder": "e.g. Diabetes test strips, 1 box",
+    "languageLabel": "Language of the message",
+    "languageHint": "Pick the language this shop reads. It does not change the app.",
+    "priceLabel": "Price",
+    "priceAsk": "Ask the price",
+    "priceAskHint": "For a one-off. The shop replies with the amount.",
+    "priceKnown": "I know the price",
+    "priceKnownHint": "For a regular order at a rate you already agreed.",
+    "pricePlaceholder": "Amount in ₹",
+    "addressLabel": "Delivery address",
+    "addressPlaceholder": "House, street, landmark",
+    "previewLabel": "This is what will be sent",
+    "sendHint": "Nothing is sent until you press send inside WhatsApp.",
+    "send": "Open WhatsApp"
+  },
   "vendor": {
     "title": "Your appointment times",
     "subtitle": "Publish the times you can take, and answer the bookings waiting on you.",
