@@ -28,6 +28,7 @@ import Animated, {
 import { family, radius, shadow, tracking, tokensFor } from '../lib/theme';
 import { useTokens, ScreenTokens } from '../lib/useTokens';
 import { useTheme } from '../context/ThemeContext';
+import OverlayFrame, { useOverlayWidth } from './OverlayFrame';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -414,7 +415,7 @@ export function Sheet({
   const { height } = useWindowDimensions();
   return (
     <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.sheetRoot}>
+      <OverlayFrame onDismiss={onClose} style={styles.sheetRoot}>
         <Animated.View entering={isSimple ? undefined : scrimIn} style={styles.modalScrim}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
         </Animated.View>
@@ -442,7 +443,7 @@ export function Sheet({
             {children}
           </BlurView>
         </Animated.View>
-      </View>
+      </OverlayFrame>
     </RNModal>
   );
 }
@@ -461,16 +462,18 @@ export function Dialog({
   const { colors, mode } = useTheme();
   const { isSimple } = useTokens();
   const styles = useUiStyles();
-  const { width } = useWindowDimensions();
+  // Sized against the overlay frame, not the browser window: on a desktop the
+  // dialog belongs inside the phone column, not centred on the whole screen.
+  const overlayWidth = useOverlayWidth();
   return (
     <RNModal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.dialogRoot}>
+      <OverlayFrame onDismiss={onClose} style={styles.dialogRoot}>
         <Animated.View entering={isSimple ? undefined : scrimIn} style={styles.modalScrim}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={StyleSheet.absoluteFill} />
         </Animated.View>
         <Animated.View
           entering={isSimple ? undefined : dialogIn}
-          style={[styles.dialogShell, { borderColor: colors.glassBorder, width: Math.min(width - 32, 440) }]}
+          style={[styles.dialogShell, { borderColor: colors.glassBorder, width: Math.min(overlayWidth - 32, 440) }]}
         >
           <BlurView
             intensity={22}
@@ -482,7 +485,7 @@ export function Dialog({
             {children}
           </BlurView>
         </Animated.View>
-      </View>
+      </OverlayFrame>
     </RNModal>
   );
 }

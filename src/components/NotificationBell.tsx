@@ -22,6 +22,7 @@ import { useLivePoll } from '../lib/useLivePoll';
 import { listEvents } from '../lib/calendar';
 import { buildNotifications, formatEventWhen, NotificationItem } from '../lib/notifications';
 import { family, font, radius, shadow, space } from '../lib/theme';
+import OverlayFrame, { useOverlayWidth } from './OverlayFrame';
 
 const PANEL_RADIUS = 24;
 
@@ -36,7 +37,8 @@ export default function NotificationBell() {
   const { t } = useTranslation();
   const { colors, mode } = useTheme();
   const { session, user } = useAuth();
-  const { height, width } = useWindowDimensions();
+  const { height } = useWindowDimensions();
+  const overlayWidth = useOverlayWidth();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [serverAlerts, setServerAlerts] = useState<ServerAlert[]>([]);
@@ -89,8 +91,10 @@ export default function NotificationBell() {
   const panelMaxHeight = Math.max(240, Math.round(height / 3));
   // The bell lives at the top right, so the panel hangs from that corner. Left
   // unbounded it spanned a 1900px desktop viewport, stretching every row the
-  // full width of the screen for two lines of text.
-  const panelWidth = Math.min(width - 28, 420);
+  // full width of the screen for two lines of text. Measured against the
+  // overlay frame, so on a desktop it hangs off the phone column's corner —
+  // where the bell that opened it actually is.
+  const panelWidth = Math.min(overlayWidth - 28, 420);
 
   function alertDay(iso: string) {
     // IST calendar day, compared in IST — the alert about a Siliguri parent
@@ -127,7 +131,7 @@ export default function NotificationBell() {
       </Pressable>
 
       <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
-        <View style={styles.root}>
+        <OverlayFrame onDismiss={() => setOpen(false)} style={styles.root}>
           <Animated.View entering={scrimIn} style={styles.scrim}>
             <Pressable
               accessibilityRole="button"
@@ -261,7 +265,7 @@ export default function NotificationBell() {
               <Text style={[styles.footerText, { color: colors.accent }]}>{t('notifications.openCalendar')}</Text>
             </Pressable>
           </Animated.View>
-        </View>
+        </OverlayFrame>
       </Modal>
     </>
   );

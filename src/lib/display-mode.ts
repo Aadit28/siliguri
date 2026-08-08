@@ -1,5 +1,10 @@
 export type DisplayMode = 'phone' | 'computer';
 
+// The width of the app itself in phone mode. Shared so the shell in
+// app/_layout and the modal overlays (which web renders outside that shell)
+// cannot drift apart.
+export const PHONE_MAX_WIDTH = 480;
+
 export function automaticDisplayMode({
   width,
   userAgent,

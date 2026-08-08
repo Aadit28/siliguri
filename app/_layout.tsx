@@ -23,10 +23,9 @@ import { DisplayModeProvider, useDisplayMode } from '../src/context/DisplayModeC
 import { SimpleModeProvider } from '../src/context/SimpleModeContext';
 import { FONT_BOLD } from '../src/lib/fonts';
 import WebScrollbarStyle from '../src/components/WebScrollbarStyle';
+import { PHONE_MAX_WIDTH } from '../src/lib/display-mode';
 
 SplashScreen.preventAutoHideAsync();
-
-const PHONE_MAX_WIDTH = 480;
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
