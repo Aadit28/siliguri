@@ -33,14 +33,23 @@ type TabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tab
 // the app holds itself to.
 const DOCK_PAD = 4;
 // Gap from the screen edge and from the bottom, before the safe-area inset.
-const DOCK_SIDE_MARGIN = 16;
+// 8 rather than a comfortable 16: every point spent on the side margin is a
+// point taken off six slots at once, and the labels — not the capsule's
+// silhouette — are what a 70+ user has to read. The dock reads as full-bleed
+// on a phone and only pulls back into a hugging capsule once ITEM_WIDTH_MAX
+// caps the slots on a tablet.
+const DOCK_SIDE_MARGIN = 8;
 const DOCK_BOTTOM = 14;
 const ITEM_HEIGHT = TAP;
 // Six destinations must remain visible even on a 320pt-wide phone, and 6 x 56
 // plus padding does not fit there. So this is a ceiling, not a fixed width —
 // GlassTabBar divides the real measured width by the route count and only uses
 // this when there is room. Height is never traded away; width is.
-const ITEM_WIDTH_MAX = 58;
+// The ceiling is 72, not the old 58: at 58 the dock stopped growing at 390pt,
+// so a 430pt phone paid for its extra width in dead side margin while
+// "Activities" and "Assistant" still ran into each other. 72 lets the slots
+// take the whole phone and only starts hugging on a tablet.
+const ITEM_WIDTH_MAX = 72;
 const ITEM_WIDTH_MIN = 50;
 const DOCK_HEIGHT = ITEM_HEIGHT + DOCK_PAD * 2;
 const DOCK_RADIUS = DOCK_HEIGHT / 2;
@@ -164,7 +173,11 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   // Label size follows the slot it has to live in. At the 50pt floor a 12pt
   // "Services" is wider than its slot and collides with its neighbour, so the
   // narrowest phones step down one point rather than ship overlapping words.
-  const labelSize = slotWidth >= 56 ? 12 : 11;
+  // The step is at 60, not 56: 12pt "Activities" inks ~53pt, so a 56pt slot
+  // leaves 3pt between it and "Assistant" — legally non-overlapping and still
+  // unreadable as two separate words. 11pt inks ~48.5, which breathes in the
+  // 56-59pt slots that 360-389pt phones get.
+  const labelSize = slotWidth >= 60 ? 12 : 11;
 
   const itemWidth = innerWidth > 0 ? innerWidth / state.routes.length : 0;
 
@@ -386,9 +399,10 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   // 10pt was below anything else in the app and unreadable at arm's length with
-  // presbyopia. 12 is the largest that keeps "Activities" un-truncated in a
-  // 58pt slot; font.xs (15) would need a 69pt slot, which six tabs cannot have
-  // on a phone. The honest fix beyond this is fewer tabs, not smaller type.
+  // presbyopia. 12 is the largest that leaves visible white between "Activities"
+  // and "Assistant" once the slot reaches 60pt; font.xs (15) would need a 69pt
+  // slot, which six tabs cannot have on a phone. The honest fix beyond this is
+  // fewer tabs, not smaller type.
   // alignSelf stretch is what makes numberOfLines actually bite: without a
   // width to measure against, the label overflows its slot and prints over the
   // neighbouring tab instead of ellipsizing.
