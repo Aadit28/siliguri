@@ -158,6 +158,9 @@
     "daily_service": "Daily & civic help"
   },
   "services": {
+    "viewOnMap": "See it on the map",
+    "mapAll": "See {{label}} on the map",
+    "mapAllNote": "Opens Google Maps, which shows its own places nearby — not only the ones Saathi has checked.",
     "title": "Services",
     "searchPlaceholder": "Search Saathi's listed services...",
     "searchScope": "Searches only the verified services listed inside Saathi - not the whole internet.",

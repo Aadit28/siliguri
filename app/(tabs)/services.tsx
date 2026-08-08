@@ -18,7 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../src/components/AppHeader';
 import CityPicker from '../../src/components/CityPicker';
 import ServiceGlyph from '../../src/components/ServiceGlyph';
-import { Badge, Card, Chip, DialFallbackDialog, H1, Muted, Stars, useDialer } from '../../src/components/ui';
+import { Badge, Button, Card, Chip, DialFallbackDialog, H1, Muted, Stars, useDialer } from '../../src/components/ui';
 import { AppColors, family, radius, TAB_BAR_CLEARANCE, Tokens } from '../../src/lib/theme';
 import { useTokens } from '../../src/lib/useTokens';
 import { SERVICE_CATEGORIES, expandServiceQuery, serviceSearchAliases } from '../../src/lib/categories';
@@ -30,6 +30,7 @@ import { useCity } from '../../src/context/CityContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
+import { mapsCategorySearchUrl, openMapsUrl } from '../../src/lib/maps';
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
 
@@ -160,6 +161,14 @@ export default function Services() {
           ? t('services.recentlyViewed')
           : t(`categories.${cat}`);
 
+  // Built from the label the user is looking at, not the raw enum key, so the
+  // search Google receives is in the language they are reading — a Hindi user
+  // searching "दवा की दुकान near Siliguri" gets Hindi place names back.
+  const mapAllUrl = useMemo(() => {
+    if (cat === 'all' || cat === 'favorites' || cat === 'recent') return null;
+    return mapsCategorySearchUrl(activeLabel, [city?.name, city?.state].filter(Boolean).join(', '));
+  }, [activeLabel, cat, city?.name, city?.state]);
+
   const directoryViews: Array<{ key: DirectoryView; label: string; count?: number }> = [
     { key: 'all', label: t('common.all'), count: all.length },
     {
@@ -265,6 +274,22 @@ export default function Services() {
             </Muted>
           ) : null}
         </View>
+
+        {/* Only for a real category. "All near Siliguri" is not a thing anyone
+            can search for, and Favourites and Recently viewed are Saathi's own
+            sets — Google has never heard of them. */}
+        {mapAllUrl ? (
+          <View style={styles.mapAllBlock}>
+            <Button
+              label={t('services.mapAll', { label: activeLabel })}
+              variant="secondary"
+              onPress={() => void openMapsUrl(mapAllUrl)}
+            />
+            <Muted numberOfLines={2} style={styles.mapAllNote}>
+              {t('services.mapAllNote')}
+            </Muted>
+          </View>
+        ) : null}
 
         {loading ? (
           <View style={styles.loadingBlock}>
@@ -493,6 +518,8 @@ function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) 
       width: tk.space.xl,
     },
     resultBar: { gap: 2 },
+    mapAllBlock: { gap: tk.space.xs, marginTop: tk.space.sm },
+    mapAllNote: { fontFamily: family.regular, fontSize: tk.font.xs },
     resultCount: { color: colors.text, fontFamily: family.semibold, fontSize: tk.font.md },
     resultMeta: { fontFamily: family.regular, fontSize: tk.font.sm },
     loadingBlock: { marginVertical: tk.space.xl, alignItems: 'center', gap: tk.space.sm },

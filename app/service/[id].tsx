@@ -39,6 +39,7 @@ import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat } from '../../src/lib/whatsapp';
 import OrderSheet from '../../src/components/OrderSheet';
+import { mapsDirectionsUrl, mapsSearchUrl, openMapsUrl } from '../../src/lib/maps';
 
 // Dates must follow the in-app language toggle, not the device locale — a phone
 // set to English would otherwise print English dates inside a Hindi screen.
@@ -137,6 +138,8 @@ export default function ServiceDetail() {
   const claimStatus = service.claim_status ?? 'unclaimed';
   const verifiedAt = formatTrustDate(service.verified_at, dateLocale(lang));
   const showWhatsApp = canUseWhatsApp(service.phone);
+  const directionsUrl = mapsDirectionsUrl(service);
+  const mapUrl = mapsSearchUrl(service);
   const hasPhone = Boolean(service.phone);
   const phoneConfirmed = Boolean(service.phone_confirmed);
 
@@ -388,16 +391,28 @@ export default function ServiceDetail() {
                 <Text style={[styles.waText, { color: colors.whatsappText }]}>WhatsApp</Text>
               </TouchableOpacity>
             ) : null}
-            {service.map_url ? (
+            {/* Not gated on map_url any more. 45 of the 149 listings carry an
+                address but no curated map link, and those showed no Directions
+                button at all — mapsDirectionsUrl builds one from the address. */}
+            {directionsUrl ? (
               <View style={{ flex: 1 }}>
                 <Button
                   label={t('common.directions')}
                   variant="primary"
-                  onPress={() => Linking.openURL(service.map_url!).catch(() => undefined)}
+                  onPress={() => void openMapsUrl(directionsUrl)}
                 />
               </View>
             ) : null}
           </View>
+          {mapUrl ? (
+            <View style={styles.orderAction}>
+              <Button
+                label={t('services.viewOnMap')}
+                variant="secondary"
+                onPress={() => void openMapsUrl(mapUrl)}
+              />
+            </View>
+          ) : null}
           {/* Ordering rides on the same WhatsApp number the Call and WhatsApp
               buttons above use, so it appears exactly where a shop is already
               reachable and nowhere else. */}
