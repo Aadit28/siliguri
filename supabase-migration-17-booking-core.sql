@@ -25,7 +25,14 @@ create table if not exists public.vendor_slots (
   created_at timestamptz not null default now(),
   -- The overbooking guard sits on the table, not only inside booking_hold: a
   -- hand fix in the dashboard must not be able to sell the same seat twice.
-  constraint vendor_slots_capacity_check check (booked <= capacity),
+  --
+  -- NOT named vendor_slots_capacity_check: the inline `check (capacity > 0)` on
+  -- the column above already takes that name, because Postgres auto-names a
+  -- column constraint <table>_<column>_check. Claiming it here made the whole
+  -- file fail with 42710 before a single object was created. The name still
+  -- contains "capacity" so isCapacityViolation in server/vendor/slot-save.js
+  -- keeps matching the 23514 this raises.
+  constraint vendor_slots_booked_within_capacity check (booked <= capacity),
   -- Also serves as the (vendor_id, starts_at) lookup index, so there is no
   -- separate index for the vendor calendar read.
   unique (vendor_id, starts_at)
@@ -386,7 +393,7 @@ as $$
   ),
   freed as (
     -- greatest(..., 0) so a double sweep or a hand edit can never drive the
-    -- counter below zero and break vendor_slots_capacity_check.
+    -- counter below zero and break vendor_slots_booked_within_capacity.
     update public.vendor_slots slot
     set booked = greatest(slot.booked - taken.n, 0)
     from (
