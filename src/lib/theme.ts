@@ -238,7 +238,12 @@ export const ROW_MIN_HEIGHT = 64;
 // Bottom clearance for scroll content on phone: the tab bar floats (absolute,
 // glass) so screens must pad past it or the last row hides underneath.
 // 52 capsule + 14 bottom offset + breathing room.
-export const TAB_BAR_CLEARANCE = 92;
+// Bottom padding every tab screen leaves so its last row can be scrolled clear
+// of the floating dock. Sized for the worst case: DOCK_BOTTOM (14) + the tallest
+// safe-area inset we ship against (34, iPhone home indicator) + the dock itself
+// (TAP 56 + 2x DOCK_PAD 4 = 64). Raised from 92 when the dock grew to the app's
+// own 56pt touch floor — at 92 the last row stopped short of clearing it.
+export const TAB_BAR_CLEARANCE = 112;
 
 // ---------------------------------------------------------------------------
 // Easy view scaling

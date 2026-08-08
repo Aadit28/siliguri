@@ -105,7 +105,19 @@ export default function Home() {
   }, [user?.id]);
 
   useEffect(() => {
-    fetchServices(city).then(setAllServices);
+    // Two fetches are in flight on first paint: one fired while `city` is still
+    // null (which fetchServices reads as "every city") and one for the resolved
+    // city. Without this flag whichever resolves LAST wins, and the slower
+    // all-cities answer was landing second — Home showed "149 Verified nearby"
+    // under a chip reading Siliguri, a town with 56. This is the app's headline
+    // trust number; it must never count places the user cannot reach.
+    let cancelled = false;
+    fetchServices(city).then((rows) => {
+      if (!cancelled) setAllServices(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [city]);
 
   // Stars are toggled on /services and /service/[id], so re-read the saved

@@ -76,10 +76,21 @@ export default function Services() {
   }, []);
 
   useEffect(() => {
+    // Same race as Home: a stale all-cities response must not overwrite the
+    // city-scoped one, and a stale response must not clear the spinner for a
+    // request that is still running.
+    let cancelled = false;
     setLoading(true);
     fetchServices(city)
-      .then(setAll)
-      .finally(() => setLoading(false));
+      .then((rows) => {
+        if (!cancelled) setAll(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [city]);
 
   useEffect(() => {

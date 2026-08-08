@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ColorValue, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ColorValue, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +17,8 @@ import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useLocale } from '../../src/context/LocaleContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useSimpleMode } from '../../src/context/SimpleModeContext';
-import { family, shadow } from '../../src/lib/theme';
+import { family, shadow, TAP } from '../../src/lib/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -25,13 +26,22 @@ type FeatherName = React.ComponentProps<typeof Feather>['name'];
 // importable — recover the tab-bar props type from the Tabs component itself.
 type TabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 
-// Compact capsule, sized like the iOS tab bar rather than a full-width shelf:
-// item height is Apple's 44pt minimum target, the label drops to a caption, and
-// the bar hugs its items instead of stretching edge to edge.
+// Compact capsule rather than a full-width shelf, but sized to THIS app's floor,
+// not Apple's. src/lib/theme.ts sets TAP = 56 because the users are 70+ with
+// cataracts and tremor; the dock was built to Apple's 44pt generic minimum and
+// so shipped the one control every screen depends on below the bar the rest of
+// the app holds itself to.
 const DOCK_PAD = 4;
-const ITEM_HEIGHT = 44;
-// Six destinations must remain visible even on a 320pt-wide phone.
-const ITEM_WIDTH = 52;
+// Gap from the screen edge and from the bottom, before the safe-area inset.
+const DOCK_SIDE_MARGIN = 16;
+const DOCK_BOTTOM = 14;
+const ITEM_HEIGHT = TAP;
+// Six destinations must remain visible even on a 320pt-wide phone, and 6 x 56
+// plus padding does not fit there. So this is a ceiling, not a fixed width —
+// GlassTabBar divides the real measured width by the route count and only uses
+// this when there is room. Height is never traded away; width is.
+const ITEM_WIDTH_MAX = 58;
+const ITEM_WIDTH_MIN = 50;
 const DOCK_HEIGHT = ITEM_HEIGHT + DOCK_PAD * 2;
 const DOCK_RADIUS = DOCK_HEIGHT / 2;
 // GSAP power4.out equivalent: fast launch, long soft landing.
@@ -73,13 +83,22 @@ function NavIcon({ name, color, focused }: { name: FeatherName; color: ColorValu
 function SimpleTabBar({ state, descriptors, navigation }: TabBarProps) {
   const { colors } = useTheme();
   const { isComputerMode } = useDisplayMode();
+  // This shelf sits flush at bottom: 0, so on a gesture-nav phone the home
+  // indicator lands directly on the tab labels. Pad by the inset instead of
+  // moving the bar up, so the shelf still reaches the screen edge.
+  const insets = useSafeAreaInsets();
 
   // Same rule as the glass bar: desktop chrome supplies its own nav, and the
   // bar never hides on keyboard open.
   if (isComputerMode) return null;
 
   return (
-    <View style={[styles.simpleBar, { backgroundColor: colors.bgAlt, borderTopColor: colors.border }]}>
+    <View
+      style={[
+        styles.simpleBar,
+        { backgroundColor: colors.bgAlt, borderTopColor: colors.border, paddingBottom: insets.bottom },
+      ]}
+    >
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
         const focused = state.index === index;
@@ -127,6 +146,25 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   const { isComputerMode } = useDisplayMode();
   const [innerWidth, setInnerWidth] = useState(0);
   const slide = useSharedValue(state.index);
+  const { width: screenWidth } = useWindowDimensions();
+  // Home-gesture bar on iOS, on-screen nav bar on Android. Without this the
+  // dock sat under the system bar on any gesture-nav phone — the tab bar is
+  // the one control every screen depends on, so it cannot be the thing the OS
+  // covers.
+  const insets = useSafeAreaInsets();
+
+  // Widest item that still leaves the capsule inside the screen with a margin
+  // either side, clamped so it never grows silly on a tablet nor collapses
+  // below a thumb on a 320pt phone.
+  const slotWidth = Math.max(
+    ITEM_WIDTH_MIN,
+    Math.min(ITEM_WIDTH_MAX, Math.floor((screenWidth - DOCK_SIDE_MARGIN * 2 - DOCK_PAD * 2) / state.routes.length)),
+  );
+
+  // Label size follows the slot it has to live in. At the 50pt floor a 12pt
+  // "Services" is wider than its slot and collides with its neighbour, so the
+  // narrowest phones step down one point rather than ship overlapping words.
+  const labelSize = slotWidth >= 56 ? 12 : 11;
 
   const itemWidth = innerWidth > 0 ? innerWidth / state.routes.length : 0;
 
@@ -154,7 +192,7 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   return (
     // Full-width wrapper only to centre the capsule; box-none so the page keeps
     // receiving touches either side of it.
-    <View style={styles.dockWrap} pointerEvents="box-none">
+    <View style={[styles.dockWrap, { bottom: DOCK_BOTTOM + insets.bottom }]} pointerEvents="box-none">
       <View style={[styles.tabBar, shadow.md]}>
       <View style={[StyleSheet.absoluteFill, styles.dockClip]}>
         {/* Bevel: light catches the top-left edge, falls off bottom-right. */}
@@ -203,7 +241,7 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
               accessibilityRole="tab"
               accessibilityState={{ selected: focused }}
               accessibilityLabel={label}
-              style={styles.item}
+              style={[styles.item, { width: slotWidth }]}
               onPress={() => {
                 const event = navigation.emit({
                   type: 'tabPress',
@@ -216,7 +254,14 @@ function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
               }}
             >
               {options.tabBarIcon ? options.tabBarIcon({ focused, color: tint, size: 21 }) : null}
-              <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
+              {/* Capped rather than unbounded: the label may grow with the OS
+                  text size, but past 1.3x it would push the icon out of a slot
+                  six tabs have to share. The simple bar carries the same cap. */}
+              <Text
+                maxFontSizeMultiplier={1.3}
+                style={[styles.label, { color: tint, fontSize: labelSize }]}
+                numberOfLines={1}
+              >
                 {label}
               </Text>
             </Pressable>
@@ -295,7 +340,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 14,
+    // `bottom` is set by GlassTabBar: DOCK_BOTTOM plus the safe-area inset.
     alignItems: 'center',
   },
   tabBar: {
@@ -334,13 +379,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   item: {
-    width: ITEM_WIDTH,
+    // width is supplied per-render by GlassTabBar (slotWidth).
     height: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
   },
-  label: { fontFamily: family.medium, fontSize: 10, lineHeight: 12 },
+  // 10pt was below anything else in the app and unreadable at arm's length with
+  // presbyopia. 12 is the largest that keeps "Activities" un-truncated in a
+  // 58pt slot; font.xs (15) would need a 69pt slot, which six tabs cannot have
+  // on a phone. The honest fix beyond this is fewer tabs, not smaller type.
+  // alignSelf stretch is what makes numberOfLines actually bite: without a
+  // width to measure against, the label overflows its slot and prints over the
+  // neighbouring tab instead of ellipsizing.
+  label: {
+    fontFamily: family.medium,
+    fontSize: 12,
+    lineHeight: 15,
+    alignSelf: 'stretch',
+    textAlign: 'center',
+  },
 
   // Docked at the very bottom rather than floating: the existing
   // TAB_BAR_CLEARANCE (92) already reserves more than this bar's height, so no
