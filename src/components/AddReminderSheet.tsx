@@ -5,7 +5,16 @@ import { Feather } from '@expo/vector-icons';
 import { Button, Chip, Muted, Sheet } from './ui';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { addEvent, isValidISODate, normalizeTimeInput, toLocalISODate } from '../lib/calendar';
+import {
+  addEvent,
+  formatReadableDate,
+  isValidISODate,
+  normalizeSupplyDays,
+  normalizeTimeInput,
+  refillDateISO,
+  supplyRunsOutISO,
+  toLocalISODate,
+} from '../lib/calendar';
 import { addFamilyReminder, friendlyFamilyError, listFamilyLinks } from '../lib/family';
 import { refreshFamilyForSelf } from '../lib/familySync';
 import { todayISO } from '../lib/notifications';
@@ -14,6 +23,8 @@ import { FamilyLink, FamilyReminderRepeat } from '../lib/types';
 
 const TIME_PRESETS = ['08:00', '12:00', '18:00', '21:00'];
 const REPEATS: FamilyReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
+// A strip, a fortnight and a month: how medicine is actually sold here.
+const SUPPLY_PRESETS = ['10', '15', '30'];
 
 // Reminder days are the parent's Asia/Kolkata day, so the Today/Tomorrow
 // presets shift from that anchor rather than the device's own calendar.
@@ -40,6 +51,9 @@ export default function AddReminderSheet({
   const [dateISO, setDateISO] = useState(shiftedISO(0));
   const [time, setTime] = useState('08:00');
   const [repeat, setRepeat] = useState<FamilyReminderRepeat>('once');
+  // Free text, not a number: the chips and the typed box are the same field, so
+  // there is one value to read and nothing to keep in step.
+  const [supplyText, setSupplyText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Saved, but this device will not ring. Distinct from `error`, which means
@@ -82,6 +96,12 @@ export default function AddReminderSheet({
     setError(null);
   }
 
+  const supplyDays = normalizeSupplyDays(supplyText);
+  // Only once the day is a real date: a half-typed one would render the hint as
+  // "NaN-NaN-NaN" while the user is still going.
+  const runsOutISO =
+    supplyDays && isValidISODate(dateISO) ? supplyRunsOutISO(dateISO, supplyDays) : null;
+
   const dayPresets = [
     { label: t('reminders.today'), value: shiftedISO(0) },
     { label: t('reminders.tomorrow'), value: shiftedISO(1) },
@@ -93,6 +113,7 @@ export default function AddReminderSheet({
     setDateISO(shiftedISO(0));
     setTime('08:00');
     setRepeat('once');
+    setSupplyText('');
     setTarget('self');
     setError(null);
     setAlertWarning(null);
@@ -113,42 +134,71 @@ export default function AddReminderSheet({
     setError(null);
     setAlertWarning(null);
     setSaving(true);
+    const cleanTitle = title.trim();
+    const refill = supplyDays
+      ? {
+          title: t('reminders.refillTitle', { name: cleanTitle }),
+          note: t('reminders.refillNote', { name: cleanTitle }),
+          dateISO: refillDateISO(dateISO, supplyDays),
+          time: normalizedTime,
+          repeat: 'once' as const,
+        }
+      : null;
+    // Collected rather than thrown: the medicine reminder is already saved, and
+    // the sheet has to say exactly which half of the promise did not happen.
+    const warnings: string[] = [];
     try {
       if (forParent && session) {
         await addFamilyReminder(session.access_token, {
           parentId: selectedWard.parentId as string,
-          title: title.trim(),
+          title: cleanTitle,
           dateISO,
           time: normalizedTime,
           repeat,
         });
+        if (refill) {
+          try {
+            await addFamilyReminder(session.access_token, {
+              parentId: selectedWard.parentId as string,
+              ...refill,
+            });
+          } catch {
+            warnings.push(t('reminders.refillFailed'));
+          }
+        }
         // Pull it straight back so this device's calendar, bell and alert show
         // it now rather than after the next foreground sync.
         await refreshFamilyForSelf(session.access_token, user?.id);
       } else {
         const saved = await addEvent(user?.id, {
-          title: title.trim(),
+          title: cleanTitle,
           dateISO,
           time: normalizedTime,
           repeat,
+          supplyDays,
         });
+        if (refill) {
+          try {
+            await addEvent(user?.id, { ...refill, refillFor: saved.id });
+          } catch {
+            warnings.push(t('reminders.refillFailed'));
+          }
+        }
         // Saved rows that could not be scheduled must say so: the sheet has
         // just promised this phone will ring at that time.
         if (saved.alertProblem && saved.alertProblem !== 'past') {
-          setAlertWarning(
+          warnings.push(
             saved.alertProblem === 'permission'
-              ? t('reminders.alertBlocked', {
-                  defaultValue:
-                    'Saved. This phone will not alert you until notifications are turned on in Settings.',
-                })
-              : t('reminders.alertUnavailable', {
-                  defaultValue: 'Saved. This device cannot show alerts, so check the calendar.',
-                }),
+              ? t('reminders.alertBlocked')
+              : t('reminders.alertUnavailable'),
           );
-          setSaving(false);
-          onSaved();
-          return;
         }
+      }
+      if (warnings.length) {
+        setAlertWarning(warnings.join(' '));
+        setSaving(false);
+        onSaved();
+        return;
       }
       reset();
       onSaved();
@@ -288,6 +338,42 @@ export default function AddReminderSheet({
           </View>
         </View>
 
+        <View style={styles.field}>
+          <Text style={styles.label}>{t('reminders.supplyLabel')}</Text>
+          <View style={styles.chipRow}>
+            <Chip
+              label={t('reminders.supplyNone')}
+              active={supplyDays === null}
+              onPress={() => setSupplyText('')}
+            />
+            {SUPPLY_PRESETS.map((preset) => (
+              <Chip
+                key={preset}
+                label={t('reminders.supplyOption', { days: preset })}
+                active={supplyText === preset}
+                onPress={() => setSupplyText(preset)}
+              />
+            ))}
+          </View>
+          <TextInput
+            style={styles.input}
+            value={supplyText}
+            onChangeText={setSupplyText}
+            keyboardType="number-pad"
+            placeholder={t('reminders.supplyCustom')}
+            placeholderTextColor={colors.textSubtle}
+            accessibilityLabel={t('reminders.supplyLabel')}
+          />
+          {runsOutISO && supplyDays ? (
+            <Muted style={styles.supplyHint}>
+              {t('reminders.supplyHint', {
+                runsOut: formatReadableDate(runsOutISO),
+                refill: formatReadableDate(refillDateISO(dateISO, supplyDays)),
+              })}
+            </Muted>
+          ) : null}
+        </View>
+
         {error ? (
           <View style={styles.errorRow}>
             <Feather name="alert-circle" size={16} color={colors.danger} />
@@ -346,6 +432,7 @@ function makeStyles(colors: AppColors) {
       marginTop: space.xs,
     },
     destinationText: { flex: 1, fontFamily: family.semibold, fontSize: font.sm },
+    supplyHint: { fontSize: font.sm },
     errorRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
     errorText: { fontFamily: family.medium, fontSize: font.sm },
     footnote: { fontSize: font.xs, textAlign: 'center' },

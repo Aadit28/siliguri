@@ -98,6 +98,8 @@ function parseStore(raw: string | null): CalendarEvent[] {
         startsAt: event.startsAt ?? null,
         endsAt: event.endsAt ?? null,
         timezone: event.timezone ?? null,
+        supplyDays: normalizeSupplyDays(event.supplyDays),
+        refillFor: event.refillFor ?? null,
       }));
   } catch {
     return [];
@@ -205,6 +207,8 @@ export async function addEvent(userId: string | null | undefined, input: {
   startsAt?: string | null;
   endsAt?: string | null;
   timezone?: string | null;
+  supplyDays?: number | null;
+  refillFor?: string | null;
 }): Promise<CalendarEvent> {
   return withStoreLock(async () => {
     const events = await readStore(userId);
@@ -232,6 +236,8 @@ export async function addEvent(userId: string | null | undefined, input: {
       startsAt: input.startsAt ?? null,
       endsAt: input.endsAt ?? null,
       timezone: input.timezone ?? null,
+      supplyDays: normalizeSupplyDays(input.supplyDays),
+      refillFor: input.refillFor ?? null,
     };
     events.push(event);
     // Persist before scheduling: a failed write after scheduling would orphan
@@ -262,9 +268,13 @@ export async function addEvent(userId: string | null | undefined, input: {
 export async function removeEvent(userId: string | null | undefined, id: string): Promise<void> {
   return withStoreLock(async () => {
     const events = await readStore(userId);
-    const doomed = events.find((event) => event.id === id);
-    await cancelReminder(doomed?.notificationId);
-    await writeStore(userId, events.filter((event) => event.id !== id));
+    // The reorder nudge only makes sense next to the medicine it covers, so it
+    // goes with it. Deleting the nudge alone leaves the medicine untouched.
+    const doomed = events.filter((event) => event.id === id || event.refillFor === id);
+    if (!doomed.length) return;
+    const doomedIds = new Set(doomed.map((event) => event.id));
+    await Promise.all(doomed.map((event) => cancelReminder(event.notificationId)));
+    await writeStore(userId, events.filter((event) => !doomedIds.has(event.id)));
   });
 }
 
@@ -389,6 +399,82 @@ function addDaysToISO(dateISO: string, days: number) {
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + days);
   return toLocalISODate(date);
+}
+
+// True when a reminder lands on the given local date. A repeating reminder
+// recurs from its stored start date: daily on every later day, weekly on the
+// same weekday, monthly on the same day-of-month. Months with no such day (the
+// 31st in April) are skipped rather than rolled forward, matching how
+// familySync picks a monthly reminder's next date.
+export function occursOnDate(event: CalendarEvent, dateISO: string): boolean {
+  const repeat: ReminderRepeat = event.repeat ?? 'once';
+  if (repeat === 'once') return event.dateISO === dateISO;
+
+  const [startYear, startMonth, startDay] = event.dateISO.split('-').map(Number);
+  const [year, month, day] = dateISO.split('-').map(Number);
+  if (!startYear || !startMonth || !startDay || !year || !month || !day) return false;
+
+  const start = new Date(startYear, startMonth - 1, startDay);
+  const cell = new Date(year, month - 1, day);
+  if (cell.getTime() < start.getTime()) return false;
+
+  if (repeat === 'daily') return true;
+  if (repeat === 'weekly') return cell.getDay() === start.getDay();
+  if (repeat === 'monthly') return day === startDay;
+  return false;
+}
+
+// The first date at or after `fromISO` that this reminder lands on, or null
+// when it has none left — a one-off whose day has passed. The scan is bounded
+// to a year because every repeat pattern recurs inside that window, including a
+// monthly reminder on the 31st, which only some months have.
+export function nextOccurrenceISO(event: CalendarEvent, fromISO: string): string | null {
+  const repeat: ReminderRepeat = event.repeat ?? 'once';
+  if (repeat === 'once') return event.dateISO >= fromISO ? event.dateISO : null;
+  if (event.dateISO >= fromISO) return event.dateISO;
+  for (let offset = 0; offset <= 366; offset++) {
+    const candidate = addDaysToISO(fromISO, offset);
+    if (occursOnDate(event, candidate)) return candidate;
+  }
+  return null;
+}
+
+// How many days before the last dose the reorder reminder fires. Three days is
+// enough for a Siliguri pharmacy delivery without the nudge landing so early
+// that it is forgotten.
+export const REFILL_LEAD_DAYS = 3;
+
+// Days of stock, not doses. Counting "14 uses" would need per-dose logging the
+// app does not have, so a typed count is read as days. Bounded so a slipped
+// keypress ("300" for "30") cannot park a reminder a lifetime away.
+export function normalizeSupplyDays(value: unknown): number | null {
+  const days = Math.floor(Number(value));
+  if (!Number.isFinite(days) || days < 1) return null;
+  return Math.min(days, 365);
+}
+
+export function supplyRunsOutISO(startISO: string, supplyDays: number): string {
+  return addDaysToISO(startISO, supplyDays);
+}
+
+// The reorder nudge sits a few days before the stock runs out, but never before
+// the reminder itself starts: a two-day supply must not ask for a refill in the
+// past, where the alert would be dropped as already-fired.
+export function refillDateISO(startISO: string, supplyDays: number): string {
+  const lead = Math.min(REFILL_LEAD_DAYS, Math.max(supplyDays - 1, 0));
+  return addDaysToISO(startISO, supplyDays - lead);
+}
+
+export function formatReadableDate(dateISO: string): string {
+  const [year, month, day] = dateISO.split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
+  if (Number.isNaN(date.getTime())) return dateISO;
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export function googleCalendarUrl(event: CalendarEvent): string {

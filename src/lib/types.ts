@@ -108,6 +108,12 @@ export interface CalendarEvent {
   startsAt?: string | null;
   endsAt?: string | null;
   timezone?: string | null;
+  // How many days of stock this reminder starts with. Days, not doses: the app
+  // has no per-dose logging to count "14 uses" against.
+  supplyDays?: number | null;
+  // Set on the generated "order more" reminder, pointing at the reminder whose
+  // supply it covers, so deleting the medicine also drops its reorder nudge.
+  refillFor?: string | null;
   // Why this device could not schedule an alert for the reminder, if it could
   // not. Returned by addEvent for the screen to report; never persisted, since
   // it describes one attempt on one device rather than the reminder itself.

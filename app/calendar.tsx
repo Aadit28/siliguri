@@ -13,14 +13,33 @@ import {
   googleCalendarUrl,
   isValidISODate,
   listEvents,
+  nextOccurrenceISO,
+  normalizeSupplyDays,
   normalizeTimeInput,
+  occursOnDate,
+  refillDateISO,
   removeEvent,
+  supplyRunsOutISO,
 } from '../src/lib/calendar';
 import { listFamilyLinks } from '../src/lib/family';
 import { todayISO } from '../src/lib/notifications';
 import { CalendarEvent, ReminderRepeat } from '../src/lib/types';
 
 const REPEATS: ReminderRepeat[] = ['once', 'daily', 'weekly', 'monthly'];
+// A strip, a fortnight and a month: how medicine is actually sold here.
+const SUPPLY_PRESETS = ['10', '15', '30'];
+
+// A reminder paired with the date it is being listed under. For a repeating
+// reminder that is its next turn, not the day it was first set.
+type EventRow = { event: CalendarEvent; dateISO: string };
+
+function compareRows(a: EventRow, b: EventRow) {
+  if (a.dateISO !== b.dateISO) return a.dateISO < b.dateISO ? -1 : 1;
+  const aTime = a.event.time ?? '';
+  const bTime = b.event.time ?? '';
+  if (aTime === bTime) return 0;
+  return aTime < bTime ? -1 : 1;
+}
 
 function toISO(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -83,11 +102,16 @@ export default function CalendarScreen() {
   const [time, setTime] = useState('');
   const [note, setNote] = useState('');
   const [repeat, setRepeat] = useState<ReminderRepeat>('once');
+  // Free text, not a number: the chips and the typed box are the same field.
+  const [supplyText, setSupplyText] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
   const [dateError, setDateError] = useState(false);
   const [timeError, setTimeError] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  // The reminder saved but its reorder nudge did not. Distinct from saveError,
+  // which means nothing was saved at all.
+  const [refillError, setRefillError] = useState(false);
 
   // "Today" — the marked disc, and the month the grid opens on — follows the
   // parent's Asia/Kolkata day, the same anchor reminders and the bell use, so a
@@ -97,6 +121,10 @@ export default function CalendarScreen() {
     const [year, month] = today.split('-').map(Number);
     return { year, month: month - 1 };
   });
+  // The day the list below the grid is showing. Held apart from the form's
+  // date field so opening the screen reads as "today", while the add form
+  // still defaults to tomorrow. Tapping a day sets both.
+  const [selected, setSelected] = useState(today);
 
   // Guardians read this screen as their family's reminders, not their own day.
   const [isGuardian, setIsGuardian] = useState(false);
@@ -148,6 +176,12 @@ export default function CalendarScreen() {
     load();
   }
 
+  const supplyDays = normalizeSupplyDays(supplyText);
+  // Only once the day is a real date: a half-typed one would render the hint
+  // as "NaN-NaN-NaN" while the user is still going.
+  const runsOutISO =
+    supplyDays && isValidISODate(dateISO) ? supplyRunsOutISO(dateISO, supplyDays) : null;
+
   async function handleSave() {
     if (!title.trim() || !isValidISODate(dateISO)) {
       setDateError(!isValidISODate(dateISO));
@@ -162,20 +196,40 @@ export default function CalendarScreen() {
     setDateError(false);
     setTimeError(false);
     setSaveError(false);
+    setRefillError(false);
     setSaving(true);
+    const cleanTitle = title.trim();
     try {
-      await addEvent(user?.id, {
-        title: title.trim(),
+      const saved = await addEvent(user?.id, {
+        title: cleanTitle,
         dateISO,
         time: normalizedTime,
         note: note.trim() || null,
         repeat,
+        supplyDays,
       });
+      if (supplyDays) {
+        try {
+          await addEvent(user?.id, {
+            title: t('reminders.refillTitle', { name: cleanTitle }),
+            note: t('reminders.refillNote', { name: cleanTitle }),
+            dateISO: refillDateISO(dateISO, supplyDays),
+            time: normalizedTime,
+            repeat: 'once',
+            refillFor: saved.id,
+          });
+        } catch {
+          // The medicine reminder is saved; staying quiet here would leave the
+          // user believing an order reminder exists when none does.
+          setRefillError(true);
+        }
+      }
       setTitle('');
       setDateISO(tomorrowISO());
       setTime('');
       setNote('');
       setRepeat('once');
+      setSupplyText('');
       setSavedMessage(true);
       load();
       setTimeout(() => setSavedMessage(false), 2500);
@@ -196,38 +250,43 @@ export default function CalendarScreen() {
     [],
   );
   // Marks every occurrence a repeating reminder has inside the visible month,
-  // not just each event's stored start date. A monthly reminder recurs on its
-  // start day-of-month: months that have no such day (the 31st in April) are
-  // skipped rather than rolled forward, matching how familySync picks a
-  // monthly reminder's next date.
+  // not just each event's stored start date.
   const eventDates = useMemo(() => {
     const marks = new Set<string>();
     const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
-    for (const event of events) {
-      const repeat: ReminderRepeat = event.repeat ?? 'once';
-      if (repeat === 'once') {
-        marks.add(event.dateISO);
-        continue;
-      }
-      const [ey, em, ed] = event.dateISO.split('-').map(Number);
-      if (!ey || !em || !ed) continue;
-      const start = new Date(ey, em - 1, ed);
-      for (let day = 1; day <= daysInMonth; day++) {
-        const cell = new Date(cursor.year, cursor.month, day);
-        if (cell.getTime() < start.getTime()) continue;
-        const occurs =
-          repeat === 'daily'
-            ? true
-            : repeat === 'weekly'
-              ? cell.getDay() === start.getDay()
-              : repeat === 'monthly'
-                ? day === ed
-                : false;
-        if (occurs) marks.add(toISO(cursor.year, cursor.month, day));
-      }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const iso = toISO(cursor.year, cursor.month, day);
+      if (events.some((event) => occursOnDate(event, iso))) marks.add(iso);
     }
     return marks;
   }, [events, cursor]);
+
+  // Three lists, no reminder in two of them: whatever falls on the tapped day,
+  // then everything else split by whether it still has a date ahead of it.
+  // "Past due" is date-granular and anchored to today — a reminder set for
+  // 9 AM today stays upcoming all day rather than turning red at 9:01, and a
+  // repeating reminder is never past due because it always has a next turn.
+  const { dayRows, upcomingRows, pastDueRows } = useMemo(() => {
+    const day: EventRow[] = [];
+    const upcoming: EventRow[] = [];
+    const pastDue: EventRow[] = [];
+    for (const event of events) {
+      if (occursOnDate(event, selected)) {
+        day.push({ event, dateISO: selected });
+        continue;
+      }
+      const next = nextOccurrenceISO(event, today);
+      if (next) upcoming.push({ event, dateISO: next });
+      else pastDue.push({ event, dateISO: event.dateISO });
+    }
+    // Every row in the day list shares one date, so this orders it by time.
+    day.sort(compareRows);
+    upcoming.sort(compareRows);
+    // Most recently missed first: yesterday's skipped dose is the one that
+    // still needs doing, last month's is history.
+    pastDue.sort((a, b) => -compareRows(a, b));
+    return { dayRows: day, upcomingRows: upcoming, pastDueRows: pastDue };
+  }, [events, selected, today]);
 
   function goMonth(delta: number) {
     setCursor(({ year, month }) => {
@@ -251,6 +310,50 @@ export default function CalendarScreen() {
     setConfirmOpen(false);
     if (pendingDelete) handleDelete(pendingDelete.id);
   }
+
+  const renderList = (rows: EventRow[]) => (
+    <Card style={styles.listCard}>
+      {rows.map(({ event, dateISO: shownDate }, index) => (
+        <View key={event.id}>
+          {index > 0 ? (
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={event.title}
+            onPress={() => openEvent(event)}
+            style={({ pressed }) => [
+              styles.eventRow,
+              pressed ? { backgroundColor: colors.overlay } : null,
+            ]}
+          >
+            <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
+              <Feather
+                name={event.source === 'activity' ? 'activity' : 'calendar'}
+                size={20}
+                color={colors.text}
+              />
+            </View>
+            <View style={styles.eventTextBlock}>
+              <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={2}>
+                {event.title}
+              </Text>
+              <Text style={[styles.eventMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                {formatReadableDate(shownDate)}
+                {event.time ? ` · ${formatISTTime(event.time)}` : ''}
+                {event.source === 'activity'
+                  ? ` · ${t('activities.calendarSource')}`
+                  : event.repeat && event.repeat !== 'once'
+                  ? ` · ${t(`reminders.repeat.${event.repeat}`)}`
+                  : ''}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={22} color={colors.textSubtle} />
+          </Pressable>
+        </View>
+      ))}
+    </Card>
+  );
 
   return (
     <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.content}>
@@ -300,7 +403,7 @@ export default function CalendarScreen() {
               if (!day) return <View key={`d-${wi}-${di}`} style={styles.dayCell} />;
               const iso = toISO(cursor.year, cursor.month, day);
               const isToday = iso === today;
-              const isSelected = iso === dateISO;
+              const isSelected = iso === selected;
               const hasEvent = eventDates.has(iso);
               return (
                 <Pressable
@@ -312,6 +415,7 @@ export default function CalendarScreen() {
                     { weekday: 'long', day: 'numeric', month: 'long' },
                   )}
                   onPress={() => {
+                    setSelected(iso);
                     setDateISO(iso);
                     setDateError(false);
                   }}
@@ -362,63 +466,51 @@ export default function CalendarScreen() {
         ))}
       </Card>
 
-      <H2 style={styles.sectionTitle}>{t('calendar.upcoming')}</H2>
       {events.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
-            <Feather name="calendar" size={20} color={colors.text} />
-          </View>
-          <Muted style={styles.emptyText}>
-            {isGuardian
-              ? t('calendar.emptyGuardian', {
-                  defaultValue:
-                    'No reminders yet. Anything you set for your family shows up here.',
-                })
-              : t('calendar.empty')}
-          </Muted>
-        </Card>
-      ) : (
-        <Card style={styles.listCard}>
-          {events.map((event, index) => (
-            <View key={event.id}>
-              {index > 0 ? (
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              ) : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={event.title}
-                onPress={() => openEvent(event)}
-                style={({ pressed }) => [
-                  styles.eventRow,
-                  pressed ? { backgroundColor: colors.overlay } : null,
-                ]}
-              >
-                <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
-                  <Feather
-                    name={event.source === 'activity' ? 'activity' : 'calendar'}
-                    size={20}
-                    color={colors.text}
-                  />
-                </View>
-                <View style={styles.eventTextBlock}>
-                  <Text style={[styles.eventTitle, { color: colors.text }]} numberOfLines={2}>
-                    {event.title}
-                  </Text>
-                  <Text style={[styles.eventMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                    {formatReadableDate(event.dateISO)}
-                    {event.time ? ` · ${formatISTTime(event.time)}` : ''}
-                    {event.source === 'activity'
-                      ? ` · ${t('activities.calendarSource')}`
-                      : event.repeat && event.repeat !== 'once'
-                      ? ` · ${t(`reminders.repeat.${event.repeat}`)}`
-                      : ''}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={22} color={colors.textSubtle} />
-              </Pressable>
+        <>
+          <H2 style={styles.sectionTitle}>{t('calendar.upcoming')}</H2>
+          <Card style={styles.emptyCard}>
+            <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
+              <Feather name="calendar" size={20} color={colors.text} />
             </View>
-          ))}
-        </Card>
+            <Muted style={styles.emptyText}>
+              {isGuardian
+                ? t('calendar.emptyGuardian', {
+                    defaultValue:
+                      'No reminders yet. Anything you set for your family shows up here.',
+                  })
+                : t('calendar.empty')}
+            </Muted>
+          </Card>
+        </>
+      ) : (
+        <>
+          <H2 style={styles.sectionTitle}>{formatReadableDate(selected)}</H2>
+          {dayRows.length ? (
+            renderList(dayRows)
+          ) : (
+            <Card style={styles.emptyCard}>
+              <View style={[styles.leadDisc, { backgroundColor: colors.surfaceTint }]}>
+                <Feather name="calendar" size={20} color={colors.text} />
+              </View>
+              <Muted style={styles.emptyText}>{t('calendar.noneOnDate')}</Muted>
+            </Card>
+          )}
+
+          {upcomingRows.length ? (
+            <>
+              <H2 style={styles.sectionTitle}>{t('calendar.upcoming')}</H2>
+              {renderList(upcomingRows)}
+            </>
+          ) : null}
+
+          {pastDueRows.length ? (
+            <>
+              <H2 style={styles.sectionTitle}>{t('calendar.pastDue')}</H2>
+              {renderList(pastDueRows)}
+            </>
+          ) : null}
+        </>
       )}
 
       <H2 style={styles.sectionTitle}>{t('calendar.add')}</H2>
@@ -500,6 +592,44 @@ export default function CalendarScreen() {
           </View>
         </View>
 
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
+            {t('reminders.supplyLabel')}
+          </Text>
+          <View style={styles.repeatRow}>
+            <Chip
+              label={t('reminders.supplyNone')}
+              active={supplyDays === null}
+              onPress={() => setSupplyText('')}
+            />
+            {SUPPLY_PRESETS.map((preset) => (
+              <Chip
+                key={preset}
+                label={t('reminders.supplyOption', { days: preset })}
+                active={supplyText === preset}
+                onPress={() => setSupplyText(preset)}
+              />
+            ))}
+          </View>
+          <TextInput
+            style={styles.input}
+            value={supplyText}
+            onChangeText={setSupplyText}
+            keyboardType="number-pad"
+            placeholder={t('reminders.supplyCustom')}
+            placeholderTextColor={colors.textSubtle}
+            accessibilityLabel={t('reminders.supplyLabel')}
+          />
+          {runsOutISO && supplyDays ? (
+            <Muted style={styles.savedText}>
+              {t('reminders.supplyHint', {
+                runsOut: formatReadableDate(runsOutISO),
+                refill: formatReadableDate(refillDateISO(dateISO, supplyDays)),
+              })}
+            </Muted>
+          ) : null}
+        </View>
+
         <Button
           label={t('calendar.save')}
           onPress={handleSave}
@@ -520,6 +650,14 @@ export default function CalendarScreen() {
             </Text>
           </View>
         ) : null}
+        {refillError ? (
+          <View style={styles.savedRow}>
+            <Feather name="alert-circle" size={16} color={colors.danger} />
+            <Text style={[styles.savedText, { color: colors.danger }]}>
+              {t('reminders.refillFailed')}
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
       <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title={sheetEvent?.title}>
@@ -532,6 +670,19 @@ export default function CalendarScreen() {
                 {sheetEvent.time ? ` · ${formatISTTime(sheetEvent.time)}` : ''}
               </Body>
             </View>
+            {sheetEvent.supplyDays ? (
+              <View style={[styles.sheetMetaRow, styles.sheetNote]}>
+                <Feather name="package" size={16} color={colors.textMuted} />
+                <Body style={{ color: colors.textMuted }}>
+                  {t('reminders.supplyRunsOut', {
+                    days: sheetEvent.supplyDays,
+                    date: formatReadableDate(
+                      supplyRunsOutISO(sheetEvent.dateISO, sheetEvent.supplyDays),
+                    ),
+                  })}
+                </Body>
+              </View>
+            ) : null}
             {sheetEvent.note ? (
               <Body style={[styles.sheetNote, { color: colors.textMuted }]}>{sheetEvent.note}</Body>
             ) : null}
