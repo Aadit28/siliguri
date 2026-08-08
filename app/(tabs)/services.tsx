@@ -30,7 +30,7 @@ import { useCity } from '../../src/context/CityContext';
 import { useDisplayMode } from '../../src/context/DisplayModeContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { canUseWhatsApp, openWhatsAppChat, whatsappChatUrl } from '../../src/lib/whatsapp';
-import { mapsCategorySearchUrl, openMapsUrl } from '../../src/lib/maps';
+import { mapsCategorySearchUrl, mapsSearchUrl, openMapsUrl } from '../../src/lib/maps';
 
 type DirectoryView = ServiceCategory | 'all' | 'favorites' | 'recent';
 
@@ -363,6 +363,7 @@ function ServiceRow({
   const showWhatsApp = canUseWhatsApp(item.phone);
   const showContactActions = Boolean(item.phone_confirmed && showWhatsApp);
   const whatsappUrl = whatsappChatUrl(item.phone);
+  const mapUrl = mapsSearchUrl(item);
 
   // Role-less Pressable renders a div on web — the row contains real buttons
   // (save, WhatsApp, call) and nesting them inside a <button> is invalid DOM.
@@ -415,7 +416,10 @@ function ServiceRow({
                 href={whatsappUrl as never}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={[styles.whatsappLinkBtn, { backgroundColor: colors.whatsapp, color: colors.whatsappText }]}
+                style={[
+                  styles.whatsappLinkBtn,
+                  { backgroundColor: colors.whatsappQuietBg, color: colors.whatsappQuietFg },
+                ]}
                 accessibilityRole="link"
                 accessibilityLabel={`WhatsApp ${item.name}`}
                 onPress={(event) => {
@@ -426,7 +430,7 @@ function ServiceRow({
               </Link>
             ) : (
               <TouchableOpacity
-                style={[styles.whatsappBtn, { backgroundColor: colors.whatsapp }]}
+                style={[styles.whatsappBtn, { backgroundColor: colors.whatsappQuietBg }]}
                 activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel={`WhatsApp ${item.name}`}
@@ -436,8 +440,8 @@ function ServiceRow({
                   openWhatsAppChat(item.phone);
                 }}
               >
-                <Feather name="message-circle" size={18} color={colors.whatsappText} />
-                <Text numberOfLines={1} style={[styles.whatsappLabel, { color: colors.whatsappText }]}>
+                <Feather name="message-circle" size={18} color={colors.whatsappQuietFg} />
+                <Text numberOfLines={1} style={[styles.whatsappLabel, { color: colors.whatsappQuietFg }]}>
                   WhatsApp
                 </Text>
               </TouchableOpacity>
@@ -446,7 +450,7 @@ function ServiceRow({
 
           {showContactActions ? (
             <TouchableOpacity
-              style={[styles.callBtn, { backgroundColor: colors.primary }]}
+              style={[styles.callBtn, { backgroundColor: colors.primaryTint, borderColor: colors.border }]}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel={`${t('common.call')} ${item.name}`}
@@ -456,8 +460,8 @@ function ServiceRow({
                 onCall(item.phone);
               }}
             >
-              <Feather name="phone" size={18} color={colors.primaryFg} />
-              <Text style={[styles.callLabel, { color: colors.primaryFg }]}>{t('common.call')}</Text>
+              <Feather name="phone" size={18} color={colors.text} />
+              <Text style={[styles.callLabel, { color: colors.text }]}>{t('common.call')}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -475,6 +479,29 @@ function ServiceRow({
               <Text style={[styles.aboutLabel, { color: colors.textMuted }]}>{t('services.about')}</Text>
             </TouchableOpacity>
           )}
+
+          {/* Third of the row, quietest of the three: a shop is called or
+              messaged far more often than it is looked up on a map, so this
+              carries no fill at all. Hidden rather than shown-disabled when the
+              listing has neither a name nor an address to search on. */}
+          {mapUrl ? (
+            <TouchableOpacity
+              style={[styles.mapBtn, { borderColor: colors.border, backgroundColor: colors.bgAlt }]}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${t('services.viewOnMap')} ${item.name}`}
+              onPress={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void openMapsUrl(mapUrl);
+              }}
+            >
+              <Feather name="map-pin" size={16} color={colors.textMuted} />
+              <Text numberOfLines={1} style={[styles.mapLabel, { color: colors.textMuted }]}>
+                {t('services.mapShort')}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </Card>
     </Pressable>
@@ -575,7 +602,6 @@ function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) 
     },
     whatsappBtn: {
       minHeight: tk.TAP,
-      minWidth: 130,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -584,7 +610,6 @@ function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) 
       paddingHorizontal: tk.space.md,
     },
     whatsappLinkBtn: {
-      minWidth: 130,
       height: tk.TAP,
       lineHeight: tk.TAP,
       borderRadius: radius.md,
@@ -598,7 +623,6 @@ function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) 
     whatsappLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
     callBtn: {
       minHeight: tk.TAP,
-      minWidth: 110,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -607,6 +631,20 @@ function makeStyles(colors: AppColors, isWide: boolean | undefined, tk: Tokens) 
       paddingHorizontal: tk.space.md,
     },
     callLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
+    mapBtn: {
+      minHeight: tk.TAP,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      // Tighter than its two neighbours on purpose: at 390pt the row had 89pt
+      // left after WhatsApp and Call, and this button wanted 90. One point of
+      // padding is what keeps all three on a single line on a normal phone.
+      paddingHorizontal: tk.space.sm,
+    },
+    mapLabel: { fontFamily: family.semibold, fontSize: tk.font.sm },
     aboutBtn: {
       minHeight: tk.TAP,
       flexDirection: 'row',

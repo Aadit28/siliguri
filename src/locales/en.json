@@ -158,6 +158,7 @@
     "daily_service": "Daily & civic help"
   },
   "services": {
+    "mapShort": "Map",
     "viewOnMap": "See it on the map",
     "mapAll": "See {{label}} on the map",
     "mapAllNote": "Opens Google Maps, which shows its own places nearby — not only the ones Saathi has checked.",
@@ -658,6 +659,8 @@
   "calendar": {
     "title": "My Calendar",
     "upcoming": "Upcoming",
+    "pastDue": "Past due",
+    "noneOnDate": "Nothing on this day.",
     "empty": "No events yet. Ask Saathi to plan something, or add one below.",
     "add": "Add event",
     "eventTitle": "What is it?",
@@ -814,7 +817,16 @@
     "savesToSelf": "Saves to your own account.",
     "alertNoteParentNamed": "{{name}}’s phone will alert them at this time.",
     "alertBlocked": "Saved. This phone will not alert you until notifications are turned on in Settings.",
-    "alertUnavailable": "Saved. This device cannot show alerts, so check the calendar."
+    "alertUnavailable": "Saved. This device cannot show alerts, so check the calendar.",
+    "supplyLabel": "How many days will it last?",
+    "supplyNone": "Does not run out",
+    "supplyOption": "{{days}} days",
+    "supplyCustom": "Days it lasts",
+    "supplyHint": "Runs out on {{runsOut}}. We will remind you to order more on {{refill}}.",
+    "supplyRunsOut": "{{days}} days of supply · runs out {{date}}",
+    "refillTitle": "Order more: {{name}}",
+    "refillNote": "{{name}} is about to run out. Order the next lot now.",
+    "refillFailed": "Saved. The order reminder could not be set — please add it yourself."
   },
   "notifications": {
     "title": "Notifications",

@@ -88,6 +88,13 @@ export const lightColors = {
   // brand colour and lifts white to 7.67:1.
   whatsapp: '#075E54',
   whatsappText: '#FFFFFF',
+  // Quiet pair for directory rows. A filled brand-green button on every card in
+  // a 56-row list turns the list into a wall of green and makes the shop's own
+  // name the least prominent thing on its card. The filled pair above stays for
+  // the single WhatsApp button on a service's own page, where there is one of
+  // them and it IS the action.
+  whatsappQuietBg: 'rgba(7,94,84,0.10)',
+  whatsappQuietFg: '#04463F',
   handle: '#D6D6D6',
 };
 
@@ -153,6 +160,10 @@ export const darkColors: typeof lightColors = {
   panelGlass: 'rgba(20,20,20,0.92)',
   whatsapp: '#25D366',
   whatsappText: '#062315',
+  // Same reasoning as light, and more so: #25D366 at full saturation against a
+  // near-black card is the brightest thing on the screen.
+  whatsappQuietBg: 'rgba(37,211,102,0.14)',
+  whatsappQuietFg: '#5FE39A',
   handle: '#3A3A3A',
 };
 
